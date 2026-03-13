@@ -53,7 +53,8 @@ The design goal is intentionally boring:
 
 ### 1. Add FunkyDNS locally
 
-Clone `P4X-ng/FunkyDNS` into `third_party/FunkyDNS`:
+Configure authenticated GitHub access, then clone the private
+`P4X-ng/FunkyDNS` repository into `third_party/FunkyDNS`:
 
 ```bash
 git clone https://github.com/P4X-ng/FunkyDNS.git third_party/FunkyDNS
