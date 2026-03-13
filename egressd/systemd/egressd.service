@@ -1,0 +1,19 @@
+[Unit]
+Description=egressd chained CONNECT supervisor
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=egressd
+Group=egressd
+Environment=EGRESSD_CONFIG=/etc/egressd/config.json5
+ExecStart=/usr/bin/python3 /opt/egressd/supervisor.py
+Restart=on-failure
+RestartSec=5
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

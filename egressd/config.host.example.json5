@@ -1,0 +1,39 @@
+{
+  listener: {
+    bind: "172.18.0.1",
+    port: 15001,
+    mode: "transparent",
+  },
+
+  dns: {
+    launch_funkydns: true,
+    port: 53,
+    doh_upstream: "https://your-doh.example/dns-query",
+  },
+
+  chain: {
+    name: "default",
+    hops: [
+      { url: "http://user1:pass1@proxy1.internal:3128" },
+      { url: "http://user2:pass2@proxy2.internal:3128" },
+    ],
+    canary_target: "example.com:443",
+    allowed_ports: [80, 443],
+    fail_closed: true,
+    connect_timeout_ms: 5000,
+    idle_timeout_ms: 60000,
+  },
+
+  logging: {
+    level: "INFO",
+    json: true,
+  },
+
+  supervisor: {
+    pproxy_bin: "/usr/local/bin/pproxy",
+    funkydns_bin: "/usr/local/bin/funkydns",
+    health_bind: "127.0.0.1",
+    health_port: 9191,
+    hop_check_interval_s: 5,
+  },
+}

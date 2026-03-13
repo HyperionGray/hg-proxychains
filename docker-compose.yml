@@ -1,0 +1,86 @@
+version: "3.8"
+
+services:
+  funky:
+    build:
+      context: .
+      dockerfile: funkydns-smoke/Dockerfile
+    container_name: funky
+    command:
+      [
+        "funkydns",
+        "server",
+        "--dns-port",
+        "53",
+        "--doh-port",
+        "443",
+        "--upstream",
+        "https://cloudflare-dns.com/dns-query"
+      ]
+    ports:
+      - "5353:53/udp"
+      - "5353:53/tcp"
+      - "8443:443"
+    networks:
+      egressnet:
+        ipv4_address: 172.18.0.10
+
+  proxy1:
+    build: ./proxy
+    container_name: proxy1
+    command: ["pproxy", "-l", "http://0.0.0.0:3128"]
+    networks:
+      egressnet:
+        ipv4_address: 172.18.0.11
+
+  proxy2:
+    build: ./proxy
+    container_name: proxy2
+    command: ["pproxy", "-l", "http://0.0.0.0:3128"]
+    networks:
+      egressnet:
+        ipv4_address: 172.18.0.12
+
+  exitserver:
+    build: ./exitserver
+    container_name: exitserver
+    ports:
+      - "9999:9999"
+    networks:
+      egressnet:
+        ipv4_address: 172.18.0.20
+
+  egressd:
+    build: ./egressd
+    container_name: egressd
+    depends_on:
+      - proxy1
+      - proxy2
+      - funky
+      - exitserver
+    ports:
+      - "15001:15001"
+      - "9191:9191"
+    environment:
+      - EGRESSD_CONFIG=/opt/egressd/config.json5
+      - PYTHONUNBUFFERED=1
+    networks:
+      egressnet:
+        ipv4_address: 172.18.0.5
+
+  client:
+    build: ./client
+    container_name: client
+    depends_on:
+      - egressd
+    networks:
+      egressnet:
+        ipv4_address: 172.18.0.30
+
+networks:
+  egressnet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.18.0.0/16
+          gateway: 172.18.0.1
