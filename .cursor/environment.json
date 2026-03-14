@@ -1,0 +1,8 @@
+{
+  "install": "bash .cursor/install.sh",
+  "start": "bash .cursor/start.sh",
+  "env": {
+    "VIRTUAL_ENV": "/workspace/.venv",
+    "PATH": "/workspace/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+  }
+}
