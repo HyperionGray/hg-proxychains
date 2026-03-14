@@ -16,9 +16,10 @@ This repo's compose stack is only a smoke harness. Real enforcement happens on a
    - `pyjson5`
 3. Copy `egressd/` to `/opt/egressd`
 4. Put a host config at `/etc/egressd/config.json5` based on `config.host.example.json5`
-5. Run `scripts/host-nftables.sh`
-6. Run `scripts/host-egress-owner.sh`
-7. Install and start `egressd/systemd/egressd.service`
+5. Run `python3 /opt/egressd/supervisor.py --check-config --config /etc/egressd/config.json5`
+6. Run `scripts/host-nftables.sh`
+7. Run `scripts/host-egress-owner.sh`
+8. Install and start `egressd/systemd/egressd.service`
 
 ## Expected traffic model
 

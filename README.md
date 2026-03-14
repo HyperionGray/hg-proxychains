@@ -25,7 +25,8 @@ The design goal is intentionally boring:
 ├── docs/
 │   ├── BRINGUP-CHECKLIST.md
 │   ├── FUNKYDNS-REVIEW.md
-│   └── HOST-DEPLOYMENT.md
+│   ├── HOST-DEPLOYMENT.md
+│   └── PREFLIGHT.md
 ├── egressd/
 │   ├── Dockerfile
 │   ├── requirements.txt
@@ -51,23 +52,35 @@ The design goal is intentionally boring:
 
 ## Quick start
 
-### 1. Add FunkyDNS locally
+### 1. Bootstrap dependencies
 
-Configure authenticated GitHub access, then clone the private
-`P4X-ng/FunkyDNS` repository into `third_party/FunkyDNS`:
+For Cursor/cloud environments, run the bootstrap script (it installs Docker,
+creates `.venv`, and checks out the pinned FunkyDNS dependency):
 
 ```bash
-git clone https://github.com/P4X-ng/FunkyDNS.git third_party/FunkyDNS
+bash .cursor/install.sh
+bash .cursor/start.sh
 ```
 
-### 2. Build and run the smoke harness
+If you are not using Cursor automation, make sure `third_party/FunkyDNS` exists
+and points to the gitlink-pinned commit for this repo.
+
+### 2. Run config preflight checks
+
+Validate `egressd/config.json5` before launching anything:
+
+```bash
+make preflight
+```
+
+### 3. Build and run the smoke harness
 
 ```bash
 docker compose build
 docker compose up
 ```
 
-### 3. Check results
+### 4. Check results
 
 - `client` should print a successful `CONNECT` followed by `OK from exit-server`
 - health endpoint:

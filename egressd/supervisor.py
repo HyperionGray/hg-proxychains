@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import base64
 import json
 import logging
@@ -17,11 +18,13 @@ from urllib.parse import urlparse
 import pyjson5
 
 from chain import build_relay_string
+from preflight import report_to_json, run_preflight
 
 CFG_PATH = os.environ.get("EGRESSD_CONFIG", "/opt/egressd/config.json5")
 STATE: Dict[str, Any] = {
     "pproxy": "down",
     "funkydns": "disabled",
+    "preflight": "unknown",
     "last_start": None,
     "last_exit": None,
     "hops": {},
@@ -55,6 +58,21 @@ def configure_logging(cfg: Dict[str, Any]) -> None:
 
 def load_cfg(path: str = CFG_PATH) -> Dict[str, Any]:
     return pyjson5.decode(Path(path).read_text(encoding="utf-8"))
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="egressd process supervisor")
+    parser.add_argument(
+        "--config",
+        default=CFG_PATH,
+        help="Path to json5 config file (default: EGRESSD_CONFIG or /opt/egressd/config.json5)",
+    )
+    parser.add_argument(
+        "--check-config",
+        action="store_true",
+        help="Run preflight checks and exit without starting services",
+    )
+    return parser.parse_args()
 
 
 def spawn_process(argv: list[str], env: Optional[Dict[str, str]] = None) -> subprocess.Popen:
@@ -185,8 +203,23 @@ def hop_health_loop(cfg: Dict[str, Any]) -> None:
 
 
 def main() -> int:
-    cfg = load_cfg()
+    args = parse_args()
+    cfg = load_cfg(args.config)
     configure_logging(cfg)
+
+    preflight_report = run_preflight(cfg)
+    STATE["preflight"] = preflight_report
+
+    if preflight_report["warnings"]:
+        logging.warning("preflight warnings: %s", "; ".join(preflight_report["warnings"]))
+
+    if args.check_config:
+        print(report_to_json(preflight_report))
+        return 0 if preflight_report["ok"] else 2
+
+    if not preflight_report["ok"]:
+        logging.error("preflight failed: %s", "; ".join(preflight_report["errors"]))
+        return 2
 
     run_health_server(cfg["supervisor"].get("health_bind", "0.0.0.0"), int(cfg["supervisor"].get("health_port", 9191)))
 
