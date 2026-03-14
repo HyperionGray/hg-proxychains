@@ -73,6 +73,9 @@ Validate `egressd/config.json5` before launching anything:
 make preflight
 ```
 
+`make preflight` focuses on config correctness and skips local binary presence
+checks (useful when `pproxy` is provided inside containers).
+
 ### 3. Build and run the smoke harness
 
 ```bash

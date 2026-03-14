@@ -22,6 +22,9 @@ From the repo root:
 make preflight
 ```
 
+The Makefile target sets `EGRESSD_PREFLIGHT_SKIP_BIN_CHECKS=true` so local
+validation still works when binaries like `pproxy` only exist inside containers.
+
 Or directly:
 
 ```bash

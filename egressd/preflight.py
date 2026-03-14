@@ -70,6 +70,7 @@ def run_preflight(cfg: Dict[str, Any]) -> Dict[str, Any]:
     """Return a report with errors/warnings and overall status."""
     errors: List[str] = []
     warnings: List[str] = []
+    skip_binary_checks = os.getenv("EGRESSD_PREFLIGHT_SKIP_BIN_CHECKS", "").lower() in {"1", "true", "yes"}
 
     listener = cfg.get("listener", {})
     listener_port = listener.get("port")
@@ -96,13 +97,15 @@ def run_preflight(cfg: Dict[str, Any]) -> Dict[str, Any]:
 
     supervisor_cfg = cfg.get("supervisor", {})
     pproxy_bin = str(supervisor_cfg.get("pproxy_bin", "pproxy"))
-    if not _check_binary_exists(pproxy_bin):
+    if skip_binary_checks:
+        warnings.append("binary checks skipped by EGRESSD_PREFLIGHT_SKIP_BIN_CHECKS")
+    elif not _check_binary_exists(pproxy_bin):
         errors.append(f"supervisor.pproxy_bin is not executable or not on PATH: {pproxy_bin}")
 
     dns_cfg = cfg.get("dns", {})
     if bool(dns_cfg.get("launch_funkydns", False)):
         funkydns_bin = str(supervisor_cfg.get("funkydns_bin", "funkydns"))
-        if not _check_binary_exists(funkydns_bin):
+        if not skip_binary_checks and not _check_binary_exists(funkydns_bin):
             errors.append(f"supervisor.funkydns_bin is not executable or not on PATH: {funkydns_bin}")
 
         dns_port = dns_cfg.get("port")

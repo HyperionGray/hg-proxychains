@@ -17,7 +17,7 @@ pycheck:
 	$(PYTHON) -m py_compile egressd/supervisor.py egressd/preflight.py egressd/chain.py client/test_client.py exitserver/echo_server.py
 
 preflight:
-	$(PYTHON) egressd/supervisor.py --check-config --config egressd/config.json5
+	EGRESSD_PREFLIGHT_SKIP_BIN_CHECKS=true $(PYTHON) egressd/supervisor.py --check-config --config egressd/config.json5
 
 bundle:
 	tar -czf egressd-starter.tar.gz .
