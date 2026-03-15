@@ -15,7 +15,7 @@ services:
         "--doh-port",
         "443",
         "--upstream",
-        "https://cloudflare-dns.com/dns-query"
+        "[\"https://cloudflare-dns.com/dns-query\"]"
       ]
     ports:
       - "5353:53/udp"
