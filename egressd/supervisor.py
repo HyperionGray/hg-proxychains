@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 import time
+from copy import deepcopy
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
@@ -17,6 +18,7 @@ from urllib.parse import urlparse
 import pyjson5
 
 from chain import build_relay_string
+from readiness import build_readiness_report
 
 CFG_PATH = os.environ.get("EGRESSD_CONFIG", "/opt/egressd/config.json5")
 STATE: Dict[str, Any] = {
@@ -25,7 +27,10 @@ STATE: Dict[str, Any] = {
     "last_start": None,
     "last_exit": None,
     "hops": {},
+    "hops_last_update": None,
 }
+STATE_LOCK = threading.Lock()
+RUNTIME_CFG: Dict[str, Any] = {}
 
 
 class JsonFormatter(logging.Formatter):
@@ -94,14 +99,38 @@ def start_funkydns(cfg: Dict[str, Any]) -> Optional[subprocess.Popen]:
     return proc
 
 
+def set_state(updates: Dict[str, Any]) -> None:
+    with STATE_LOCK:
+        STATE.update(updates)
+
+
+def snapshot_state() -> Dict[str, Any]:
+    with STATE_LOCK:
+        return deepcopy(STATE)
+
+
+def readiness_report(state: Dict[str, Any], cfg: Dict[str, Any]) -> Dict[str, Any]:
+    hop_interval = int(cfg.get("supervisor", {}).get("hop_check_interval_s", 5))
+    stale_after_s = int(cfg.get("supervisor", {}).get("hop_status_ttl_s", max(15, hop_interval * 3)))
+    require_funkydns = bool(cfg.get("dns", {}).get("launch_funkydns", False))
+    return build_readiness_report(state, stale_after_s=stale_after_s, require_funkydns=require_funkydns)
+
+
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
-        if self.path != "/health":
+        if self.path == "/health":
+            body = json.dumps(snapshot_state()).encode("utf-8")
+            status = 200
+        elif self.path == "/ready":
+            state = snapshot_state()
+            report = readiness_report(state, RUNTIME_CFG)
+            body = json.dumps({"ready": report["ready"], "report": report, "state": state}).encode("utf-8")
+            status = 200 if report["ready"] else 503
+        else:
             self.send_response(404)
             self.end_headers()
             return
-        body = json.dumps(STATE).encode("utf-8")
-        self.send_response(200)
+        self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -114,7 +143,7 @@ class HealthHandler(BaseHTTPRequestHandler):
 def run_health_server(bind: str, port: int) -> HTTPServer:
     server = HTTPServer((bind, port), HealthHandler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    logging.info("health endpoint listening on %s:%d", bind, port)
+    logging.info("health endpoints listening on %s:%d (/health, /ready)", bind, port)
     return server
 
 
@@ -180,19 +209,21 @@ def hop_health_loop(cfg: Dict[str, Any]) -> None:
         statuses: Dict[str, Any] = {}
         for idx, hop in enumerate(cfg["chain"].get("hops", [])):
             statuses[f"hop_{idx}"] = check_hop_connectivity(hop["url"], target)
-        STATE["hops"] = statuses
+        set_state({"hops": statuses, "hops_last_update": int(time.time())})
         time.sleep(interval)
 
 
 def main() -> int:
+    global RUNTIME_CFG
     cfg = load_cfg()
+    RUNTIME_CFG = cfg
     configure_logging(cfg)
 
     run_health_server(cfg["supervisor"].get("health_bind", "0.0.0.0"), int(cfg["supervisor"].get("health_port", 9191)))
 
     funkydns_proc: Optional[subprocess.Popen] = start_funkydns(cfg)
     if funkydns_proc is not None:
-        STATE["funkydns"] = "running"
+        set_state({"funkydns": "running"})
 
     threading.Thread(target=hop_health_loop, args=(cfg,), daemon=True).start()
 
@@ -206,6 +237,9 @@ def main() -> int:
             pproxy_proc.terminate()
         if funkydns_proc and funkydns_proc.poll() is None:
             funkydns_proc.terminate()
+        set_state({"pproxy": "down"})
+        if bool(cfg.get("dns", {}).get("launch_funkydns", False)):
+            set_state({"funkydns": "down"})
         raise SystemExit(0)
 
     signal.signal(signal.SIGINT, stop_all)
@@ -213,16 +247,15 @@ def main() -> int:
 
     while True:
         try:
-            STATE["last_start"] = int(time.time())
+            set_state({"last_start": int(time.time())})
             pproxy_proc = start_pproxy(cfg)
-            STATE["pproxy"] = "running"
+            set_state({"pproxy": "running"})
             backoff = 1
             rc = pproxy_proc.wait()
-            STATE["pproxy"] = "down"
-            STATE["last_exit"] = {"code": rc, "time": int(time.time())}
+            set_state({"pproxy": "down", "last_exit": {"code": rc, "time": int(time.time())}})
             logging.warning("pproxy exited rc=%s", rc)
         except Exception as exc:
-            STATE["pproxy"] = "error"
+            set_state({"pproxy": "error"})
             logging.exception("supervisor loop error: %s", exc)
         logging.info("sleeping %ss before restart", backoff)
         time.sleep(backoff)

@@ -30,6 +30,7 @@ The design goal is intentionally boring:
 │   ├── Dockerfile
 │   ├── requirements.txt
 │   ├── chain.py
+│   ├── readiness.py
 │   ├── supervisor.py
 │   ├── config.json5
 │   ├── config.host.example.json5
@@ -45,6 +46,8 @@ The design goal is intentionally boring:
 ├── scripts/
 │   ├── host-nftables.sh
 │   └── host-egress-owner.sh
+├── tests/
+│   └── test_readiness.py
 └── third_party/
     └── README.md
 ```
@@ -76,6 +79,12 @@ docker compose up
 curl http://localhost:9191/health
 ```
 
+- readiness endpoint (`200` when traffic path is healthy, `503` otherwise):
+
+```bash
+curl -i http://localhost:9191/ready
+```
+
 ## What the smoke harness proves
 
 - local explicit CONNECT tunnel establishment
@@ -96,10 +105,16 @@ For host mode, `egressd/config.host.example.json5` shows how to launch FunkyDNS 
 
 ## What to tweak first
 
-- `egressd/config.json5`: proxy hop URLs, canary target, health port
+- `egressd/config.json5`: proxy hop URLs, canary target, health port/readiness TTL
 - `scripts/host-egress-owner.sh`: upstream proxy and DoH IPs
 - `scripts/host-nftables.sh`: bridge interface name and infra CIDRs
 
 ## Notes on FunkyDNS review
 
 I added a short review in `docs/FUNKYDNS-REVIEW.md` with the concrete issues worth fixing before you rely on it in a production-ish setup.
+
+## Maintenance helpers
+
+- `make pycheck` compiles key Python entry points for syntax sanity.
+- `make test` runs readiness unit tests.
+- `make clean` removes local build/test artifacts (`__pycache__`, `.pytest_cache`, bundle tarball).
