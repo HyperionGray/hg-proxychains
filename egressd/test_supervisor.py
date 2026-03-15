@@ -1,12 +1,21 @@
 #!/usr/bin/env python3
 import pathlib
 import sys
+import types
 import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 # Allow importing sibling module `supervisor.py` directly.
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+
+# Unit tests do not exercise load_cfg(), so a minimal stub avoids a hard
+# dependency on pyjson5 in lightweight test environments.
+if "pyjson5" not in sys.modules:
+    pyjson5_stub = types.ModuleType("pyjson5")
+    pyjson5_stub.decode = lambda *_args, **_kwargs: {}
+    sys.modules["pyjson5"] = pyjson5_stub
+
 import supervisor  # noqa: E402
 
 
