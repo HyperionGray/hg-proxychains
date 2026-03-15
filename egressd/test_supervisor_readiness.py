@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 import sys
+import types
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+if "pyjson5" not in sys.modules:
+    pyjson5_stub = types.ModuleType("pyjson5")
+    pyjson5_stub.decode = lambda _: {}
+    sys.modules["pyjson5"] = pyjson5_stub
 
 import supervisor  # noqa: E402
 
