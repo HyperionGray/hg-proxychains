@@ -2,12 +2,13 @@
 
 ## Smoke harness
 
-- [ ] Clone private repo `P4X-ng/FunkyDNS` into `third_party/FunkyDNS`
+- [ ] Initialize submodule `third_party/FunkyDNS` (`git submodule update --init --recursive third_party/FunkyDNS`)
 - [ ] `docker compose build`
 - [ ] `docker compose up`
 - [ ] Confirm `client` prints `200 Connection Established`
 - [ ] Confirm `client` receives `OK from exit-server`
 - [ ] `curl http://localhost:9191/health`
+- [ ] `curl -f http://localhost:9191/ready`
 - [ ] Confirm hop probes are green or at least responding with expected policy/auth status
 
 ## Host deployment
@@ -21,3 +22,4 @@
 - [ ] Verify workload can only egress through local listener
 - [ ] Verify only the `egressd` UID can reach configured upstream IPs
 - [ ] Kill one upstream proxy and confirm fail-closed behavior
+- [ ] Verify `/ready` transitions to failure when the proxy chain is unhealthy

@@ -51,10 +51,16 @@ The design goal is intentionally boring:
 
 ## Quick start
 
-### 1. Add FunkyDNS locally
+### 1. Initialize FunkyDNS submodule
 
-Configure authenticated GitHub access, then clone the private
-`P4X-ng/FunkyDNS` repository into `third_party/FunkyDNS`:
+Configure authenticated GitHub access, then initialize the private submodule:
+
+```bash
+git submodule update --init --recursive third_party/FunkyDNS
+```
+
+If you prefer a direct clone workflow, you can still clone `P4X-ng/FunkyDNS`
+into `third_party/FunkyDNS` manually:
 
 ```bash
 git clone https://github.com/P4X-ng/FunkyDNS.git third_party/FunkyDNS
@@ -76,6 +82,12 @@ docker compose up
 curl http://localhost:9191/health
 ```
 
+- readiness endpoint:
+
+```bash
+curl -f http://localhost:9191/ready
+```
+
 ## What the smoke harness proves
 
 - local explicit CONNECT tunnel establishment
@@ -85,6 +97,20 @@ curl http://localhost:9191/health
 - optional separate FunkyDNS service for DNS work
 
 It does **not** prove host enforcement. For that, use the scripts in `scripts/` on a real Linux host and follow `docs/HOST-DEPLOYMENT.md`.
+
+## Health vs readiness
+
+- `GET /live`: process is up (simple liveness check)
+- `GET /health`: detailed state (`pproxy`, `funkydns`, per-hop probe details, and readiness block)
+- `GET /ready`: returns `200` only when `egressd` is usable for forwarding
+  - `pproxy` must be running
+  - if `dns.launch_funkydns=true`, FunkyDNS must also be running
+  - hop checks must be complete and successful by default
+
+Readiness behavior can be tuned via:
+
+- `supervisor.ready_require_hops`
+- `supervisor.ready_require_all_hops`
 
 ## Important split: smoke mode vs host mode
 

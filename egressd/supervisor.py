@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import base64
+import copy
 import json
 import logging
 import os
@@ -26,6 +27,7 @@ STATE: Dict[str, Any] = {
     "last_exit": None,
     "hops": {},
 }
+STATE_LOCK = threading.Lock()
 
 
 class JsonFormatter(logging.Formatter):
@@ -55,6 +57,62 @@ def configure_logging(cfg: Dict[str, Any]) -> None:
 
 def load_cfg(path: str = CFG_PATH) -> Dict[str, Any]:
     return pyjson5.decode(Path(path).read_text(encoding="utf-8"))
+
+
+def update_state(values: Dict[str, Any]) -> None:
+    with STATE_LOCK:
+        STATE.update(values)
+
+
+def set_hop_statuses(statuses: Dict[str, Any]) -> None:
+    with STATE_LOCK:
+        STATE["hops"] = statuses
+
+
+def get_state_snapshot() -> Dict[str, Any]:
+    with STATE_LOCK:
+        return copy.deepcopy(STATE)
+
+
+def compute_readiness(state: Dict[str, Any], cfg: Dict[str, Any], now_ts: Optional[int] = None) -> Dict[str, Any]:
+    if now_ts is None:
+        now_ts = int(time.time())
+
+    reasons: list[str] = []
+    if state.get("pproxy") != "running":
+        reasons.append("pproxy_not_running")
+
+    launch_funkydns = bool(cfg.get("dns", {}).get("launch_funkydns", False))
+    if launch_funkydns and state.get("funkydns") != "running":
+        reasons.append("funkydns_not_running")
+
+    supervisor_cfg = cfg.get("supervisor", {})
+    require_hops = bool(supervisor_cfg.get("ready_require_hops", True))
+    require_all_hops = bool(supervisor_cfg.get("ready_require_all_hops", True))
+    expected_hops = len(cfg.get("chain", {}).get("hops", []))
+    hop_statuses: Dict[str, Any] = state.get("hops") or {}
+    observed_hops = len(hop_statuses)
+
+    if require_hops and expected_hops > 0:
+        if observed_hops < expected_hops:
+            reasons.append("hop_checks_incomplete")
+        else:
+            if require_all_hops:
+                failed_hops = sorted(name for name, result in hop_statuses.items() if not result.get("ok", False))
+                if failed_hops:
+                    reasons.append(f"hop_checks_failed:{','.join(failed_hops)}")
+            else:
+                has_any_ok = any(result.get("ok", False) for result in hop_statuses.values())
+                if not has_any_ok:
+                    reasons.append("no_hop_checks_ok")
+
+    return {
+        "ready": not reasons,
+        "checked_at": now_ts,
+        "reasons": reasons,
+        "expected_hops": expected_hops,
+        "observed_hops": observed_hops,
+    }
 
 
 def spawn_process(argv: list[str], env: Optional[Dict[str, str]] = None) -> subprocess.Popen:
@@ -95,17 +153,48 @@ def start_funkydns(cfg: Dict[str, Any]) -> Optional[subprocess.Popen]:
 
 
 class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self) -> None:
-        if self.path != "/health":
-            self.send_response(404)
-            self.end_headers()
-            return
-        body = json.dumps(STATE).encode("utf-8")
-        self.send_response(200)
+    cfg: Dict[str, Any] = {}
+
+    def _send_json(self, payload: Dict[str, Any], status: int = 200) -> None:
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def do_GET(self) -> None:
+        if self.path not in {"/health", "/ready", "/live"}:
+            self.send_response(404)
+            self.end_headers()
+            return
+
+        if self.path == "/live":
+            self._send_json({"ok": True, "checked_at": int(time.time())}, status=200)
+            return
+
+        snapshot = get_state_snapshot()
+        readiness = compute_readiness(snapshot, self.cfg)
+
+        if self.path == "/ready":
+            status = 200 if readiness["ready"] else 503
+            self._send_json(
+                {
+                    "ready": readiness["ready"],
+                    "checked_at": readiness["checked_at"],
+                    "reasons": readiness["reasons"],
+                    "state": {
+                        "pproxy": snapshot.get("pproxy"),
+                        "funkydns": snapshot.get("funkydns"),
+                    },
+                },
+                status=status,
+            )
+            return
+
+        payload = dict(snapshot)
+        payload["ready"] = readiness
+        self._send_json(payload, status=200)
 
     def log_message(self, fmt: str, *args: Any) -> None:
         return
@@ -180,19 +269,20 @@ def hop_health_loop(cfg: Dict[str, Any]) -> None:
         statuses: Dict[str, Any] = {}
         for idx, hop in enumerate(cfg["chain"].get("hops", [])):
             statuses[f"hop_{idx}"] = check_hop_connectivity(hop["url"], target)
-        STATE["hops"] = statuses
+        set_hop_statuses(statuses)
         time.sleep(interval)
 
 
 def main() -> int:
     cfg = load_cfg()
     configure_logging(cfg)
+    HealthHandler.cfg = cfg
 
     run_health_server(cfg["supervisor"].get("health_bind", "0.0.0.0"), int(cfg["supervisor"].get("health_port", 9191)))
 
     funkydns_proc: Optional[subprocess.Popen] = start_funkydns(cfg)
     if funkydns_proc is not None:
-        STATE["funkydns"] = "running"
+        update_state({"funkydns": "running"})
 
     threading.Thread(target=hop_health_loop, args=(cfg,), daemon=True).start()
 
@@ -213,16 +303,15 @@ def main() -> int:
 
     while True:
         try:
-            STATE["last_start"] = int(time.time())
+            update_state({"last_start": int(time.time())})
             pproxy_proc = start_pproxy(cfg)
-            STATE["pproxy"] = "running"
+            update_state({"pproxy": "running"})
             backoff = 1
             rc = pproxy_proc.wait()
-            STATE["pproxy"] = "down"
-            STATE["last_exit"] = {"code": rc, "time": int(time.time())}
+            update_state({"pproxy": "down", "last_exit": {"code": rc, "time": int(time.time())}})
             logging.warning("pproxy exited rc=%s", rc)
         except Exception as exc:
-            STATE["pproxy"] = "error"
+            update_state({"pproxy": "error"})
             logging.exception("supervisor loop error: %s", exc)
         logging.info("sleeping %ss before restart", backoff)
         time.sleep(backoff)
