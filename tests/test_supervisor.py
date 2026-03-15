@@ -1,7 +1,11 @@
 import copy
 import sys
+import types
 import unittest
 from pathlib import Path
+
+if "pyjson5" not in sys.modules:
+    sys.modules["pyjson5"] = types.SimpleNamespace(decode=lambda text: {})
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "egressd"))
 import supervisor  # noqa: E402
