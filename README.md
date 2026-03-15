@@ -67,6 +67,9 @@ docker compose build
 docker compose up
 ```
 
+The compose file includes service healthchecks and readiness-gated dependencies,
+so `egressd` waits for proxy, DNS, and exit services before starting.
+
 ### 3. Check results
 
 - `client` should print a successful `CONNECT` followed by `OK from exit-server`
@@ -76,12 +79,21 @@ docker compose up
 curl http://localhost:9191/health
 ```
 
+- readiness endpoint (returns HTTP 200 only when preflight checks pass, `pproxy`
+  is running, and hop probes are currently healthy):
+
+```bash
+curl -f http://localhost:9191/ready
+```
+
 ## What the smoke harness proves
 
 - local explicit CONNECT tunnel establishment
 - multi-hop relay via `pproxy`
 - end-to-end raw TCP after CONNECT
 - per-hop health probes
+- fail-fast startup preflight for invalid config/binary prerequisites
+- readiness reporting that reflects hop health and process state
 - optional separate FunkyDNS service for DNS work
 
 It does **not** prove host enforcement. For that, use the scripts in `scripts/` on a real Linux host and follow `docs/HOST-DEPLOYMENT.md`.
@@ -93,6 +105,12 @@ The compose harness runs FunkyDNS as a **separate service**.
 `egressd` does **not** launch FunkyDNS in smoke mode. That avoids double-start bugs and keeps service boundaries clean.
 
 For host mode, `egressd/config.host.example.json5` shows how to launch FunkyDNS locally if you want a single host-managed stack.
+
+## Startup preflight checks
+
+`egressd` validates config and binary prerequisites before launching `pproxy`.
+If preflight fails, it exits non-zero and logs each specific failure (for example:
+invalid hop URL, empty chain, or missing binary path).
 
 ## What to tweak first
 
