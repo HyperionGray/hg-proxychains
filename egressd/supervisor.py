@@ -24,8 +24,11 @@ STATE: Dict[str, Any] = {
     "funkydns": "disabled",
     "last_start": None,
     "last_exit": None,
+    "last_hop_check": None,
+    "config_valid": False,
     "hops": {},
 }
+RUNTIME: Dict[str, Any] = {"fail_closed": True, "expected_hops": 0}
 
 
 class JsonFormatter(logging.Formatter):
@@ -96,12 +99,21 @@ def start_funkydns(cfg: Dict[str, Any]) -> Optional[subprocess.Popen]:
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
-        if self.path != "/health":
+        if self.path not in {"/health", "/ready"}:
             self.send_response(404)
             self.end_headers()
             return
-        body = json.dumps(STATE).encode("utf-8")
-        self.send_response(200)
+
+        if self.path == "/health":
+            payload = dict(STATE)
+            payload["readiness"] = compute_readiness()
+            status = 200
+        else:
+            payload = compute_readiness()
+            status = 200 if payload["ready"] else 503
+
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -135,11 +147,79 @@ def parse_proxy_url(url: str) -> Tuple[str, int, Optional[str]]:
     return host, port, auth_header
 
 
+def parse_target_host_port(target: str) -> Tuple[str, int]:
+    host, sep, raw_port = target.rpartition(":")
+    if not sep or not host:
+        raise ValueError(f"invalid canary target (expected host:port): {target}")
+    try:
+        port = int(raw_port)
+    except ValueError as exc:
+        raise ValueError(f"invalid canary target port: {target}") from exc
+    if not 1 <= port <= 65535:
+        raise ValueError(f"canary target port out of range: {target}")
+    return host, port
+
+
+def validate_cfg(cfg: Dict[str, Any]) -> None:
+    chain_cfg = cfg.get("chain", {})
+    hops = chain_cfg.get("hops", [])
+    if not hops:
+        raise ValueError("chain.hops is empty")
+    for idx, hop in enumerate(hops):
+        hop_url = hop.get("url")
+        if not hop_url:
+            raise ValueError(f"chain.hops[{idx}].url is empty")
+        parse_proxy_url(hop_url)
+
+    _host, canary_port = parse_target_host_port(chain_cfg.get("canary_target", "example.com:443"))
+    allowed_ports = chain_cfg.get("allowed_ports", [])
+    if allowed_ports:
+        for raw_port in allowed_ports:
+            if not isinstance(raw_port, int):
+                raise ValueError(f"allowed port must be integer, got {raw_port!r}")
+            if not 1 <= raw_port <= 65535:
+                raise ValueError(f"allowed port out of range: {raw_port}")
+        if bool(chain_cfg.get("fail_closed", True)) and canary_port not in allowed_ports:
+            raise ValueError(
+                "chain.canary_target port is not present in chain.allowed_ports while fail_closed=true"
+            )
+
+    hop_interval = int(cfg.get("supervisor", {}).get("hop_check_interval_s", 5))
+    if hop_interval < 1:
+        raise ValueError("supervisor.hop_check_interval_s must be >= 1")
+
+
+def compute_readiness() -> Dict[str, Any]:
+    reasons = []
+    if STATE.get("pproxy") != "running":
+        reasons.append("pproxy-not-running")
+
+    fail_closed = bool(RUNTIME.get("fail_closed", True))
+    expected_hops = int(RUNTIME.get("expected_hops", 0))
+    hop_states = STATE.get("hops", {})
+    if fail_closed:
+        if len(hop_states) < expected_hops:
+            reasons.append("hop-health-pending")
+        for idx in range(expected_hops):
+            hop_state = hop_states.get(f"hop_{idx}")
+            if not hop_state or not hop_state.get("ok", False):
+                reasons.append(f"hop_{idx}-unhealthy")
+
+    return {
+        "ready": len(reasons) == 0,
+        "fail_closed": fail_closed,
+        "expected_hops": expected_hops,
+        "reasons": reasons,
+    }
+
+
 def check_hop_connectivity(hop_url: str, target: str, timeout: int = 3) -> Dict[str, Any]:
-    host, port, auth_header = parse_proxy_url(hop_url)
     sock: Optional[socket.socket] = None
+    proxy_label = hop_url
     start = time.time()
     try:
+        host, port, auth_header = parse_proxy_url(hop_url)
+        proxy_label = f"{host}:{port}"
         sock = socket.create_connection((host, port), timeout=timeout)
         request = (
             f"CONNECT {target} HTTP/1.1\r\n"
@@ -154,14 +234,14 @@ def check_hop_connectivity(hop_url: str, target: str, timeout: int = 3) -> Dict[
         ok = any(code in status_line for code in [" 200 ", " 407 ", " 403 "])
         return {
             "ok": ok,
-            "proxy": f"{host}:{port}",
+            "proxy": proxy_label,
             "status_line": status_line,
             "elapsed_ms": int((time.time() - start) * 1000),
         }
     except Exception as exc:
         return {
             "ok": False,
-            "proxy": f"{host}:{port}",
+            "proxy": proxy_label,
             "error": str(exc),
             "elapsed_ms": int((time.time() - start) * 1000),
         }
@@ -181,12 +261,22 @@ def hop_health_loop(cfg: Dict[str, Any]) -> None:
         for idx, hop in enumerate(cfg["chain"].get("hops", [])):
             statuses[f"hop_{idx}"] = check_hop_connectivity(hop["url"], target)
         STATE["hops"] = statuses
+        STATE["last_hop_check"] = int(time.time())
         time.sleep(interval)
 
 
 def main() -> int:
     cfg = load_cfg()
     configure_logging(cfg)
+    try:
+        validate_cfg(cfg)
+    except ValueError as exc:
+        logging.error("configuration validation failed: %s", exc)
+        return 2
+
+    RUNTIME["fail_closed"] = bool(cfg.get("chain", {}).get("fail_closed", True))
+    RUNTIME["expected_hops"] = len(cfg.get("chain", {}).get("hops", []))
+    STATE["config_valid"] = True
 
     run_health_server(cfg["supervisor"].get("health_bind", "0.0.0.0"), int(cfg["supervisor"].get("health_port", 9191)))
 
