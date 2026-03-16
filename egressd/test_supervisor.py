@@ -50,3 +50,59 @@ class SupervisorTests(unittest.TestCase):
             ]
         )
         self.assertEqual(thread.call_count, 2)
+
+    def test_evaluate_readiness_ready_when_core_services_are_healthy(self) -> None:
+        cfg = {
+            "dns": {"launch_funkydns": False},
+            "chain": {"hops": [{"url": "http://proxy1:3128"}, {"url": "http://proxy2:3128"}]},
+        }
+        state = {
+            "pproxy": "running",
+            "funkydns": "disabled",
+            "hops": {
+                "hop_0": {"ok": True},
+                "hop_1": {"ok": True},
+            },
+        }
+
+        ready, reasons = supervisor.evaluate_readiness(state, cfg)
+
+        self.assertTrue(ready)
+        self.assertEqual(reasons, [])
+
+    def test_evaluate_readiness_reports_unhealthy_state_details(self) -> None:
+        cfg = {
+            "dns": {"launch_funkydns": False},
+            "chain": {"hops": [{"url": "http://proxy1:3128"}, {"url": "http://proxy2:3128"}]},
+        }
+        state = {
+            "pproxy": "down",
+            "funkydns": "disabled",
+            "hops": {
+                "hop_0": {"ok": False, "error": "dial timeout"},
+            },
+        }
+
+        ready, reasons = supervisor.evaluate_readiness(state, cfg)
+
+        self.assertFalse(ready)
+        self.assertIn("pproxy is not running", reasons)
+        self.assertIn("hop probes incomplete (1/2)", reasons)
+        self.assertIn("hop_0 unhealthy: dial timeout", reasons)
+        self.assertIn("hop_1 probe missing", reasons)
+
+    def test_evaluate_readiness_requires_funkydns_when_enabled(self) -> None:
+        cfg = {
+            "dns": {"launch_funkydns": True},
+            "chain": {"hops": [{"url": "http://proxy1:3128"}]},
+        }
+        state = {
+            "pproxy": "running",
+            "funkydns": "down",
+            "hops": {"hop_0": {"ok": True}},
+        }
+
+        ready, reasons = supervisor.evaluate_readiness(state, cfg)
+
+        self.assertFalse(ready)
+        self.assertIn("funkydns is enabled but not running", reasons)

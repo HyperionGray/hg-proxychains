@@ -70,10 +70,16 @@ docker compose up
 ### 3. Check results
 
 - `client` should print a successful `CONNECT` followed by `OK from exit-server`
-- health endpoint:
+- liveness endpoint:
 
 ```bash
 curl http://localhost:9191/health
+```
+
+- readiness endpoint (returns `200` only when proxy chain probes are healthy):
+
+```bash
+curl -i http://localhost:9191/ready
 ```
 
 ## What the smoke harness proves
@@ -81,7 +87,7 @@ curl http://localhost:9191/health
 - local explicit CONNECT tunnel establishment
 - multi-hop relay via `pproxy`
 - end-to-end raw TCP after CONNECT
-- per-hop health probes
+- per-hop health probes and readiness gating
 - optional separate FunkyDNS service for DNS work
 
 It does **not** prove host enforcement. For that, use the scripts in `scripts/` on a real Linux host and follow `docs/HOST-DEPLOYMENT.md`.

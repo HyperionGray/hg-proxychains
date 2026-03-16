@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import base64
+import copy
 import json
 import logging
 import os
@@ -11,7 +12,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 import pyjson5
@@ -101,13 +102,29 @@ def start_funkydns(cfg: Dict[str, Any]) -> Optional[subprocess.Popen]:
 
 
 class HealthHandler(BaseHTTPRequestHandler):
+    cfg: Dict[str, Any] = {}
+
     def do_GET(self) -> None:
-        if self.path != "/health":
+        if self.path not in {"/health", "/ready"}:
             self.send_response(404)
             self.end_headers()
             return
-        body = json.dumps(STATE).encode("utf-8")
-        self.send_response(200)
+
+        state_snapshot = copy.deepcopy(STATE)
+        body_payload: Dict[str, Any] = state_snapshot
+        status_code = 200
+
+        if self.path == "/ready":
+            ready, reasons = evaluate_readiness(state_snapshot, self.cfg)
+            body_payload = {
+                "ready": ready,
+                "reasons": reasons,
+                "state": state_snapshot,
+            }
+            status_code = 200 if ready else 503
+
+        body = json.dumps(body_payload).encode("utf-8")
+        self.send_response(status_code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -117,7 +134,38 @@ class HealthHandler(BaseHTTPRequestHandler):
         return
 
 
-def run_health_server(bind: str, port: int) -> HTTPServer:
+def evaluate_readiness(state: Dict[str, Any], cfg: Dict[str, Any]) -> Tuple[bool, List[str]]:
+    reasons: List[str] = []
+
+    if state.get("pproxy") != "running":
+        reasons.append("pproxy is not running")
+
+    launch_funkydns = bool(cfg.get("dns", {}).get("launch_funkydns", False))
+    if launch_funkydns and state.get("funkydns") != "running":
+        reasons.append("funkydns is enabled but not running")
+
+    expected_hops = len(cfg.get("chain", {}).get("hops", []))
+    observed_hops = state.get("hops", {})
+    if expected_hops == 0:
+        reasons.append("no hops configured")
+    else:
+        if len(observed_hops) < expected_hops:
+            reasons.append(f"hop probes incomplete ({len(observed_hops)}/{expected_hops})")
+        for idx in range(expected_hops):
+            hop_name = f"hop_{idx}"
+            hop_status = observed_hops.get(hop_name)
+            if hop_status is None:
+                reasons.append(f"{hop_name} probe missing")
+                continue
+            if not hop_status.get("ok", False):
+                detail = hop_status.get("error") or hop_status.get("status_line") or "probe failed"
+                reasons.append(f"{hop_name} unhealthy: {detail}")
+
+    return len(reasons) == 0, reasons
+
+
+def run_health_server(bind: str, port: int, cfg: Dict[str, Any]) -> HTTPServer:
+    HealthHandler.cfg = cfg
     server = HTTPServer((bind, port), HealthHandler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     logging.info("health endpoint listening on %s:%d", bind, port)
@@ -194,7 +242,11 @@ def main() -> int:
     cfg = load_cfg()
     configure_logging(cfg)
 
-    run_health_server(cfg["supervisor"].get("health_bind", "0.0.0.0"), int(cfg["supervisor"].get("health_port", 9191)))
+    run_health_server(
+        cfg["supervisor"].get("health_bind", "0.0.0.0"),
+        int(cfg["supervisor"].get("health_port", 9191)),
+        cfg,
+    )
 
     funkydns_proc: Optional[subprocess.Popen] = start_funkydns(cfg)
     if funkydns_proc is not None:
