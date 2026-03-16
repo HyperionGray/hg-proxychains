@@ -2,7 +2,7 @@
 
 ## Smoke harness
 
-- [ ] Clone private repo `P4X-ng/FunkyDNS` into `third_party/FunkyDNS`
+- [ ] Initialize private submodule `third_party/FunkyDNS` from `P4X-ng/FunkyDNS`
 - [ ] `docker compose build`
 - [ ] `docker compose up`
 - [ ] Confirm `client` prints `200 Connection Established`

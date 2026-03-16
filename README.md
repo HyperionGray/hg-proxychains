@@ -25,7 +25,8 @@ The design goal is intentionally boring:
 ├── docs/
 │   ├── BRINGUP-CHECKLIST.md
 │   ├── FUNKYDNS-REVIEW.md
-│   └── HOST-DEPLOYMENT.md
+│   ├── HOST-DEPLOYMENT.md
+│   └── REPO-HYGIENE.md
 ├── egressd/
 │   ├── Dockerfile
 │   ├── requirements.txt
@@ -44,20 +45,22 @@ The design goal is intentionally boring:
 │   └── test_client.py
 ├── scripts/
 │   ├── host-nftables.sh
-│   └── host-egress-owner.sh
+│   ├── host-egress-owner.sh
+│   ├── repo_hygiene.py
+│   └── test_repo_hygiene.py
 └── third_party/
     └── README.md
 ```
 
 ## Quick start
 
-### 1. Add FunkyDNS locally
+### 1. Initialize FunkyDNS locally
 
-Configure authenticated GitHub access, then clone the private
-`P4X-ng/FunkyDNS` repository into `third_party/FunkyDNS`:
+Configure authenticated GitHub access, then initialize the private
+`P4X-ng/FunkyDNS` submodule:
 
 ```bash
-git clone https://github.com/P4X-ng/FunkyDNS.git third_party/FunkyDNS
+git submodule update --init --recursive third_party/FunkyDNS
 ```
 
 ### 2. Build and run the smoke harness
@@ -99,6 +102,19 @@ For host mode, `egressd/config.host.example.json5` shows how to launch FunkyDNS 
 - `egressd/config.json5`: proxy hop URLs, canary target, health port
 - `scripts/host-egress-owner.sh`: upstream proxy and DoH IPs
 - `scripts/host-nftables.sh`: bridge interface name and infra CIDRs
+
+## Repo hygiene checks
+
+Run the built-in maintenance scanner to catch unfinished markers and clean
+common stray artifacts:
+
+```bash
+make repo-scan
+make repo-clean
+```
+
+`repo-scan` returns a non-zero exit code when unfinished markers or stray
+untracked files are detected. See `docs/REPO-HYGIENE.md` for details.
 
 ## Notes on FunkyDNS review
 
