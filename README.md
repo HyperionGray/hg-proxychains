@@ -71,7 +71,8 @@ docker compose up
 ### 2a. (Optional) validate config before startup
 
 `egressd` now supports a validate-only mode that checks config structure and fails fast on common mistakes
-(invalid hop URLs, empty hop list, bad ports, malformed canary target).
+(invalid hop URLs, empty hop list, bad ports, malformed canary target). The make target runs this check
+inside the `egressd` image so dependency setup stays local to Docker.
 
 ```bash
 make validate-config

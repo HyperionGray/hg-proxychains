@@ -19,7 +19,7 @@ test:
 	python3 -m unittest egressd/test_supervisor.py
 
 validate-config:
-	EGRESSD_CONFIG=egressd/config.json5 EGRESSD_VALIDATE_ONLY=1 python3 egressd/supervisor.py
+	docker compose run --rm --no-deps --build -e EGRESSD_VALIDATE_ONLY=1 egressd python3 /opt/egressd/supervisor.py
 
 bundle:
 	tar -czf egressd-starter.tar.gz .
