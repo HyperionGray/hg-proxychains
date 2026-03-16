@@ -76,6 +76,12 @@ docker compose up
 curl http://localhost:9191/health
 ```
 
+- readiness endpoint (returns `200` when ready, `503` when not ready):
+
+```bash
+curl -i http://localhost:9191/ready
+```
+
 ## What the smoke harness proves
 
 - local explicit CONNECT tunnel establishment
@@ -99,6 +105,25 @@ For host mode, `egressd/config.host.example.json5` shows how to launch FunkyDNS 
 - `egressd/config.json5`: proxy hop URLs, canary target, health port
 - `scripts/host-egress-owner.sh`: upstream proxy and DoH IPs
 - `scripts/host-nftables.sh`: bridge interface name and infra CIDRs
+
+## Health and readiness behavior
+
+`egressd` now exposes two endpoints:
+
+- `/health`: always returns `200` plus runtime state and computed readiness fields
+- `/ready`: returns `200` only when the relay is ready, otherwise `503` with a reason
+
+Readiness requires:
+
+1. `pproxy` is currently running
+2. hop checks exist and are fresh
+3. all hops are healthy (unless disabled in config)
+
+Tunable supervisor keys:
+
+- `require_all_hops_healthy` (default `true`)
+- `ready_grace_period_s` (default `max(hop_check_interval_s * 2, 5)`)
+- `max_hop_status_age_s` (default `max(hop_check_interval_s * 3, 5)`)
 
 ## Notes on FunkyDNS review
 

@@ -1,4 +1,4 @@
-.PHONY: smoke down logs health bundle pycheck
+.PHONY: smoke down logs health ready bundle pycheck
 
 smoke:
 	docker compose up --build
@@ -11,6 +11,9 @@ logs:
 
 health:
 	curl -fsS http://localhost:9191/health | python3 -m json.tool
+
+ready:
+	curl -i http://localhost:9191/ready
 
 pycheck:
 	python3 -m py_compile egressd/supervisor.py egressd/chain.py client/test_client.py exitserver/echo_server.py

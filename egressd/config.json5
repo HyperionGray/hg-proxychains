@@ -37,5 +37,8 @@
     health_bind: "0.0.0.0",
     health_port: 9191,
     hop_check_interval_s: 5,
+    require_all_hops_healthy: true,
+    ready_grace_period_s: 10,
+    max_hop_status_age_s: 15,
   },
 }
