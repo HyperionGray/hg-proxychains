@@ -19,6 +19,7 @@ This repo's compose stack is only a smoke harness. Real enforcement happens on a
 5. Run `scripts/host-nftables.sh`
 6. Run `scripts/host-egress-owner.sh`
 7. Install and start `egressd/systemd/egressd.service`
+8. Verify readiness with `curl -i http://127.0.0.1:9191/ready` (expect HTTP 200)
 
 ## Expected traffic model
 

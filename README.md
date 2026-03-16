@@ -76,12 +76,19 @@ docker compose up
 curl http://localhost:9191/health
 ```
 
+- readiness endpoint (`200` when chain is healthy and `pproxy` is running, `503` otherwise):
+
+```bash
+curl -i http://localhost:9191/ready
+```
+
 ## What the smoke harness proves
 
 - local explicit CONNECT tunnel establishment
 - multi-hop relay via `pproxy`
 - end-to-end raw TCP after CONNECT
 - per-hop health probes
+- explicit readiness probe for orchestration and smoke checks
 - optional separate FunkyDNS service for DNS work
 
 It does **not** prove host enforcement. For that, use the scripts in `scripts/` on a real Linux host and follow `docs/HOST-DEPLOYMENT.md`.
@@ -97,8 +104,18 @@ For host mode, `egressd/config.host.example.json5` shows how to launch FunkyDNS 
 ## What to tweak first
 
 - `egressd/config.json5`: proxy hop URLs, canary target, health port
+- `egressd/config.json5`: `supervisor.startup_wait_for_hops_s` and `startup_wait_interval_s` control startup preflight behavior
 - `scripts/host-egress-owner.sh`: upstream proxy and DoH IPs
 - `scripts/host-nftables.sh`: bridge interface name and infra CIDRs
+
+## Startup preflight and readiness
+
+`egressd` now performs a startup preflight against configured chain hops before launching `pproxy`.
+If hop checks do not pass within `startup_wait_for_hops_s`, the process exits so orchestration can retry.
+
+`/ready` is intended for readiness checks:
+- returns `200` with `{"ready": true, ...}` when `pproxy` is running and all configured hops are healthy
+- returns `503` with a reason code when any prerequisite is failing
 
 ## Notes on FunkyDNS review
 

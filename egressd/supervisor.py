@@ -22,6 +22,9 @@ CFG_PATH = os.environ.get("EGRESSD_CONFIG", "/opt/egressd/config.json5")
 STATE: Dict[str, Any] = {
     "pproxy": "down",
     "funkydns": "disabled",
+    "ready": False,
+    "ready_reason": "starting",
+    "last_ready_check": None,
     "last_start": None,
     "last_exit": None,
     "hops": {},
@@ -102,12 +105,21 @@ def start_funkydns(cfg: Dict[str, Any]) -> Optional[subprocess.Popen]:
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
-        if self.path != "/health":
+        if self.path == "/health":
+            body = json.dumps(STATE).encode("utf-8")
+            self.send_response(200)
+        elif self.path == "/ready":
+            payload = {
+                "ready": STATE.get("ready", False),
+                "reason": STATE.get("ready_reason", "unknown"),
+                "last_ready_check": STATE.get("last_ready_check"),
+            }
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(200 if payload["ready"] else 503)
+        else:
             self.send_response(404)
             self.end_headers()
             return
-        body = json.dumps(STATE).encode("utf-8")
-        self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -179,14 +191,61 @@ def check_hop_connectivity(hop_url: str, target: str, timeout: int = 3) -> Dict[
                 pass
 
 
+def collect_hop_statuses(cfg: Dict[str, Any], target: str) -> Dict[str, Any]:
+    statuses: Dict[str, Any] = {}
+    for idx, hop in enumerate(cfg["chain"].get("hops", [])):
+        statuses[f"hop_{idx}"] = check_hop_connectivity(hop["url"], target)
+    return statuses
+
+
+def all_hops_healthy(hop_statuses: Dict[str, Any]) -> bool:
+    return bool(hop_statuses) and all(bool(status.get("ok")) for status in hop_statuses.values())
+
+
+def refresh_ready_state(cfg: Dict[str, Any]) -> None:
+    reasons = []
+    if STATE.get("pproxy") != "running":
+        reasons.append("pproxy_down")
+    if not all_hops_healthy(STATE.get("hops", {})):
+        reasons.append("hops_unhealthy")
+    if bool(cfg.get("dns", {}).get("launch_funkydns", False)) and STATE.get("funkydns") != "running":
+        reasons.append("funkydns_down")
+
+    ready = not reasons
+    STATE["ready"] = ready
+    STATE["ready_reason"] = "ok" if ready else ",".join(reasons)
+    STATE["last_ready_check"] = int(time.time())
+
+
+def wait_for_healthy_chain(cfg: Dict[str, Any]) -> None:
+    timeout_s = int(cfg["supervisor"].get("startup_wait_for_hops_s", 30))
+    interval_s = float(cfg["supervisor"].get("startup_wait_interval_s", 2))
+    if timeout_s <= 0:
+        return
+
+    target = cfg["chain"].get("canary_target", "example.com:443")
+    deadline = time.time() + timeout_s
+    while True:
+        statuses = collect_hop_statuses(cfg, target)
+        STATE["hops"] = statuses
+        refresh_ready_state(cfg)
+        if all_hops_healthy(statuses):
+            logging.info("startup chain probe passed target=%s", target)
+            return
+        if time.time() >= deadline:
+            raise RuntimeError(f"startup chain probe timed out after {timeout_s}s")
+        failed_hops = [hop for hop, result in statuses.items() if not result.get("ok")]
+        logging.warning("waiting for healthy chain failed_hops=%s", ",".join(failed_hops))
+        time.sleep(interval_s)
+
+
 def hop_health_loop(cfg: Dict[str, Any]) -> None:
     interval = int(cfg["supervisor"].get("hop_check_interval_s", 5))
     target = cfg["chain"].get("canary_target", "example.com:443")
     while True:
-        statuses: Dict[str, Any] = {}
-        for idx, hop in enumerate(cfg["chain"].get("hops", [])):
-            statuses[f"hop_{idx}"] = check_hop_connectivity(hop["url"], target)
+        statuses = collect_hop_statuses(cfg, target)
         STATE["hops"] = statuses
+        refresh_ready_state(cfg)
         time.sleep(interval)
 
 
@@ -199,6 +258,9 @@ def main() -> int:
     funkydns_proc: Optional[subprocess.Popen] = start_funkydns(cfg)
     if funkydns_proc is not None:
         STATE["funkydns"] = "running"
+    refresh_ready_state(cfg)
+
+    wait_for_healthy_chain(cfg)
 
     threading.Thread(target=hop_health_loop, args=(cfg,), daemon=True).start()
 
@@ -222,13 +284,16 @@ def main() -> int:
             STATE["last_start"] = int(time.time())
             pproxy_proc = start_pproxy(cfg)
             STATE["pproxy"] = "running"
+            refresh_ready_state(cfg)
             backoff = 1
             rc = pproxy_proc.wait()
             STATE["pproxy"] = "down"
             STATE["last_exit"] = {"code": rc, "time": int(time.time())}
+            refresh_ready_state(cfg)
             logging.warning("pproxy exited rc=%s", rc)
         except Exception as exc:
             STATE["pproxy"] = "error"
+            refresh_ready_state(cfg)
             logging.exception("supervisor loop error: %s", exc)
         logging.info("sleeping %ss before restart", backoff)
         time.sleep(backoff)

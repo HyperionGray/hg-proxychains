@@ -1,5 +1,6 @@
 import importlib
 import sys
+from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
@@ -12,6 +13,13 @@ supervisor = importlib.import_module("supervisor")
 
 
 class SupervisorTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._state_backup = deepcopy(supervisor.STATE)
+
+    def tearDown(self) -> None:
+        supervisor.STATE.clear()
+        supervisor.STATE.update(self._state_backup)
+
     def test_encode_funkydns_upstreams_wraps_single_url_as_json_array(self) -> None:
         value = supervisor.encode_funkydns_upstreams("https://cloudflare-dns.com/dns-query")
 
@@ -50,3 +58,30 @@ class SupervisorTests(unittest.TestCase):
             ]
         )
         self.assertEqual(thread.call_count, 2)
+
+    def test_all_hops_healthy_requires_non_empty_and_all_ok(self) -> None:
+        self.assertFalse(supervisor.all_hops_healthy({}))
+        self.assertFalse(supervisor.all_hops_healthy({"hop_0": {"ok": True}, "hop_1": {"ok": False}}))
+        self.assertTrue(supervisor.all_hops_healthy({"hop_0": {"ok": True}, "hop_1": {"ok": True}}))
+
+    def test_refresh_ready_state_sets_reason_codes(self) -> None:
+        cfg = {"dns": {"launch_funkydns": True}}
+        supervisor.STATE["pproxy"] = "down"
+        supervisor.STATE["funkydns"] = "disabled"
+        supervisor.STATE["hops"] = {"hop_0": {"ok": False}}
+
+        supervisor.refresh_ready_state(cfg)
+
+        self.assertFalse(supervisor.STATE["ready"])
+        self.assertEqual(supervisor.STATE["ready_reason"], "pproxy_down,hops_unhealthy,funkydns_down")
+
+    def test_refresh_ready_state_marks_ready_when_preconditions_pass(self) -> None:
+        cfg = {"dns": {"launch_funkydns": False}}
+        supervisor.STATE["pproxy"] = "running"
+        supervisor.STATE["funkydns"] = "disabled"
+        supervisor.STATE["hops"] = {"hop_0": {"ok": True}}
+
+        supervisor.refresh_ready_state(cfg)
+
+        self.assertTrue(supervisor.STATE["ready"])
+        self.assertEqual(supervisor.STATE["ready_reason"], "ok")
