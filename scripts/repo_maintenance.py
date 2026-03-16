@@ -16,7 +16,9 @@ import subprocess
 from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
 
-MARKER_RE = re.compile(r"\b(TODO|FIXME|STUB|TBD|XXX|UNFINISHED)\b")
+MARKER_RE = re.compile(
+    r"^\s*(?:#|//|/\*+|\*|--|;|<!--)?\s*(TODO|FIXME|STUB|TBD|XXX|UNFINISHED)\b"
+)
 TEXT_EXTENSIONS = {
     ".py",
     ".md",
@@ -90,11 +92,13 @@ def scan_markers(paths: Iterable[Path], root: Path) -> List[Dict[str, object]]:
     return findings
 
 
-def discover_backup_files(root: Path) -> List[Path]:
+def discover_backup_files(root: Path, include_third_party: bool) -> List[Path]:
     matches: List[Path] = []
     for pattern in BACKUP_PATTERNS:
         for path in root.rglob(pattern):
             if any(part in {".git", ".venv", "__pycache__"} for part in path.parts):
+                continue
+            if not include_third_party and "third_party/FunkyDNS" in str(path.relative_to(root)):
                 continue
             matches.append(path)
     # Stable ordering for deterministic output.
@@ -124,7 +128,7 @@ def build_report(root: Path, include_third_party: bool) -> Dict[str, object]:
                 pass
 
     findings = scan_markers(scanned_paths, root)
-    backup_files = discover_backup_files(root)
+    backup_files = discover_backup_files(root, include_third_party)
     stale_artifacts = discover_stale_artifacts(root)
 
     report = {
