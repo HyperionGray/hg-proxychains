@@ -37,5 +37,6 @@
     health_bind: "0.0.0.0",
     health_port: 9191,
     hop_check_interval_s: 5,
+    hop_status_ttl_s: 15,
   },
 }

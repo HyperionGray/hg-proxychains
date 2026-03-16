@@ -8,6 +8,8 @@
 - [ ] Confirm `client` prints `200 Connection Established`
 - [ ] Confirm `client` receives `OK from exit-server`
 - [ ] `curl http://localhost:9191/health`
+- [ ] `curl -f http://localhost:9191/ready`
+- [ ] `curl http://localhost:9191/live`
 - [ ] Confirm hop probes are green or at least responding with expected policy/auth status
 
 ## Host deployment
