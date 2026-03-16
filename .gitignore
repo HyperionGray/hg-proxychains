@@ -2,6 +2,11 @@ __pycache__/
 *.pyc
 *.pyo
 *.log
+*~
+*.bak
+*.orig
+*.old
+*.tmp
 .eggs/
 *.egg-info/
 .venv/

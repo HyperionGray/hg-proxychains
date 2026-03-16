@@ -1,4 +1,4 @@
-.PHONY: smoke down logs health bundle pycheck
+.PHONY: smoke down logs health bundle pycheck maintenance maintenance-fix
 
 smoke:
 	docker compose up --build
@@ -17,3 +17,9 @@ pycheck:
 
 bundle:
 	tar -czf egressd-starter.tar.gz .
+
+maintenance:
+	python3 scripts/repo_maintenance.py
+
+maintenance-fix:
+	python3 scripts/repo_maintenance.py --fix

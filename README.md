@@ -25,7 +25,8 @@ The design goal is intentionally boring:
 ├── docs/
 │   ├── BRINGUP-CHECKLIST.md
 │   ├── FUNKYDNS-REVIEW.md
-│   └── HOST-DEPLOYMENT.md
+│   ├── HOST-DEPLOYMENT.md
+│   └── REPO_MAINTENANCE.md
 ├── egressd/
 │   ├── Dockerfile
 │   ├── requirements.txt
@@ -99,6 +100,22 @@ For host mode, `egressd/config.host.example.json5` shows how to launch FunkyDNS 
 - `egressd/config.json5`: proxy hop URLs, canary target, health port
 - `scripts/host-egress-owner.sh`: upstream proxy and DoH IPs
 - `scripts/host-nftables.sh`: bridge interface name and infra CIDRs
+
+## Maintenance and cleanup
+
+Run repository maintenance checks (unfinished markers, backup files, stale artifacts):
+
+```bash
+make maintenance
+```
+
+For automatic cleanup of removable clutter (backup files and known stale artifacts):
+
+```bash
+make maintenance-fix
+```
+
+For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
 
 ## Notes on FunkyDNS review
 
