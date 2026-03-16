@@ -70,10 +70,17 @@ docker compose up
 ### 3. Check results
 
 - `client` should print a successful `CONNECT` followed by `OK from exit-server`
-- health endpoint:
+- liveness endpoint:
 
 ```bash
 curl http://localhost:9191/health
+```
+
+- readiness endpoint (returns `200` only when `egressd` has a running `pproxy`
+  process and enough fresh/healthy hop checks):
+
+```bash
+curl -i http://localhost:9191/ready
 ```
 
 ## What the smoke harness proves
@@ -86,6 +93,10 @@ curl http://localhost:9191/health
 
 It does **not** prove host enforcement. For that, use the scripts in `scripts/` on a real Linux host and follow `docs/HOST-DEPLOYMENT.md`.
 
+`docker compose` now uses `/ready` as the `egressd` healthcheck so the `client`
+container waits for the egress supervisor to become operational before running
+its CONNECT test.
+
 ## Important split: smoke mode vs host mode
 
 The compose harness runs FunkyDNS as a **separate service**.
@@ -97,6 +108,8 @@ For host mode, `egressd/config.host.example.json5` shows how to launch FunkyDNS 
 ## What to tweak first
 
 - `egressd/config.json5`: proxy hop URLs, canary target, health port
+- `egressd/config.json5` supervisor readiness controls:
+  `ready_min_hops_ok`, `hop_check_interval_s`, and `hop_stale_after_s`
 - `scripts/host-egress-owner.sh`: upstream proxy and DoH IPs
 - `scripts/host-nftables.sh`: bridge interface name and infra CIDRs
 

@@ -11,7 +11,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 import pyjson5
@@ -24,8 +24,10 @@ STATE: Dict[str, Any] = {
     "funkydns": "disabled",
     "last_start": None,
     "last_exit": None,
+    "last_hop_check": None,
     "hops": {},
 }
+RUNTIME_CFG: Dict[str, Any] = {}
 
 
 class JsonFormatter(logging.Formatter):
@@ -102,12 +104,17 @@ def start_funkydns(cfg: Dict[str, Any]) -> Optional[subprocess.Popen]:
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
-        if self.path != "/health":
+        parsed = urlparse(self.path)
+        if parsed.path not in {"/health", "/ready"}:
             self.send_response(404)
             self.end_headers()
             return
-        body = json.dumps(STATE).encode("utf-8")
-        self.send_response(200)
+
+        payload = build_health_payload()
+        body = json.dumps(payload).encode("utf-8")
+        status = 200 if parsed.path == "/health" or payload["ready"] else 503
+
+        self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -122,6 +129,54 @@ def run_health_server(bind: str, port: int) -> HTTPServer:
     threading.Thread(target=server.serve_forever, daemon=True).start()
     logging.info("health endpoint listening on %s:%d", bind, port)
     return server
+
+
+def evaluate_readiness(state: Dict[str, Any], cfg: Optional[Dict[str, Any]], now: Optional[float] = None) -> Tuple[bool, List[str]]:
+    now_value = now if now is not None else time.time()
+    cfg = cfg or {}
+    reasons: List[str] = []
+
+    if state.get("pproxy") != "running":
+        reasons.append("pproxy_not_running")
+
+    chain_cfg = cfg.get("chain", {})
+    supervisor_cfg = cfg.get("supervisor", {})
+    configured_hops = chain_cfg.get("hops", [])
+    hop_statuses = state.get("hops", {})
+    healthy_hops = 0
+    stale_hops = 0
+    max_hop_age_s = int(supervisor_cfg.get("hop_stale_after_s", int(supervisor_cfg.get("hop_check_interval_s", 5)) * 3))
+
+    for hop_state in hop_statuses.values():
+        checked_at = hop_state.get("checked_at")
+        if checked_at is None:
+            stale_hops += 1
+            continue
+        if (now_value - checked_at) > max_hop_age_s:
+            stale_hops += 1
+            continue
+        if hop_state.get("ok"):
+            healthy_hops += 1
+
+    default_required = max(1, len(configured_hops))
+    required_hops = int(supervisor_cfg.get("ready_min_hops_ok", default_required))
+    if required_hops < 1:
+        required_hops = 1
+    if healthy_hops < required_hops:
+        reasons.append(f"healthy_hops_too_low:{healthy_hops}/{required_hops}")
+    if stale_hops > 0:
+        reasons.append(f"stale_hops:{stale_hops}")
+
+    return len(reasons) == 0, reasons
+
+
+def build_health_payload(now: Optional[float] = None) -> Dict[str, Any]:
+    ready, reasons = evaluate_readiness(STATE, RUNTIME_CFG, now=now)
+    payload = dict(STATE)
+    payload["ready"] = ready
+    payload["readiness_reasons"] = reasons
+    payload["checked_at"] = int(now if now is not None else time.time())
+    return payload
 
 
 def parse_proxy_url(url: str) -> Tuple[str, int, Optional[str]]:
@@ -183,15 +238,21 @@ def hop_health_loop(cfg: Dict[str, Any]) -> None:
     interval = int(cfg["supervisor"].get("hop_check_interval_s", 5))
     target = cfg["chain"].get("canary_target", "example.com:443")
     while True:
+        checked_at = int(time.time())
         statuses: Dict[str, Any] = {}
         for idx, hop in enumerate(cfg["chain"].get("hops", [])):
-            statuses[f"hop_{idx}"] = check_hop_connectivity(hop["url"], target)
+            hop_status = check_hop_connectivity(hop["url"], target)
+            hop_status["checked_at"] = checked_at
+            statuses[f"hop_{idx}"] = hop_status
         STATE["hops"] = statuses
+        STATE["last_hop_check"] = checked_at
         time.sleep(interval)
 
 
 def main() -> int:
+    global RUNTIME_CFG
     cfg = load_cfg()
+    RUNTIME_CFG = cfg
     configure_logging(cfg)
 
     run_health_server(cfg["supervisor"].get("health_bind", "0.0.0.0"), int(cfg["supervisor"].get("health_port", 9191)))
