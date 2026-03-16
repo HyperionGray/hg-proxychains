@@ -3,6 +3,7 @@
 ## Smoke harness
 
 - [ ] Clone private repo `P4X-ng/FunkyDNS` into `third_party/FunkyDNS`
+- [ ] `make validate-config` (optional fast-fail config preflight)
 - [ ] `docker compose build`
 - [ ] `docker compose up`
 - [ ] Confirm `client` prints `200 Connection Established`

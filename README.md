@@ -31,6 +31,7 @@ The design goal is intentionally boring:
 │   ├── requirements.txt
 │   ├── chain.py
 │   ├── supervisor.py
+│   ├── test_supervisor.py
 │   ├── config.json5
 │   ├── config.host.example.json5
 │   └── systemd/egressd.service
@@ -65,6 +66,15 @@ git clone https://github.com/P4X-ng/FunkyDNS.git third_party/FunkyDNS
 ```bash
 docker compose build
 docker compose up
+```
+
+### 2a. (Optional) validate config before startup
+
+`egressd` now supports a validate-only mode that checks config structure and fails fast on common mistakes
+(invalid hop URLs, empty hop list, bad ports, malformed canary target).
+
+```bash
+make validate-config
 ```
 
 ### 3. Check results

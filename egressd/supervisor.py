@@ -57,6 +57,13 @@ def load_cfg(path: str = CFG_PATH) -> Dict[str, Any]:
     return pyjson5.decode(Path(path).read_text(encoding="utf-8"))
 
 
+def env_flag(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def encode_funkydns_upstreams(value: Any) -> str:
     if isinstance(value, str):
         return json.dumps([value])
@@ -141,6 +148,74 @@ def parse_proxy_url(url: str) -> Tuple[str, int, Optional[str]]:
     return host, port, auth_header
 
 
+def parse_host_port(value: str, label: str) -> Tuple[str, int]:
+    host, sep, raw_port = value.rpartition(":")
+    if not sep or not host or not raw_port:
+        raise ValueError(f"{label} must be host:port, got: {value!r}")
+    try:
+        port = int(raw_port)
+    except ValueError as exc:
+        raise ValueError(f"{label} has invalid port: {raw_port!r}") from exc
+    if not 1 <= port <= 65535:
+        raise ValueError(f"{label} port out of range: {port}")
+    return host, port
+
+
+def validate_cfg(cfg: Dict[str, Any]) -> None:
+    listener = cfg.get("listener")
+    if not isinstance(listener, dict):
+        raise ValueError("listener section is required")
+    if not isinstance(listener.get("bind"), str) or not listener["bind"].strip():
+        raise ValueError("listener.bind must be a non-empty string")
+    listener_port = listener.get("port")
+    if not isinstance(listener_port, int) or not 1 <= listener_port <= 65535:
+        raise ValueError("listener.port must be an integer between 1 and 65535")
+
+    chain = cfg.get("chain")
+    if not isinstance(chain, dict):
+        raise ValueError("chain section is required")
+    hops = chain.get("hops")
+    if not isinstance(hops, list) or not hops:
+        raise ValueError("chain.hops must be a non-empty list")
+    for idx, hop in enumerate(hops):
+        if not isinstance(hop, dict):
+            raise ValueError(f"chain.hops[{idx}] must be an object")
+        hop_url = hop.get("url")
+        if not isinstance(hop_url, str) or not hop_url.strip():
+            raise ValueError(f"chain.hops[{idx}].url must be a non-empty string")
+        parse_proxy_url(hop_url)
+
+    canary = chain.get("canary_target", "example.com:443")
+    if not isinstance(canary, str):
+        raise ValueError("chain.canary_target must be a string")
+    parse_host_port(canary, "chain.canary_target")
+
+    allowed_ports = chain.get("allowed_ports", [])
+    if not isinstance(allowed_ports, list):
+        raise ValueError("chain.allowed_ports must be a list")
+    for idx, port in enumerate(allowed_ports):
+        if not isinstance(port, int) or not 1 <= port <= 65535:
+            raise ValueError(f"chain.allowed_ports[{idx}] must be an integer between 1 and 65535")
+
+    supervisor_cfg = cfg.get("supervisor")
+    if not isinstance(supervisor_cfg, dict):
+        raise ValueError("supervisor section is required")
+    health_port = supervisor_cfg.get("health_port", 9191)
+    if not isinstance(health_port, int) or not 1 <= health_port <= 65535:
+        raise ValueError("supervisor.health_port must be an integer between 1 and 65535")
+    hop_interval = supervisor_cfg.get("hop_check_interval_s", 5)
+    if not isinstance(hop_interval, int) or hop_interval < 1:
+        raise ValueError("supervisor.hop_check_interval_s must be an integer >= 1")
+
+    dns_cfg = cfg.get("dns", {})
+    if not isinstance(dns_cfg, dict):
+        raise ValueError("dns must be an object when provided")
+    if dns_cfg.get("launch_funkydns"):
+        dns_port = dns_cfg.get("port")
+        if not isinstance(dns_port, int) or not 1 <= dns_port <= 65535:
+            raise ValueError("dns.port must be an integer between 1 and 65535 when launch_funkydns=true")
+
+
 def check_hop_connectivity(hop_url: str, target: str, timeout: int = 3) -> Dict[str, Any]:
     host, port, auth_header = parse_proxy_url(hop_url)
     sock: Optional[socket.socket] = None
@@ -191,8 +266,27 @@ def hop_health_loop(cfg: Dict[str, Any]) -> None:
 
 
 def main() -> int:
-    cfg = load_cfg()
-    configure_logging(cfg)
+    try:
+        cfg = load_cfg()
+    except Exception as exc:
+        print(f"failed to load config {CFG_PATH}: {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        configure_logging(cfg)
+    except Exception as exc:
+        logging.basicConfig(level=logging.INFO)
+        logging.warning("failed to configure logging from config: %s", exc)
+
+    try:
+        validate_cfg(cfg)
+    except ValueError as exc:
+        logging.error("config validation failed: %s", exc)
+        return 2
+
+    if env_flag("EGRESSD_VALIDATE_ONLY"):
+        logging.info("config validation successful")
+        return 0
 
     run_health_server(cfg["supervisor"].get("health_bind", "0.0.0.0"), int(cfg["supervisor"].get("health_port", 9191)))
 
