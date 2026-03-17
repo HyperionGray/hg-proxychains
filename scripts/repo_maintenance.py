@@ -36,6 +36,7 @@ TEXT_EXTENSIONS = {
 }
 BACKUP_PATTERNS = ("*~", "*.bak", "*.orig", "*.old", "*.tmp")
 STALE_ARTIFACTS = ("egressd-starter.tar.gz",)
+DEFAULT_ALLOWED_EMBEDDED_REPOS = ("third_party/FunkyDNS",)
 MAX_FILE_SIZE_BYTES = 1_000_000
 
 
@@ -114,7 +115,25 @@ def discover_stale_artifacts(root: Path) -> List[Path]:
     return found
 
 
-def build_report(root: Path, include_third_party: bool) -> Dict[str, object]:
+def discover_embedded_repos(root: Path, allowed_repo_roots: Iterable[str]) -> List[str]:
+    normalized_allowlist = {str(Path(path).as_posix()).strip("/") for path in allowed_repo_roots}
+    embedded: set[str] = set()
+    for dot_git in root.rglob(".git"):
+        repo_root = dot_git.parent
+        if repo_root == root:
+            continue
+        rel = repo_root.relative_to(root).as_posix()
+        if rel in normalized_allowlist:
+            continue
+        embedded.add(rel)
+    return sorted(embedded)
+
+
+def build_report(
+    root: Path,
+    include_third_party: bool,
+    allowed_embedded_repos: Iterable[str],
+) -> Dict[str, object]:
     files = run_git_ls_files(root)
     scanned_paths: List[Path] = [p for p in files if p.is_file()]
 
@@ -130,18 +149,22 @@ def build_report(root: Path, include_third_party: bool) -> Dict[str, object]:
     findings = scan_markers(scanned_paths, root)
     backup_files = discover_backup_files(root, include_third_party)
     stale_artifacts = discover_stale_artifacts(root)
+    embedded_repos = discover_embedded_repos(root, allowed_embedded_repos)
 
     report = {
         "root": str(root),
         "include_third_party": include_third_party,
+        "allowed_embedded_repos": sorted(set(allowed_embedded_repos)),
         "unfinished_markers": findings,
         "backup_files": [str(p.relative_to(root)) for p in backup_files],
         "stale_artifacts": [str(p.relative_to(root)) for p in stale_artifacts],
+        "embedded_repos": embedded_repos,
         "summary": {
             "markers": len(findings),
             "backup_files": len(backup_files),
             "stale_artifacts": len(stale_artifacts),
-            "total_issues": len(findings) + len(backup_files) + len(stale_artifacts),
+            "embedded_repos": len(embedded_repos),
+            "total_issues": len(findings) + len(backup_files) + len(stale_artifacts) + len(embedded_repos),
         },
     }
     return report
@@ -175,12 +198,23 @@ def main() -> int:
     )
     parser.add_argument("--fix", action="store_true", help="Remove backup files and stale artifacts.")
     parser.add_argument("--json", action="store_true", help="Print JSON output only.")
+    parser.add_argument(
+        "--allow-embedded-repo",
+        action="append",
+        default=[],
+        help=(
+            "Relative repo path allowed to have a nested .git "
+            "(can be provided multiple times)"
+        ),
+    )
     args = parser.parse_args()
 
     root = Path(args.root).resolve()
     os.chdir(root)
 
-    report = build_report(root, args.include_third_party)
+    allowlist = set(DEFAULT_ALLOWED_EMBEDDED_REPOS)
+    allowlist.update(path.strip().strip("/") for path in args.allow_embedded_repo if path.strip())
+    report = build_report(root, args.include_third_party, sorted(allowlist))
 
     if args.fix:
         removed, failed = apply_fixes(root, report)
@@ -204,6 +238,10 @@ def main() -> int:
         if report["stale_artifacts"]:
             print("Stale artifacts:")
             for path in report["stale_artifacts"]:
+                print(f"  - {path}")
+        if report["embedded_repos"]:
+            print("Unexpected embedded repositories:")
+            for path in report["embedded_repos"]:
                 print(f"  - {path}")
         if args.fix and report.get("fix"):
             print("Fix actions:")

@@ -164,10 +164,20 @@ Run repository maintenance checks (unfinished markers, backup files, stale artif
 make maintenance
 ```
 
+This check also flags unexpected nested repositories (embedded `.git` roots)
+outside approved paths.
+
 For automatic cleanup of removable clutter (backup files and known stale artifacts):
 
 ```bash
 make maintenance-fix
+```
+
+Legacy aliases remain available:
+
+```bash
+make repo-scan
+make repo-clean
 ```
 
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
