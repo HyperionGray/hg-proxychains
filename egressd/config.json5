@@ -2,7 +2,6 @@
   listener: {
     bind: "0.0.0.0",
     port: 15001,
-    mode: "explicit",
   },
 
   dns: {
@@ -10,7 +9,10 @@
     mode: "external",
     resolver_host: "funky",
     resolver_port: 53,
-    doh_upstream: "https://cloudflare-dns.com/dns-query",
+    doh_upstreams: [
+      "https://cloudflare-dns.com/dns-query",
+      "https://dns.google/dns-query",
+    ],
   },
 
   chain: {
@@ -37,6 +39,8 @@
     health_bind: "0.0.0.0",
     health_port: 9191,
     hop_check_interval_s: 5,
-    hop_status_ttl_s: 20,
+    require_all_hops_healthy: false,
+    ready_grace_period_s: 15,
+    max_hop_status_age_s: 20,
   },
 }
