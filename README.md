@@ -48,9 +48,13 @@ The design goal is intentionally boring:
 ├── scripts/
 │   ├── bootstrap-third-party.sh
 │   ├── host-nftables.sh
-│   └── host-egress-owner.sh
+│   ├── repo_hygiene.py
+│   ├── repo_maintenance.py
+│   ├── host-egress-owner.sh
+│   └── test_repo_hygiene.py
 ├── tests/
-│   └── test_readiness.py
+│   ├── test_readiness.py
+│   └── test_supervisor.py
 └── third_party/
     └── README.md
 ```
@@ -97,18 +101,6 @@ curl -f http://localhost:9191/ready
 curl http://localhost:9191/health
 curl -f http://localhost:9191/ready
 curl http://localhost:9191/live
-```
-
-- readiness endpoint (200 when proxy process is running and hop policy is satisfied):
-
-```bash
-curl -i http://localhost:9191/ready
-```
-
-- readiness endpoint (returns `200` when ready, `503` when not ready):
-
-```bash
-curl -i http://localhost:9191/ready
 ```
 
 ## What the smoke harness proves
@@ -171,6 +163,14 @@ make maintenance-fix
 ```
 
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
+
+For focused first-party hygiene scans and stray cleanup:
+
+```bash
+make repo-scan
+make repo-clean
+make repo-scan-json
+```
 
 ## Notes on FunkyDNS review
 

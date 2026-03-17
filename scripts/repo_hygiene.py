@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import json
 import re
 import shutil
 import subprocess
@@ -40,6 +41,9 @@ STRAY_DIR_NAMES = {
     ".pytest_cache",
     ".mypy_cache",
     ".ruff_cache",
+}
+STALE_UNTRACKED_NAMES = {
+    "egressd-starter.tar.gz",
 }
 UNFINISHED_SCAN_SUFFIXES = {
     ".py",
@@ -150,6 +154,9 @@ def classify_stray_paths(untracked_paths: Iterable[str]) -> list[str]:
             continue
         if any(fnmatch.fnmatch(basename, pattern) for pattern in STRAY_FILE_PATTERNS):
             stray.append(rel_path)
+            continue
+        if basename in STALE_UNTRACKED_NAMES:
+            stray.append(rel_path)
     return sorted(set(stray))
 
 
@@ -182,6 +189,26 @@ def delete_paths(repo_root: Path, relative_paths: Iterable[str]) -> int:
     return deleted
 
 
+def build_scan_report(findings: Sequence[MarkerFinding], stray_paths: Sequence[str]) -> dict[str, object]:
+    return {
+        "unfinished_markers": [
+            {
+                "path": finding.path,
+                "line_number": finding.line_number,
+                "marker": finding.marker,
+                "line": finding.line,
+            }
+            for finding in findings
+        ],
+        "stray_untracked_paths": list(stray_paths),
+        "summary": {
+            "unfinished_markers": len(findings),
+            "stray_untracked_paths": len(stray_paths),
+            "total_issues": len(findings) + len(stray_paths),
+        },
+    }
+
+
 def print_scan_results(findings: Sequence[MarkerFinding], stray_paths: Sequence[str]) -> None:
     print("== Repo hygiene scan ==")
     print(f"unfinished markers: {len(findings)}")
@@ -197,27 +224,39 @@ def print_scan_results(findings: Sequence[MarkerFinding], stray_paths: Sequence[
             print(f"  - {rel_path}")
 
 
-def command_scan(repo_root: Path) -> int:
+def command_scan(repo_root: Path, json_output: bool = False) -> int:
     tracked = list_git_paths(repo_root, ("ls-files",))
     untracked = list_git_paths(repo_root, ("ls-files", "--others", "--exclude-standard"))
     findings = find_unfinished_markers(repo_root, tracked)
     stray = classify_stray_paths(untracked)
-    print_scan_results(findings, stray)
+    report = build_scan_report(findings, stray)
+    if json_output:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        print_scan_results(findings, stray)
     return 1 if findings or stray else 0
 
 
-def command_clean(repo_root: Path) -> int:
+def command_clean(repo_root: Path, json_output: bool = False) -> int:
     tracked = list_git_paths(repo_root, ("ls-files",))
     untracked = list_git_paths(repo_root, ("ls-files", "--others", "--exclude-standard"))
     findings = find_unfinished_markers(repo_root, tracked)
     stray = classify_stray_paths(untracked)
+    report = build_scan_report(findings, stray)
 
-    print_scan_results(findings, stray)
+    if not json_output:
+        print_scan_results(findings, stray)
     if stray:
         deleted = delete_paths(repo_root, stray)
-        print(f"deleted stray paths: {deleted}")
+        report["clean"] = {"deleted_stray_paths": deleted}
+        if not json_output:
+            print(f"deleted stray paths: {deleted}")
     else:
-        print("deleted stray paths: 0")
+        report["clean"] = {"deleted_stray_paths": 0}
+        if not json_output:
+            print("deleted stray paths: 0")
+    if json_output:
+        print(json.dumps(report, indent=2, sort_keys=True))
     return 1 if findings else 0
 
 
@@ -235,6 +274,11 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         default=".",
         help="path to repository root (default: current directory)",
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="emit machine-readable JSON output",
+    )
     return parser.parse_args(argv)
 
 
@@ -246,8 +290,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     if args.command == "clean":
-        return command_clean(repo_root)
-    return command_scan(repo_root)
+        return command_clean(repo_root, json_output=args.json)
+    return command_scan(repo_root, json_output=args.json)
 
 
 if __name__ == "__main__":
