@@ -1,7 +1,11 @@
 __pycache__/
 *.pyc
 *.pyo
+*.swp
+*~
 *.log
+*~
+*.backup
 .eggs/
 *.egg-info/
 .pytest_cache/
@@ -15,6 +19,9 @@ __pycache__/
 .DS_Store
 .venv/
 .env
+*~
 third_party/FunkyDNS/.venv/
 third_party/FunkyDNS/__pycache__/
 egressd-starter.tar.gz
+**.bish**
+**/**bish**
