@@ -19,6 +19,18 @@ services:
       - "5353:53/udp"
       - "5353:53/tcp"
       - "8443:443"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python3",
+          "-c",
+          "import socket; s = socket.create_connection(('127.0.0.1', 443), 2); s.close()",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
     networks:
       egressnet:
         ipv4_address: 172.18.0.10
@@ -27,6 +39,18 @@ services:
     build: ./proxy
     container_name: proxy1
     command: ["pproxy", "-l", "http://0.0.0.0:3128"]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python3",
+          "-c",
+          "import socket; s = socket.create_connection(('127.0.0.1', 3128), 2); s.close()",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
     networks:
       egressnet:
         ipv4_address: 172.18.0.11
@@ -35,6 +59,18 @@ services:
     build: ./proxy
     container_name: proxy2
     command: ["pproxy", "-l", "http://0.0.0.0:3128"]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python3",
+          "-c",
+          "import socket; s = socket.create_connection(('127.0.0.1', 3128), 2); s.close()",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
     networks:
       egressnet:
         ipv4_address: 172.18.0.12
@@ -44,6 +80,18 @@ services:
     container_name: exitserver
     ports:
       - "9999:9999"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python3",
+          "-c",
+          "import socket; s = socket.create_connection(('127.0.0.1', 9999), 2); s.close()",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
     networks:
       egressnet:
         ipv4_address: 172.18.0.20
@@ -52,16 +100,32 @@ services:
     build: ./egressd
     container_name: egressd
     depends_on:
-      - proxy1
-      - proxy2
-      - funky
-      - exitserver
+      proxy1:
+        condition: service_healthy
+      proxy2:
+        condition: service_healthy
+      funky:
+        condition: service_healthy
+      exitserver:
+        condition: service_healthy
     ports:
       - "15001:15001"
       - "9191:9191"
     environment:
       - EGRESSD_CONFIG=/opt/egressd/config.json5
       - PYTHONUNBUFFERED=1
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python3",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9191/ready', timeout=2)"
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
     networks:
       egressnet:
         ipv4_address: 172.18.0.5
@@ -70,7 +134,8 @@ services:
     build: ./client
     container_name: client
     depends_on:
-      - egressd
+      egressd:
+        condition: service_healthy
     networks:
       egressnet:
         ipv4_address: 172.18.0.30
