@@ -1,4 +1,4 @@
-.PHONY: smoke down logs health ready pycheck unittest test check validate-config repo-scan repo-clean repo-scan-json maintenance maintenance-fix maintenance-json bundle clean
+.PHONY: smoke down logs health ready pycheck unittest test check validate-config repo-scan repo-clean repo-scan-json maintenance maintenance-fix maintenance-json maintenance-all maintenance-all-json bundle clean
 
 smoke:
 	docker compose up --build
@@ -38,12 +38,18 @@ repo-scan-json:
 	python3 scripts/repo_hygiene.py scan --repo-root . --json
 
 maintenance:
-	python3 scripts/repo_maintenance.py
+	python3 scripts/repo_maintenance.py --no-include-third-party
 
 maintenance-fix:
-	python3 scripts/repo_maintenance.py --fix
+	python3 scripts/repo_maintenance.py --no-include-third-party --fix
 
 maintenance-json:
+	python3 scripts/repo_maintenance.py --no-include-third-party --json
+
+maintenance-all:
+	python3 scripts/repo_maintenance.py
+
+maintenance-all-json:
 	python3 scripts/repo_maintenance.py --json
 
 bundle:

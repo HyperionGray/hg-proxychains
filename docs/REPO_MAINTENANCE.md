@@ -8,7 +8,9 @@ This repository includes `scripts/repo_maintenance.py` to support recurring auto
 - Backup files (`*~`, `*.bak`, `*.orig`, `*.old`, `*.tmp`)
 - Known stale artifacts (currently `egressd-starter.tar.gz`)
 
-By default, marker scanning also includes tracked files in `third_party/FunkyDNS` when that repository is present.
+By default, marker scanning includes tracked files in `third_party/FunkyDNS` when that repository is present.
+For day-to-day repo automation, prefer the first-party-only mode (`--no-include-third-party`)
+to avoid noise from external dependency internals.
 
 ## Commands
 
@@ -29,8 +31,13 @@ python3 scripts/repo_maintenance.py --fix
 Makefile wrappers:
 
 ```bash
-make maintenance
-make maintenance-fix
+make maintenance        # first-party only
+make maintenance-fix    # first-party only + cleanup
+make maintenance-json   # first-party only + JSON
+
+# optional full scan including third_party/FunkyDNS internals
+make maintenance-all
+make maintenance-all-json
 ```
 
 ## Notes
