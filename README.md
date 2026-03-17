@@ -97,7 +97,7 @@ For host mode, `egressd/config.host.example.json5` shows how to launch FunkyDNS 
 ## What to tweak first
 
 - `egressd/config.json5`: proxy hop URLs, canary target, health port
-- `egressd/config*.json5` `dns.doh_upstream`: supports single URL, CSV, JSON array string, or list
+- `egressd/config*.json5` DNS section: use `doh_upstreams` (list) or legacy `doh_upstream` (single URL)
 - `scripts/host-egress-owner.sh`: upstream proxy and DoH IPs
 - `scripts/host-nftables.sh`: bridge interface name and infra CIDRs
 
