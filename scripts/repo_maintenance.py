@@ -237,10 +237,14 @@ def main() -> int:
     os.chdir(root)
 
     report = build_report(root, args.include_third_party)
+    exit_summary = report["summary"]
 
     if args.fix:
         removed, failed = apply_fixes(root, report)
         report["fix"] = {"removed": removed, "failed": failed}
+        post_fix_report = build_report(root, args.include_third_party)
+        report["post_fix_summary"] = post_fix_report["summary"]
+        exit_summary = post_fix_report["summary"]
 
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))
@@ -275,8 +279,11 @@ def main() -> int:
                 print(f"  - removed {path}")
             for path in report["fix"]["failed"]:
                 print(f"  - failed {path}")
+        if args.fix and report.get("post_fix_summary"):
+            print("Post-fix summary:")
+            print(json.dumps(report["post_fix_summary"], indent=2, sort_keys=True))
 
-    return 1 if report["summary"]["total_issues"] else 0
+    return 1 if exit_summary["total_issues"] else 0
 
 
 if __name__ == "__main__":
