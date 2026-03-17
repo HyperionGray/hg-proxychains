@@ -33,8 +33,15 @@ python3 scripts/repo_maintenance.py --fix
 Makefile wrappers:
 
 ```bash
+# Default scheduled scan (excludes third_party marker checks)
 make maintenance
 make maintenance-fix
+```
+
+To include marker scanning in `third_party/FunkyDNS`, run the script directly:
+
+```bash
+python3 scripts/repo_maintenance.py --root . --include-third-party
 ```
 
 ## Notes

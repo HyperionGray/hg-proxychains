@@ -165,12 +165,19 @@ make maintenance
 ```
 
 This check also flags unexpected nested repositories (embedded `.git` roots)
-outside approved paths.
+outside approved paths. The Make target skips third-party marker scanning by
+default to avoid blocking on external dependency TODOs.
 
 For automatic cleanup of removable clutter (backup files and known stale artifacts):
 
 ```bash
 make maintenance-fix
+```
+
+To include marker scanning for `third_party/FunkyDNS`, run:
+
+```bash
+python3 scripts/repo_maintenance.py --root . --include-third-party
 ```
 
 Legacy aliases remain available:

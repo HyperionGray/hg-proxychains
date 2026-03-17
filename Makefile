@@ -16,7 +16,7 @@ ready:
 	curl -i http://localhost:9191/ready
 
 pycheck:
-	python3 -m py_compile egressd/supervisor.py egressd/chain.py egressd/test_supervisor.py egressd/test_supervisor_readiness.py scripts/repo_hygiene.py scripts/repo_maintenance.py client/test_client.py exitserver/echo_server.py
+	python3 -m py_compile egressd/supervisor.py egressd/chain.py egressd/test_supervisor.py scripts/repo_hygiene.py scripts/repo_maintenance.py client/test_client.py exitserver/echo_server.py
 
 unittest:
 	python3 -m unittest discover -s egressd -p "test_*.py"
@@ -32,10 +32,10 @@ validate-config:
 	docker compose run --rm --no-deps --build -e EGRESSD_VALIDATE_ONLY=1 egressd python3 /opt/egressd/supervisor.py
 
 repo-scan:
-	python3 scripts/repo_maintenance.py --root .
+	python3 scripts/repo_maintenance.py --root . --no-include-third-party
 
 repo-clean:
-	python3 scripts/repo_maintenance.py --root . --fix
+	python3 scripts/repo_maintenance.py --root . --no-include-third-party --fix
 
 maintenance: repo-scan
 
