@@ -57,6 +57,12 @@ def load_cfg(path: str = CFG_PATH) -> Dict[str, Any]:
     return pyjson5.decode(Path(path).read_text(encoding="utf-8"))
 
 
+def encode_funkydns_upstreams(value: Any) -> str:
+    if isinstance(value, str):
+        return json.dumps([value])
+    return json.dumps(value)
+
+
 def spawn_process(argv: list[str], env: Optional[Dict[str, str]] = None) -> subprocess.Popen:
     return subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
 
@@ -126,10 +132,8 @@ def start_funkydns(cfg: Dict[str, Any]) -> Optional[subprocess.Popen]:
         return None
     fn_bin = cfg["supervisor"].get("funkydns_bin", "funkydns")
     dns_port = str(cfg["dns"]["port"])
-    doh_upstreams = get_doh_upstreams(cfg)
-    argv = [fn_bin, "server", "--dns-port", dns_port, "--doh-port", "443"]
-    for doh_upstream in doh_upstreams:
-        argv.extend(["--upstream", doh_upstream])
+    doh_upstream = encode_funkydns_upstreams(cfg["dns"]["doh_upstream"])
+    argv = [fn_bin, "server", "--dns-port", dns_port, "--doh-port", "443", "--upstream", doh_upstream]
     logging.info("starting funkydns argv=%s", " ".join(argv))
     proc = spawn_process(argv)
     threading.Thread(target=pipe_stream, args=(f"funkydns[{proc.pid}][OUT]", proc.stdout), daemon=True).start()
