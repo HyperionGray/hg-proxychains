@@ -158,19 +158,19 @@ invalid hop URL, empty chain, or missing binary path).
 
 ## Maintenance and cleanup
 
-Run repository maintenance checks (unfinished markers, backup files, stale artifacts):
+Run repository maintenance checks (unfinished markers, backup files, stale artifacts, stray cache dirs, and unexpected embedded git repos):
 
 ```bash
 make maintenance
 ```
 
-For automatic cleanup of removable clutter (backup files and known stale artifacts):
+For automatic cleanup of removable clutter (backup files, stray `__pycache__/` dirs, and known stale artifacts):
 
 ```bash
 make maintenance-fix
 ```
 
-For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
+For scheduled automation, keep this check in the loop to catch new TODO/STUB markers, stray files, and accidental nested repos early.
 
 ## Notes on FunkyDNS review
 
