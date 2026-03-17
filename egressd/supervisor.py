@@ -58,9 +58,59 @@ def load_cfg(path: str = CFG_PATH) -> Dict[str, Any]:
 
 
 def encode_funkydns_upstreams(value: Any) -> str:
+    return json.dumps(normalize_funkydns_upstreams(value))
+
+
+def normalize_funkydns_upstreams(value: Any) -> list[str]:
+    """
+    Normalize DoH upstream configuration into a validated URL list.
+
+    Supported formats:
+    - Single URL string
+    - Comma-separated URL string
+    - JSON array string
+    - Python list/tuple of URL strings
+    """
+    parsed: Any = value
     if isinstance(value, str):
-        return json.dumps([value])
-    return json.dumps(value)
+        raw = value.strip()
+        if not raw:
+            raise ValueError("doh_upstream must not be empty")
+        if raw.startswith("["):
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"invalid JSON upstream array: {raw}") from exc
+        elif "," in raw:
+            parsed = [item.strip() for item in raw.split(",")]
+        else:
+            parsed = [raw]
+
+    if not isinstance(parsed, (list, tuple)):
+        raise ValueError("doh_upstream must be a URL string, CSV string, JSON array, or list")
+
+    normalized: list[str] = []
+    for item in parsed:
+        if not isinstance(item, str):
+            raise ValueError(f"doh_upstream entries must be strings, got {type(item).__name__}")
+        candidate = item.strip()
+        if not candidate:
+            continue
+        # Allow comma-separated segments when mixed into list-like input.
+        split_candidates = [part.strip() for part in candidate.split(",")] if "," in candidate else [candidate]
+        for upstream in split_candidates:
+            if not upstream:
+                continue
+            parsed_url = urlparse(upstream)
+            if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+                raise ValueError(f"invalid upstream URL: {upstream}")
+            if upstream not in normalized:
+                normalized.append(upstream)
+
+    if not normalized:
+        raise ValueError("doh_upstream resolved to an empty list")
+
+    return normalized
 
 
 def spawn_process(argv: list[str], env: Optional[Dict[str, str]] = None) -> subprocess.Popen:
