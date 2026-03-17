@@ -25,11 +25,13 @@ The design goal is intentionally boring:
 ├── docs/
 │   ├── BRINGUP-CHECKLIST.md
 │   ├── FUNKYDNS-REVIEW.md
-│   └── HOST-DEPLOYMENT.md
+│   ├── HOST-DEPLOYMENT.md
+│   └── REPO_MAINTENANCE.md
 ├── egressd/
 │   ├── Dockerfile
 │   ├── requirements.txt
 │   ├── chain.py
+│   ├── readiness.py
 │   ├── supervisor.py
 │   ├── config.json5
 │   ├── config.host.example.json5
@@ -45,16 +47,24 @@ The design goal is intentionally boring:
 ├── scripts/
 │   ├── host-nftables.sh
 │   └── host-egress-owner.sh
+├── tests/
+│   └── test_readiness.py
 └── third_party/
     └── README.md
 ```
 
 ## Quick start
 
-### 1. Add FunkyDNS locally
+### 1. Initialize FunkyDNS submodule
 
-Configure authenticated GitHub access, then clone the private
-`P4X-ng/FunkyDNS` repository into `third_party/FunkyDNS`:
+Configure authenticated GitHub access, then initialize the private submodule:
+
+```bash
+git submodule update --init --recursive third_party/FunkyDNS
+```
+
+If you prefer a direct clone workflow, you can still clone `P4X-ng/FunkyDNS`
+into `third_party/FunkyDNS` manually:
 
 ```bash
 git clone https://github.com/P4X-ng/FunkyDNS.git third_party/FunkyDNS
@@ -70,13 +80,19 @@ docker compose up
 ### 3. Check results
 
 - `client` should print a successful `CONNECT` followed by `OK from exit-server`
-- health endpoint:
+- readiness endpoint (returns 200 only when `egressd` is ready to carry traffic):
+
+```bash
+curl -f http://localhost:9191/ready
+```
+
+- health endpoint (liveness + status payload):
 
 ```bash
 curl http://localhost:9191/health
 ```
 
-- readiness endpoint (`200` when chain is healthy and `pproxy` is running, `503` otherwise):
+- readiness endpoint (200 when proxy process is running and hop policy is satisfied):
 
 ```bash
 curl -i http://localhost:9191/ready
@@ -87,11 +103,24 @@ curl -i http://localhost:9191/ready
 - local explicit CONNECT tunnel establishment
 - multi-hop relay via `pproxy`
 - end-to-end raw TCP after CONNECT
-- per-hop health probes
-- explicit readiness probe for orchestration and smoke checks
+- per-hop health probes and readiness gating
 - optional separate FunkyDNS service for DNS work
 
 It does **not** prove host enforcement. For that, use the scripts in `scripts/` on a real Linux host and follow `docs/HOST-DEPLOYMENT.md`.
+
+## Health vs readiness
+
+- `GET /live`: process is up (simple liveness check)
+- `GET /health`: detailed state (`pproxy`, `funkydns`, per-hop probe details, and readiness block)
+- `GET /ready`: returns `200` only when `egressd` is usable for forwarding
+  - `pproxy` must be running
+  - if `dns.launch_funkydns=true`, FunkyDNS must also be running
+  - hop checks must be complete and successful by default
+
+Readiness behavior can be tuned via:
+
+- `supervisor.ready_require_hops`
+- `supervisor.ready_require_all_hops`
 
 ## Important split: smoke mode vs host mode
 
@@ -104,19 +133,32 @@ For host mode, `egressd/config.host.example.json5` shows how to launch FunkyDNS 
 ## What to tweak first
 
 - `egressd/config.json5`: proxy hop URLs, canary target, health port
-- `egressd/config.json5`: `supervisor.startup_wait_for_hops_s` and `startup_wait_interval_s` control startup preflight behavior
+- `egressd/config*.json5` DNS section: use `doh_upstreams` (list) or legacy `doh_upstream` (single URL)
 - `scripts/host-egress-owner.sh`: upstream proxy and DoH IPs
 - `scripts/host-nftables.sh`: bridge interface name and infra CIDRs
 
-## Startup preflight and readiness
+## Maintenance and cleanup
 
-`egressd` now performs a startup preflight against configured chain hops before launching `pproxy`.
-If hop checks do not pass within `startup_wait_for_hops_s`, the process exits so orchestration can retry.
+Run repository maintenance checks (unfinished markers, backup files, stale artifacts):
 
-`/ready` is intended for readiness checks:
-- returns `200` with `{"ready": true, ...}` when `pproxy` is running and all configured hops are healthy
-- returns `503` with a reason code when any prerequisite is failing
+```bash
+make maintenance
+```
+
+For automatic cleanup of removable clutter (backup files and known stale artifacts):
+
+```bash
+make maintenance-fix
+```
+
+For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
 
 ## Notes on FunkyDNS review
 
 I added a short review in `docs/FUNKYDNS-REVIEW.md` with the concrete issues worth fixing before you rely on it in a production-ish setup.
+
+## Maintenance helpers
+
+- `make pycheck` compiles key Python entry points for syntax sanity.
+- `make test` runs readiness unit tests.
+- `make clean` removes local build/test artifacts (`__pycache__`, `.pytest_cache`, bundle tarball).
