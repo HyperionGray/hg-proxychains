@@ -35,5 +35,7 @@
     health_bind: "127.0.0.1",
     health_port: 9191,
     hop_check_interval_s: 5,
+    block_start_until_hops_healthy: true,
+    min_healthy_hops: 2,
   },
 }

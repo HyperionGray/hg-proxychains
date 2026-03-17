@@ -22,8 +22,11 @@ CFG_PATH = os.environ.get("EGRESSD_CONFIG", "/opt/egressd/config.json5")
 STATE: Dict[str, Any] = {
     "pproxy": "down",
     "funkydns": "disabled",
+    "ready": False,
     "last_start": None,
     "last_exit": None,
+    "last_hop_check": None,
+    "hop_summary": {"total": 0, "healthy": 0, "required": 1, "ready": False, "failing": []},
     "hops": {},
 }
 
@@ -102,12 +105,15 @@ def start_funkydns(cfg: Dict[str, Any]) -> Optional[subprocess.Popen]:
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
-        if self.path != "/health":
+        if self.path not in {"/health", "/ready"}:
             self.send_response(404)
             self.end_headers()
             return
         body = json.dumps(STATE).encode("utf-8")
-        self.send_response(200)
+        status_code = 200
+        if self.path == "/ready" and not STATE.get("ready", False):
+            status_code = 503
+        self.send_response(status_code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -141,7 +147,7 @@ def parse_proxy_url(url: str) -> Tuple[str, int, Optional[str]]:
     return host, port, auth_header
 
 
-def check_hop_connectivity(hop_url: str, target: str, timeout: int = 3) -> Dict[str, Any]:
+def check_hop_connectivity(hop_url: str, target: str, timeout: float = 3.0) -> Dict[str, Any]:
     host, port, auth_header = parse_proxy_url(hop_url)
     sock: Optional[socket.socket] = None
     start = time.time()
@@ -179,14 +185,74 @@ def check_hop_connectivity(hop_url: str, target: str, timeout: int = 3) -> Dict[
                 pass
 
 
+def summarize_hops(statuses: Dict[str, Any], required_healthy_hops: int) -> Dict[str, Any]:
+    total = len(statuses)
+    healthy = 0
+    failing = []
+    for hop_id, hop_state in statuses.items():
+        if hop_state.get("ok"):
+            healthy += 1
+        else:
+            failing.append(hop_id)
+    required = max(1, required_healthy_hops)
+    if total > 0:
+        required = min(required, total)
+    ready = total > 0 and healthy >= required
+    return {
+        "total": total,
+        "healthy": healthy,
+        "required": required,
+        "ready": ready,
+        "failing": failing,
+    }
+
+
+def collect_hop_statuses(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    statuses: Dict[str, Any] = {}
+    target = cfg["chain"].get("canary_target", "example.com:443")
+    timeout_ms = int(cfg["chain"].get("connect_timeout_ms", 5000))
+    timeout_s = max(0.1, timeout_ms / 1000.0)
+    for idx, hop in enumerate(cfg["chain"].get("hops", [])):
+        statuses[f"hop_{idx}"] = check_hop_connectivity(hop["url"], target, timeout=timeout_s)
+    return statuses
+
+
+def update_hop_state(cfg: Dict[str, Any], statuses: Dict[str, Any]) -> None:
+    required = int(cfg["supervisor"].get("min_healthy_hops", len(statuses) if statuses else 1))
+    summary = summarize_hops(statuses, required_healthy_hops=required)
+    fail_closed = bool(cfg["chain"].get("fail_closed", True))
+    STATE["hops"] = statuses
+    STATE["hop_summary"] = summary
+    STATE["last_hop_check"] = int(time.time())
+    chain_ready = summary["ready"] or not fail_closed
+    STATE["ready"] = STATE.get("pproxy") == "running" and chain_ready
+
+
+def wait_for_chain_ready(cfg: Dict[str, Any]) -> None:
+    if not cfg["chain"].get("hops"):
+        raise ValueError("chain.hops is empty")
+    interval = max(1, int(cfg["supervisor"].get("hop_check_interval_s", 5)))
+    while True:
+        statuses = collect_hop_statuses(cfg)
+        update_hop_state(cfg, statuses)
+        summary = STATE.get("hop_summary", {})
+        if summary.get("ready"):
+            return
+        STATE["pproxy"] = "blocked"
+        logging.warning(
+            "waiting for healthy hops before pproxy start healthy=%s required=%s failing=%s",
+            summary.get("healthy"),
+            summary.get("required"),
+            ",".join(summary.get("failing", [])),
+        )
+        time.sleep(interval)
+
+
 def hop_health_loop(cfg: Dict[str, Any]) -> None:
     interval = int(cfg["supervisor"].get("hop_check_interval_s", 5))
-    target = cfg["chain"].get("canary_target", "example.com:443")
     while True:
-        statuses: Dict[str, Any] = {}
-        for idx, hop in enumerate(cfg["chain"].get("hops", [])):
-            statuses[f"hop_{idx}"] = check_hop_connectivity(hop["url"], target)
-        STATE["hops"] = statuses
+        statuses = collect_hop_statuses(cfg)
+        update_hop_state(cfg, statuses)
         time.sleep(interval)
 
 
@@ -205,6 +271,9 @@ def main() -> int:
     pproxy_proc: Optional[subprocess.Popen] = None
     backoff = 1
     max_backoff = 60
+    block_start_until_healthy = bool(
+        cfg["supervisor"].get("block_start_until_hops_healthy", cfg["chain"].get("fail_closed", True))
+    )
 
     def stop_all(signum: int, frame: Any) -> None:
         logging.info("signal=%s shutting down", signum)
@@ -219,16 +288,21 @@ def main() -> int:
 
     while True:
         try:
+            if block_start_until_healthy:
+                wait_for_chain_ready(cfg)
             STATE["last_start"] = int(time.time())
             pproxy_proc = start_pproxy(cfg)
             STATE["pproxy"] = "running"
+            STATE["ready"] = True
             backoff = 1
             rc = pproxy_proc.wait()
             STATE["pproxy"] = "down"
+            STATE["ready"] = False
             STATE["last_exit"] = {"code": rc, "time": int(time.time())}
             logging.warning("pproxy exited rc=%s", rc)
         except Exception as exc:
             STATE["pproxy"] = "error"
+            STATE["ready"] = False
             logging.exception("supervisor loop error: %s", exc)
         logging.info("sleeping %ss before restart", backoff)
         time.sleep(backoff)

@@ -1,3 +1,54 @@
+import copy
+import unittest
+
+import supervisor
+
+
+class SupervisorStateTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._state_snapshot = copy.deepcopy(supervisor.STATE)
+
+    def tearDown(self) -> None:
+        supervisor.STATE.clear()
+        supervisor.STATE.update(self._state_snapshot)
+
+    def test_summarize_hops_requires_threshold(self) -> None:
+        statuses = {
+            "hop_0": {"ok": True},
+            "hop_1": {"ok": False},
+            "hop_2": {"ok": True},
+        }
+        summary = supervisor.summarize_hops(statuses, required_healthy_hops=2)
+        self.assertEqual(summary["total"], 3)
+        self.assertEqual(summary["healthy"], 2)
+        self.assertEqual(summary["required"], 2)
+        self.assertTrue(summary["ready"])
+        self.assertEqual(summary["failing"], ["hop_1"])
+
+    def test_update_hop_state_marks_not_ready_when_fail_closed(self) -> None:
+        cfg = {
+            "chain": {"fail_closed": True},
+            "supervisor": {"min_healthy_hops": 2},
+        }
+        supervisor.STATE["pproxy"] = "running"
+        statuses = {"hop_0": {"ok": True}, "hop_1": {"ok": False}}
+        supervisor.update_hop_state(cfg, statuses)
+        self.assertFalse(supervisor.STATE["ready"])
+        self.assertEqual(supervisor.STATE["hop_summary"]["healthy"], 1)
+
+    def test_update_hop_state_can_be_ready_when_fail_open(self) -> None:
+        cfg = {
+            "chain": {"fail_closed": False},
+            "supervisor": {"min_healthy_hops": 2},
+        }
+        supervisor.STATE["pproxy"] = "running"
+        statuses = {"hop_0": {"ok": False}, "hop_1": {"ok": False}}
+        supervisor.update_hop_state(cfg, statuses)
+        self.assertTrue(supervisor.STATE["ready"])
+
+
+if __name__ == "__main__":
+    unittest.main()
 import importlib
 import sys
 from pathlib import Path
