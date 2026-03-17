@@ -11,7 +11,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 import pyjson5
@@ -59,38 +59,60 @@ def load_cfg(path: str = CFG_PATH) -> Dict[str, Any]:
     return pyjson5.decode(Path(path).read_text(encoding="utf-8"))
 
 
-def _normalize_upstream_values(value: Any) -> list[str]:
-    if isinstance(value, str):
-        candidates = [value]
-    elif isinstance(value, list):
-        candidates = value
-    else:
-        raise ValueError("dns upstream must be a string or list of strings")
+def encode_funkydns_upstreams(value: Any) -> str:
+    return json.dumps(normalize_funkydns_upstreams(value))
 
-    if not candidates:
-        raise ValueError("dns upstream list must not be empty")
+
+def normalize_funkydns_upstreams(value: Any) -> list[str]:
+    """
+    Normalize DoH upstream configuration into a validated URL list.
+
+    Supported formats:
+    - Single URL string
+    - Comma-separated URL string
+    - JSON array string
+    - Python list/tuple of URL strings
+    """
+    parsed: Any = value
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            raise ValueError("doh_upstream must not be empty")
+        if raw.startswith("["):
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"invalid JSON upstream array: {raw}") from exc
+        elif "," in raw:
+            parsed = [item.strip() for item in raw.split(",")]
+        else:
+            parsed = [raw]
+
+    if not isinstance(parsed, (list, tuple)):
+        raise ValueError("doh_upstream must be a URL string, CSV string, JSON array, or list")
 
     normalized: list[str] = []
-    for candidate in candidates:
-        if not isinstance(candidate, str) or not candidate.strip():
-            raise ValueError("dns upstream entries must be non-empty strings")
-        parsed = urlparse(candidate)
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            raise ValueError(f"invalid dns upstream URL: {candidate}")
-        normalized.append(candidate)
+    for item in parsed:
+        if not isinstance(item, str):
+            raise ValueError(f"doh_upstream entries must be strings, got {type(item).__name__}")
+        candidate = item.strip()
+        if not candidate:
+            continue
+        # Allow comma-separated segments when mixed into list-like input.
+        split_candidates = [part.strip() for part in candidate.split(",")] if "," in candidate else [candidate]
+        for upstream in split_candidates:
+            if not upstream:
+                continue
+            parsed_url = urlparse(upstream)
+            if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+                raise ValueError(f"invalid upstream URL: {upstream}")
+            if upstream not in normalized:
+                normalized.append(upstream)
+
+    if not normalized:
+        raise ValueError("doh_upstream resolved to an empty list")
+
     return normalized
-
-
-def get_funkydns_upstreams(dns_cfg: Dict[str, Any]) -> list[str]:
-    if "doh_upstreams" in dns_cfg:
-        return _normalize_upstream_values(dns_cfg["doh_upstreams"])
-    if "doh_upstream" in dns_cfg:
-        return _normalize_upstream_values(dns_cfg["doh_upstream"])
-    raise ValueError("dns.doh_upstream or dns.doh_upstreams is required when launch_funkydns=true")
-
-
-def encode_funkydns_upstreams(value: Any) -> str:
-    return json.dumps(_normalize_upstream_values(value))
 
 
 def spawn_process(argv: list[str], env: Optional[Dict[str, str]] = None) -> subprocess.Popen:
@@ -113,6 +135,47 @@ def start_pproxy(cfg: Dict[str, Any]) -> subprocess.Popen:
     threading.Thread(target=pipe_stream, args=(f"pproxy[{proc.pid}][OUT]", proc.stdout), daemon=True).start()
     threading.Thread(target=pipe_stream, args=(f"pproxy[{proc.pid}][ERR]", proc.stderr), daemon=True).start()
     return proc
+
+
+def get_doh_upstreams(cfg: Dict[str, Any]) -> List[str]:
+    """Resolve DoH upstreams from config.
+
+    Supported forms:
+    - dns.doh_upstream: "https://example/dns-query"
+    - dns.doh_upstreams: ["https://a/dns-query", "https://b/dns-query"]
+    - dns.doh_upstream: '["https://a/dns-query","https://b/dns-query"]'
+    """
+    dns_cfg = cfg.get("dns", {})
+    raw_upstreams: Any = dns_cfg.get("doh_upstreams", dns_cfg.get("doh_upstream"))
+
+    if raw_upstreams is None:
+        raise ValueError("missing dns.doh_upstream(s) configuration")
+
+    if isinstance(raw_upstreams, str):
+        raw = raw_upstreams.strip()
+        if raw.startswith("["):
+            try:
+                raw_upstreams = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise ValueError("dns.doh_upstream JSON list is invalid") from exc
+        else:
+            raw_upstreams = [raw]
+
+    if not isinstance(raw_upstreams, list):
+        raise ValueError("dns.doh_upstream(s) must be a string or list of strings")
+
+    upstreams: List[str] = []
+    for item in raw_upstreams:
+        if not isinstance(item, str):
+            raise ValueError("dns.doh_upstream(s) entries must be strings")
+        stripped = item.strip()
+        if stripped:
+            upstreams.append(stripped)
+
+    if not upstreams:
+        raise ValueError("at least one DoH upstream is required")
+
+    return upstreams
 
 
 def start_funkydns(cfg: Dict[str, Any]) -> Optional[subprocess.Popen]:

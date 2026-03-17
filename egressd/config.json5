@@ -6,7 +6,13 @@
 
   dns: {
     launch_funkydns: false,
-    doh_upstream: "https://cloudflare-dns.com/dns-query",
+    mode: "external",
+    resolver_host: "funky",
+    resolver_port: 53,
+    doh_upstreams: [
+      "https://cloudflare-dns.com/dns-query",
+      "https://dns.google/dns-query",
+    ],
   },
 
   chain: {

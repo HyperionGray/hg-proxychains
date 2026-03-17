@@ -8,8 +8,8 @@
     launch_funkydns: true,
     port: 53,
     doh_upstreams: [
-      "https://your-doh-primary.example/dns-query",
-      "https://your-doh-secondary.example/dns-query",
+      "https://your-doh.example/dns-query",
+      "https://backup-doh.example/dns-query",
     ],
   },
 
