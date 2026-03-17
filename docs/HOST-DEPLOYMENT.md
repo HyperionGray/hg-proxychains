@@ -16,12 +16,11 @@ This repo's compose stack is only a smoke harness. Real enforcement happens on a
    - `pyjson5`
 3. Copy `egressd/` to `/opt/egressd`
 4. Put a host config at `/etc/egressd/config.json5` based on `config.host.example.json5`
+   - For embedded FunkyDNS, set `dns.doh_upstreams` to one or more DoH endpoints.
 5. Run `scripts/host-nftables.sh`
 6. Run `scripts/host-egress-owner.sh`
 7. Install and start `egressd/systemd/egressd.service`
-8. Verify both endpoints:
-   - `curl http://127.0.0.1:9191/health` (liveness and detailed hop state)
-   - `curl -i http://127.0.0.1:9191/ready` (readiness; returns 503 when fail-closed policy is not satisfied)
+8. Validate readiness with `curl -f http://127.0.0.1:9191/ready`
 
 ## Expected traffic model
 
