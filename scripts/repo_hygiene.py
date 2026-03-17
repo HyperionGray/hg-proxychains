@@ -94,6 +94,17 @@ def list_git_paths(repo_root: Path, args: Sequence[str]) -> list[str]:
     return [item for item in raw.split("\0") if item]
 
 
+def list_submodule_paths(repo_root: Path, submodule_rel: str, args: Sequence[str]) -> list[str]:
+    submodule_root = repo_root / submodule_rel
+    if not submodule_root.exists():
+        return []
+    try:
+        paths = list_git_paths(submodule_root, args)
+    except RuntimeError:
+        return []
+    return [f"{submodule_rel}/{path}" for path in paths]
+
+
 def is_text_file(path: Path) -> bool:
     try:
         sample = path.read_bytes()[:2048]
@@ -238,6 +249,15 @@ def build_json_report(
 def command_scan(repo_root: Path, include_third_party: bool, json_output: bool) -> int:
     tracked = list_git_paths(repo_root, ("ls-files",))
     untracked = list_git_paths(repo_root, ("ls-files", "--others", "--exclude-standard"))
+    if include_third_party:
+        tracked.extend(list_submodule_paths(repo_root, THIRD_PARTY_PREFIX.rstrip("/"), ("ls-files",)))
+        untracked.extend(
+            list_submodule_paths(
+                repo_root,
+                THIRD_PARTY_PREFIX.rstrip("/"),
+                ("ls-files", "--others", "--exclude-standard"),
+            )
+        )
     findings = find_unfinished_markers(repo_root, tracked, include_third_party=include_third_party)
     stray = classify_stray_paths(untracked, include_third_party=include_third_party)
     if json_output:
@@ -250,6 +270,15 @@ def command_scan(repo_root: Path, include_third_party: bool, json_output: bool) 
 def command_clean(repo_root: Path, include_third_party: bool, json_output: bool) -> int:
     tracked = list_git_paths(repo_root, ("ls-files",))
     untracked = list_git_paths(repo_root, ("ls-files", "--others", "--exclude-standard"))
+    if include_third_party:
+        tracked.extend(list_submodule_paths(repo_root, THIRD_PARTY_PREFIX.rstrip("/"), ("ls-files",)))
+        untracked.extend(
+            list_submodule_paths(
+                repo_root,
+                THIRD_PARTY_PREFIX.rstrip("/"),
+                ("ls-files", "--others", "--exclude-standard"),
+            )
+        )
     findings = find_unfinished_markers(repo_root, tracked, include_third_party=include_third_party)
     stray = classify_stray_paths(untracked, include_third_party=include_third_party)
 
