@@ -12,7 +12,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 import pyjson5
@@ -20,12 +20,14 @@ import pyjson5
 from chain import build_relay_string
 
 CFG_PATH = os.environ.get("EGRESSD_CONFIG", "/opt/egressd/config.json5")
-STATE_LOCK = threading.Lock()
+RUNTIME_CFG: Dict[str, Any] = {}
 STATE: Dict[str, Any] = {
     "pproxy": "down",
     "funkydns": "disabled",
+    "ready": False,
     "last_start": None,
     "last_exit": None,
+    "last_hop_check": None,
     "hops": {},
     "hop_last_checked": None,
 }
@@ -60,60 +62,60 @@ def load_cfg(path: str = CFG_PATH) -> Dict[str, Any]:
     return pyjson5.decode(Path(path).read_text(encoding="utf-8"))
 
 
-def state_snapshot() -> Dict[str, Any]:
-    with STATE_LOCK:
-        return copy.deepcopy(STATE)
+def encode_funkydns_upstreams(value: Any) -> str:
+    return json.dumps(normalize_funkydns_upstreams(value))
 
 
-def evaluate_readiness(state: Dict[str, Any], cfg: Dict[str, Any], now: Optional[float] = None) -> Dict[str, Any]:
-    if now is None:
-        now = time.time()
+def normalize_funkydns_upstreams(value: Any) -> list[str]:
+    """
+    Normalize DoH upstream configuration into a validated URL list.
 
-    reasons: list[str] = []
-    ready = True
+    Supported formats:
+    - Single URL string
+    - Comma-separated URL string
+    - JSON array string
+    - Python list/tuple of URL strings
+    """
+    parsed: Any = value
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            raise ValueError("doh_upstream must not be empty")
+        if raw.startswith("["):
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"invalid JSON upstream array: {raw}") from exc
+        elif "," in raw:
+            parsed = [item.strip() for item in raw.split(",")]
+        else:
+            parsed = [raw]
 
-    if state.get("pproxy") != "running":
-        ready = False
-        reasons.append("pproxy is not running")
+    if not isinstance(parsed, (list, tuple)):
+        raise ValueError("doh_upstream must be a URL string, CSV string, JSON array, or list")
 
-    chain_hops = cfg.get("chain", {}).get("hops", [])
-    hop_results = state.get("hops", {})
-    if not chain_hops:
-        ready = False
-        reasons.append("chain.hops is empty")
-    else:
-        for idx, _ in enumerate(chain_hops):
-            hop_key = f"hop_{idx}"
-            hop_state = hop_results.get(hop_key)
-            if hop_state is None:
-                ready = False
-                reasons.append(f"{hop_key} has no check result")
+    normalized: list[str] = []
+    for item in parsed:
+        if not isinstance(item, str):
+            raise ValueError(f"doh_upstream entries must be strings, got {type(item).__name__}")
+        candidate = item.strip()
+        if not candidate:
+            continue
+        # Allow comma-separated segments when mixed into list-like input.
+        split_candidates = [part.strip() for part in candidate.split(",")] if "," in candidate else [candidate]
+        for upstream in split_candidates:
+            if not upstream:
                 continue
-            if not hop_state.get("ok", False):
-                ready = False
-                reason_detail = hop_state.get("status_line") or hop_state.get("error") or "unknown"
-                reasons.append(f"{hop_key} check failed: {reason_detail}")
+            parsed_url = urlparse(upstream)
+            if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+                raise ValueError(f"invalid upstream URL: {upstream}")
+            if upstream not in normalized:
+                normalized.append(upstream)
 
-    hop_interval = int(cfg.get("supervisor", {}).get("hop_check_interval_s", 5))
-    hop_stale_after_s = int(cfg.get("supervisor", {}).get("hop_stale_after_s", max(hop_interval * 3, 15)))
-    last_checked = state.get("hop_last_checked")
-    if last_checked is None:
-        ready = False
-        reasons.append("hop checks have not run yet")
-    elif now - float(last_checked) > hop_stale_after_s:
-        ready = False
-        reasons.append(f"hop checks are stale (older than {hop_stale_after_s}s)")
+    if not normalized:
+        raise ValueError("doh_upstream resolved to an empty list")
 
-    if cfg.get("dns", {}).get("launch_funkydns", False) and state.get("funkydns") != "running":
-        ready = False
-        reasons.append("funkydns is enabled but not running")
-
-    return {
-        "ready": ready,
-        "checked_at": int(now),
-        "hop_stale_after_s": hop_stale_after_s,
-        "reasons": reasons,
-    }
+    return normalized
 
 
 def spawn_process(argv: list[str], env: Optional[Dict[str, str]] = None) -> subprocess.Popen:
@@ -138,13 +140,54 @@ def start_pproxy(cfg: Dict[str, Any]) -> subprocess.Popen:
     return proc
 
 
+def get_doh_upstreams(cfg: Dict[str, Any]) -> List[str]:
+    """Resolve DoH upstreams from config.
+
+    Supported forms:
+    - dns.doh_upstream: "https://example/dns-query"
+    - dns.doh_upstreams: ["https://a/dns-query", "https://b/dns-query"]
+    - dns.doh_upstream: '["https://a/dns-query","https://b/dns-query"]'
+    """
+    dns_cfg = cfg.get("dns", {})
+    raw_upstreams: Any = dns_cfg.get("doh_upstreams", dns_cfg.get("doh_upstream"))
+
+    if raw_upstreams is None:
+        raise ValueError("missing dns.doh_upstream(s) configuration")
+
+    if isinstance(raw_upstreams, str):
+        raw = raw_upstreams.strip()
+        if raw.startswith("["):
+            try:
+                raw_upstreams = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise ValueError("dns.doh_upstream JSON list is invalid") from exc
+        else:
+            raw_upstreams = [raw]
+
+    if not isinstance(raw_upstreams, list):
+        raise ValueError("dns.doh_upstream(s) must be a string or list of strings")
+
+    upstreams: List[str] = []
+    for item in raw_upstreams:
+        if not isinstance(item, str):
+            raise ValueError("dns.doh_upstream(s) entries must be strings")
+        stripped = item.strip()
+        if stripped:
+            upstreams.append(stripped)
+
+    if not upstreams:
+        raise ValueError("at least one DoH upstream is required")
+
+    return upstreams
+
+
 def start_funkydns(cfg: Dict[str, Any]) -> Optional[subprocess.Popen]:
     launch_funkydns = bool(cfg.get("dns", {}).get("launch_funkydns", False))
     if not launch_funkydns:
         return None
     fn_bin = cfg["supervisor"].get("funkydns_bin", "funkydns")
     dns_port = str(cfg["dns"]["port"])
-    doh_upstream = cfg["dns"]["doh_upstream"]
+    doh_upstream = json.dumps(get_funkydns_upstreams(cfg["dns"]))
     argv = [fn_bin, "server", "--dns-port", dns_port, "--doh-port", "443", "--upstream", doh_upstream]
     logging.info("starting funkydns argv=%s", " ".join(argv))
     proc = spawn_process(argv)
@@ -154,27 +197,22 @@ def start_funkydns(cfg: Dict[str, Any]) -> Optional[subprocess.Popen]:
 
 
 class HealthHandler(BaseHTTPRequestHandler):
-    runtime_cfg: Dict[str, Any] = {}
+    cfg: Dict[str, Any] = {}
 
     def do_GET(self) -> None:
         if self.path not in {"/health", "/ready"}:
             self.send_response(404)
             self.end_headers()
             return
-
-        snapshot = state_snapshot()
-        readiness = evaluate_readiness(snapshot, self.runtime_cfg)
-
+        payload: Dict[str, Any] = dict(STATE)
+        status = 200
         if self.path == "/ready":
-            body_obj = readiness
-            status_code = 200 if readiness["ready"] else 503
-        else:
-            body_obj = snapshot
-            body_obj["readiness"] = readiness
-            status_code = 200
+            ready, reason = evaluate_readiness(RUNTIME_CFG)
+            payload = {"ready": ready, "reason": reason, "state": payload}
+            status = 200 if ready else 503
 
-        body = json.dumps(body_obj).encode("utf-8")
-        self.send_response(status_code)
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -184,8 +222,38 @@ class HealthHandler(BaseHTTPRequestHandler):
         return
 
 
+def evaluate_readiness(state: Dict[str, Any], cfg: Dict[str, Any]) -> Tuple[bool, List[str]]:
+    reasons: List[str] = []
+
+    if state.get("pproxy") != "running":
+        reasons.append("pproxy is not running")
+
+    launch_funkydns = bool(cfg.get("dns", {}).get("launch_funkydns", False))
+    if launch_funkydns and state.get("funkydns") != "running":
+        reasons.append("funkydns is enabled but not running")
+
+    expected_hops = len(cfg.get("chain", {}).get("hops", []))
+    observed_hops = state.get("hops", {})
+    if expected_hops == 0:
+        reasons.append("no hops configured")
+    else:
+        if len(observed_hops) < expected_hops:
+            reasons.append(f"hop probes incomplete ({len(observed_hops)}/{expected_hops})")
+        for idx in range(expected_hops):
+            hop_name = f"hop_{idx}"
+            hop_status = observed_hops.get(hop_name)
+            if hop_status is None:
+                reasons.append(f"{hop_name} probe missing")
+                continue
+            if not hop_status.get("ok", False):
+                detail = hop_status.get("error") or hop_status.get("status_line") or "probe failed"
+                reasons.append(f"{hop_name} unhealthy: {detail}")
+
+    return len(reasons) == 0, reasons
+
+
 def run_health_server(bind: str, port: int, cfg: Dict[str, Any]) -> HTTPServer:
-    HealthHandler.runtime_cfg = cfg
+    HealthHandler.cfg = cfg
     server = HTTPServer((bind, port), HealthHandler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     logging.info("health endpoint listening on %s:%d", bind, port)
@@ -209,7 +277,7 @@ def parse_proxy_url(url: str) -> Tuple[str, int, Optional[str]]:
     return host, port, auth_header
 
 
-def check_hop_connectivity(hop_url: str, target: str, timeout: int = 3) -> Dict[str, Any]:
+def check_hop_connectivity(hop_url: str, target: str, timeout: float = 3.0) -> Dict[str, Any]:
     host, port, auth_header = parse_proxy_url(hop_url)
     sock: Optional[socket.socket] = None
     start = time.time()
@@ -247,24 +315,83 @@ def check_hop_connectivity(hop_url: str, target: str, timeout: int = 3) -> Dict[
                 pass
 
 
+def _as_bool(value: Any, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
+def evaluate_readiness(cfg: Dict[str, Any], now: Optional[float] = None) -> Tuple[bool, str]:
+    now_ts = int(now if now is not None else time.time())
+    if STATE.get("pproxy") != "running":
+        return False, "pproxy not running"
+
+    hop_cfg = cfg.get("chain", {}).get("hops", [])
+    if not hop_cfg:
+        return True, "ready (no hops configured)"
+
+    sup_cfg = cfg.get("supervisor", {})
+    grace_s = int(sup_cfg.get("ready_grace_period_s", 15))
+    interval_s = int(sup_cfg.get("hop_check_interval_s", 5))
+    max_age_s = int(sup_cfg.get("max_hop_status_age_s", max(grace_s, interval_s * 2)))
+
+    last_hop_check = STATE.get("last_hop_check")
+    if not isinstance(last_hop_check, int):
+        last_start = STATE.get("last_start")
+        if isinstance(last_start, int) and (now_ts - last_start) <= grace_s:
+            return False, "waiting for initial hop probes"
+        return False, "hop probes unavailable"
+
+    age_s = now_ts - last_hop_check
+    if age_s > max_age_s:
+        return False, f"hop probe data stale ({age_s}s old)"
+
+    hop_states = STATE.get("hops", {})
+    if not isinstance(hop_states, dict) or not hop_states:
+        return False, "hop probes unavailable"
+
+    expected_hops = len(hop_cfg)
+    if len(hop_states) < expected_hops:
+        return False, "hop probes incomplete"
+
+    hop_ok = [bool(status.get("ok")) for status in hop_states.values() if isinstance(status, dict)]
+    if len(hop_ok) < expected_hops:
+        return False, "hop probes incomplete"
+
+    require_all = _as_bool(sup_cfg.get("require_all_hops_healthy"), default=False)
+    if require_all and not all(hop_ok):
+        return False, "at least one hop is unhealthy"
+    if not require_all and not any(hop_ok):
+        return False, "all hops are unhealthy"
+    return True, "ready"
+
+
 def hop_health_loop(cfg: Dict[str, Any]) -> None:
     interval = int(cfg["supervisor"].get("hop_check_interval_s", 5))
-    target = cfg["chain"].get("canary_target", "example.com:443")
     while True:
         statuses: Dict[str, Any] = {}
         for idx, hop in enumerate(cfg["chain"].get("hops", [])):
             statuses[f"hop_{idx}"] = check_hop_connectivity(hop["url"], target)
-        with STATE_LOCK:
-            STATE["hops"] = statuses
-            STATE["hop_last_checked"] = int(time.time())
+        STATE["hops"] = statuses
+        STATE["last_hop_check"] = int(time.time())
         time.sleep(interval)
 
 
 def main() -> int:
+    global RUNTIME_CFG
     cfg = load_cfg()
+    RUNTIME_CFG = cfg
     configure_logging(cfg)
 
-    run_health_server(cfg["supervisor"].get("health_bind", "0.0.0.0"), int(cfg["supervisor"].get("health_port", 9191)), cfg)
+    run_health_server(
+        cfg["supervisor"].get("health_bind", "0.0.0.0"),
+        int(cfg["supervisor"].get("health_port", 9191)),
+        cfg,
+    )
 
     funkydns_proc: Optional[subprocess.Popen] = start_funkydns(cfg)
     if funkydns_proc is not None:
@@ -276,6 +403,9 @@ def main() -> int:
     pproxy_proc: Optional[subprocess.Popen] = None
     backoff = 1
     max_backoff = 60
+    block_start_until_healthy = bool(
+        cfg["supervisor"].get("block_start_until_hops_healthy", cfg["chain"].get("fail_closed", True))
+    )
 
     def stop_all(signum: int, frame: Any) -> None:
         logging.info("signal=%s shutting down", signum)
@@ -290,20 +420,21 @@ def main() -> int:
 
     while True:
         try:
-            with STATE_LOCK:
-                STATE["last_start"] = int(time.time())
+            if block_start_until_healthy:
+                wait_for_chain_ready(cfg)
+            STATE["last_start"] = int(time.time())
             pproxy_proc = start_pproxy(cfg)
-            with STATE_LOCK:
-                STATE["pproxy"] = "running"
+            STATE["pproxy"] = "running"
+            STATE["ready"] = True
             backoff = 1
             rc = pproxy_proc.wait()
-            with STATE_LOCK:
-                STATE["pproxy"] = "down"
-                STATE["last_exit"] = {"code": rc, "time": int(time.time())}
+            STATE["pproxy"] = "down"
+            STATE["ready"] = False
+            STATE["last_exit"] = {"code": rc, "time": int(time.time())}
             logging.warning("pproxy exited rc=%s", rc)
         except Exception as exc:
-            with STATE_LOCK:
-                STATE["pproxy"] = "error"
+            STATE["pproxy"] = "error"
+            STATE["ready"] = False
             logging.exception("supervisor loop error: %s", exc)
         logging.info("sleeping %ss before restart", backoff)
         time.sleep(backoff)
