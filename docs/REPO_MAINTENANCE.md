@@ -6,7 +6,7 @@ This repository includes `scripts/repo_maintenance.py` to support recurring auto
 
 - Unfinished markers in tracked files (`TODO`, `FIXME`, `STUB`, `TBD`, `XXX`, `UNFINISHED`)
 - Backup files (`*~`, `*.bak`, `*.orig`, `*.old`, `*.tmp`)
-- Stray untracked Python cache directories (`__pycache__/`)
+- Stray Python cache directories (`__pycache__/`)
 - Known stale artifacts (currently `egressd-starter.tar.gz`)
 - Embedded git repositories outside the allowed third-party submodule path
 

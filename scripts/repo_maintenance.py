@@ -50,15 +50,6 @@ def run_git_ls_files(repo_path: Path) -> List[Path]:
     return [repo_path / line.strip() for line in output.splitlines() if line.strip()]
 
 
-def run_git_ls_untracked(repo_path: Path) -> List[Path]:
-    output = subprocess.check_output(
-        ["git", "-C", str(repo_path), "ls-files", "--others", "--exclude-standard"],
-        text=True,
-        stderr=subprocess.DEVNULL,
-    )
-    return [repo_path / line.strip() for line in output.splitlines() if line.strip()]
-
-
 def looks_text_file(path: Path) -> bool:
     suffix = path.suffix.lower()
     if suffix in TEXT_EXTENSIONS:
@@ -145,19 +136,16 @@ def discover_embedded_git_repos(root: Path, include_third_party: bool) -> List[P
 
 
 def discover_untracked_stray_dirs(root: Path, include_third_party: bool) -> List[Path]:
-    untracked = run_git_ls_untracked(root)
     stray_dirs: List[Path] = []
-    for path in untracked:
+    for path in root.rglob("__pycache__"):
+        if not path.is_dir():
+            continue
         rel_path = path.relative_to(root)
         if any(part in {".git", ".venv"} for part in rel_path.parts):
             continue
-        if "__pycache__" not in rel_path.parts:
-            continue
         if not include_third_party and "third_party/FunkyDNS" in str(rel_path):
             continue
-        cache_index = rel_path.parts.index("__pycache__")
-        cache_dir = root / Path(*rel_path.parts[: cache_index + 1])
-        stray_dirs.append(cache_dir)
+        stray_dirs.append(path)
     return sorted(set(stray_dirs))
 
 

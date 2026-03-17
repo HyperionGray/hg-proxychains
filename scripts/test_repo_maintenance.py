@@ -28,15 +28,7 @@ class RepoMaintenanceTests(unittest.TestCase):
             cache_file = root / "pkg" / "__pycache__" / "mod.cpython-312.pyc"
             cache_file.parent.mkdir(parents=True, exist_ok=True)
             cache_file.write_bytes(b"x")
-            keep_file = root / "keep.txt"
-            keep_file.write_text("keep\n", encoding="utf-8")
-
-            original = repo_maintenance.run_git_ls_untracked
-            repo_maintenance.run_git_ls_untracked = lambda _root: [cache_file, keep_file]
-            try:
-                found = repo_maintenance.discover_untracked_stray_dirs(root, include_third_party=True)
-            finally:
-                repo_maintenance.run_git_ls_untracked = original
+            found = repo_maintenance.discover_untracked_stray_dirs(root, include_third_party=True)
 
             self.assertEqual([str(path.relative_to(root)) for path in found], ["pkg/__pycache__"])
 
