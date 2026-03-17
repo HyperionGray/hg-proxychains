@@ -11,4 +11,4 @@ third_party/FunkyDNS/.venv/
 third_party/FunkyDNS/__pycache__/
 egressd-starter.tar.gz
 **.bish**
-**/bish**
+**/**bish**
