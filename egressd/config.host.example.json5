@@ -2,13 +2,15 @@
   listener: {
     bind: "172.18.0.1",
     port: 15001,
-    mode: "transparent",
   },
 
   dns: {
     launch_funkydns: true,
     port: 53,
-    doh_upstream: "https://your-doh.example/dns-query",
+    doh_upstreams: [
+      "https://your-doh.example/dns-query",
+      "https://backup-doh.example/dns-query",
+    ],
   },
 
   chain: {
@@ -35,7 +37,8 @@
     health_bind: "127.0.0.1",
     health_port: 9191,
     hop_check_interval_s: 5,
-    ready_require_hops: true,
-    ready_require_all_hops: true,
+    require_all_hops_healthy: true,
+    ready_grace_period_s: 20,
+    max_hop_status_age_s: 30,
   },
 }

@@ -13,7 +13,7 @@ services:
         "--doh-port",
         "443",
         "--upstream",
-        "https://cloudflare-dns.com/dns-query"
+        "[\"https://cloudflare-dns.com/dns-query\"]"
       ]
     ports:
       - "5353:53/udp"
@@ -65,8 +65,10 @@ services:
     healthcheck:
       test:
         [
-          "CMD-SHELL",
-          "python3 -c \"import sys,urllib.request;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:9191/ready', timeout=2).status == 200 else 1)\"",
+          "CMD",
+          "python3",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9191/ready', timeout=2)"
         ]
       interval: 5s
       timeout: 3s
