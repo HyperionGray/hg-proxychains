@@ -10,7 +10,7 @@ This repository includes `scripts/repo_maintenance.py` to support recurring auto
 - Known stale artifacts (currently `egressd-starter.tar.gz`)
 - Embedded git repositories outside the allowed third-party submodule path
 
-By default, marker scanning also includes tracked files in `third_party/FunkyDNS` when that repository is present.
+By default, marker scanning focuses on first-party files. Use `--include-third-party` to also scan tracked files in `third_party/FunkyDNS` when that repository is present.
 
 ## Commands
 
@@ -21,8 +21,8 @@ python3 scripts/repo_maintenance.py
 # JSON output for automation
 python3 scripts/repo_maintenance.py --json
 
-# Exclude third_party marker scan
-python3 scripts/repo_maintenance.py --no-include-third-party
+# Include third_party marker scan explicitly
+python3 scripts/repo_maintenance.py --include-third-party
 
 # Remove backup files + stray cache dirs + stale artifacts while scanning
 python3 scripts/repo_maintenance.py --fix

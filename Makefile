@@ -41,10 +41,10 @@ repo-clean:
 	python3 scripts/repo_hygiene.py clean --repo-root .
 
 maintenance:
-	python3 scripts/repo_maintenance.py
+	python3 scripts/repo_maintenance.py --no-include-third-party
 
 maintenance-fix:
-	python3 scripts/repo_maintenance.py --fix
+	python3 scripts/repo_maintenance.py --no-include-third-party --fix
 
 bundle:
 	tar -czf egressd-starter.tar.gz .

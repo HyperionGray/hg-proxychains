@@ -222,8 +222,8 @@ def main() -> int:
     parser.add_argument(
         "--include-third-party",
         action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Include third_party/FunkyDNS tracked files in marker scanning (default: true)",
+        default=False,
+        help="Include third_party/FunkyDNS tracked files in marker scanning (default: false)",
     )
     parser.add_argument(
         "--fix",
