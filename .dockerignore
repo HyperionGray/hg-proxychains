@@ -1,0 +1,6 @@
+.git
+.venv
+egressd-starter.tar.gz
+**/__pycache__/
+**/*.pyc
+**/*~

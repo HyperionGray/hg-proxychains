@@ -1,0 +1,254 @@
+#!/usr/bin/env python3
+"""Scan and clean repository hygiene issues.
+
+This utility focuses on two maintenance concerns:
+1) unfinished markers in tracked source files (TODO, FIXME, STUB, ...)
+2) common untracked stray files (editor backups, Python caches, temp files)
+"""
+
+from __future__ import annotations
+
+import argparse
+import fnmatch
+import re
+import shutil
+import subprocess
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Iterable, Sequence
+
+
+UNFINISHED_PATTERN = re.compile(r"\b(TODO|FIXME|STUB|TBD|XXX|WIP|UNFINISHED)\b\s*:")
+UNFINISHED_SKIP_PREFIXES = (
+    "third_party/FunkyDNS/",
+    ".git/",
+)
+STRAY_FILE_PATTERNS = (
+    "*~",
+    "*.bak",
+    "*.tmp",
+    "*.orig",
+    "*.rej",
+    ".DS_Store",
+    "Thumbs.db",
+    "*.pyc",
+    "*.pyo",
+)
+STRAY_DIR_NAMES = {
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+}
+UNFINISHED_SCAN_SUFFIXES = {
+    ".py",
+    ".sh",
+    ".js",
+    ".ts",
+    ".go",
+    ".java",
+    ".json",
+    ".json5",
+    ".yaml",
+    ".yml",
+}
+UNFINISHED_SCAN_FILENAMES = {
+    "Dockerfile",
+    "Makefile",
+}
+
+
+@dataclass(frozen=True)
+class MarkerFinding:
+    path: str
+    line_number: int
+    marker: str
+    line: str
+
+
+def run_git(repo_root: Path, args: Sequence[str]) -> str:
+    proc = subprocess.run(
+        ["git", *args],
+        cwd=repo_root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"git {' '.join(args)} failed: {proc.stderr.strip()}")
+    return proc.stdout
+
+
+def list_git_paths(repo_root: Path, args: Sequence[str]) -> list[str]:
+    proc = subprocess.run(
+        ["git", *args, "-z"],
+        cwd=repo_root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"git {' '.join(args)} -z failed: {proc.stderr.decode().strip()}")
+    raw = proc.stdout.decode("utf-8", errors="replace")
+    return [item for item in raw.split("\0") if item]
+
+
+def is_text_file(path: Path) -> bool:
+    try:
+        sample = path.read_bytes()[:2048]
+    except OSError:
+        return False
+    return b"\0" not in sample
+
+
+def should_skip_for_unfinished(path: str) -> bool:
+    return path.startswith(UNFINISHED_SKIP_PREFIXES)
+
+
+def find_unfinished_markers(repo_root: Path, tracked_paths: Iterable[str]) -> list[MarkerFinding]:
+    findings: list[MarkerFinding] = []
+    for rel_path in tracked_paths:
+        if should_skip_for_unfinished(rel_path):
+            continue
+        path_obj = Path(rel_path)
+        if path_obj.suffix.lower() not in UNFINISHED_SCAN_SUFFIXES and path_obj.name not in UNFINISHED_SCAN_FILENAMES:
+            continue
+        abs_path = repo_root / rel_path
+        if not abs_path.is_file():
+            continue
+        if not is_text_file(abs_path):
+            continue
+        try:
+            text = abs_path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        except OSError:
+            continue
+        for idx, line in enumerate(text.splitlines(), start=1):
+            match = UNFINISHED_PATTERN.search(line)
+            if match:
+                findings.append(
+                    MarkerFinding(
+                        path=rel_path,
+                        line_number=idx,
+                        marker=match.group(1),
+                        line=line.strip(),
+                    )
+                )
+    return findings
+
+
+def classify_stray_paths(untracked_paths: Iterable[str]) -> list[str]:
+    stray: list[str] = []
+    for rel_path in untracked_paths:
+        path_obj = Path(rel_path)
+        basename = path_obj.name
+        if any(part in STRAY_DIR_NAMES for part in path_obj.parts):
+            stray.append(rel_path)
+            continue
+        if any(fnmatch.fnmatch(basename, pattern) for pattern in STRAY_FILE_PATTERNS):
+            stray.append(rel_path)
+    return sorted(set(stray))
+
+
+def prune_empty_parents(repo_root: Path, start_path: Path) -> None:
+    parent = start_path.parent
+    while parent != repo_root:
+        try:
+            parent.rmdir()
+        except OSError:
+            break
+        parent = parent.parent
+
+
+def delete_paths(repo_root: Path, relative_paths: Iterable[str]) -> int:
+    deleted = 0
+    for rel_path in sorted(set(relative_paths)):
+        abs_path = repo_root / rel_path
+        try:
+            if abs_path.is_dir():
+                shutil.rmtree(abs_path)
+                deleted += 1
+            elif abs_path.exists():
+                abs_path.unlink()
+                deleted += 1
+            else:
+                continue
+            prune_empty_parents(repo_root, abs_path)
+        except OSError as exc:
+            print(f"warn: failed to delete {rel_path}: {exc}", file=sys.stderr)
+    return deleted
+
+
+def print_scan_results(findings: Sequence[MarkerFinding], stray_paths: Sequence[str]) -> None:
+    print("== Repo hygiene scan ==")
+    print(f"unfinished markers: {len(findings)}")
+    if findings:
+        for finding in findings:
+            print(
+                f"  - {finding.path}:{finding.line_number}: "
+                f"{finding.marker} -> {finding.line}"
+            )
+    print(f"stray untracked files: {len(stray_paths)}")
+    if stray_paths:
+        for rel_path in stray_paths:
+            print(f"  - {rel_path}")
+
+
+def command_scan(repo_root: Path) -> int:
+    tracked = list_git_paths(repo_root, ("ls-files",))
+    untracked = list_git_paths(repo_root, ("ls-files", "--others", "--exclude-standard"))
+    findings = find_unfinished_markers(repo_root, tracked)
+    stray = classify_stray_paths(untracked)
+    print_scan_results(findings, stray)
+    return 1 if findings or stray else 0
+
+
+def command_clean(repo_root: Path) -> int:
+    tracked = list_git_paths(repo_root, ("ls-files",))
+    untracked = list_git_paths(repo_root, ("ls-files", "--others", "--exclude-standard"))
+    findings = find_unfinished_markers(repo_root, tracked)
+    stray = classify_stray_paths(untracked)
+
+    print_scan_results(findings, stray)
+    if stray:
+        deleted = delete_paths(repo_root, stray)
+        print(f"deleted stray paths: {deleted}")
+    else:
+        print("deleted stray paths: 0")
+    return 1 if findings else 0
+
+
+def parse_args(argv: Sequence[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Repository hygiene scanner and cleaner")
+    parser.add_argument(
+        "command",
+        nargs="?",
+        choices=("scan", "clean"),
+        default="scan",
+        help="scan for issues or clean untracked stray artifacts",
+    )
+    parser.add_argument(
+        "--repo-root",
+        default=".",
+        help="path to repository root (default: current directory)",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = parse_args(argv or sys.argv[1:])
+    repo_root = Path(args.repo_root).resolve()
+    if not (repo_root / ".git").exists():
+        print(f"error: {repo_root} is not a git repository", file=sys.stderr)
+        return 2
+
+    if args.command == "clean":
+        return command_clean(repo_root)
+    return command_scan(repo_root)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
