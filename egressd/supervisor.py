@@ -163,54 +163,15 @@ def start_pproxy(cfg: Dict[str, Any]) -> subprocess.Popen:
     return proc
 
 
-def get_doh_upstreams(cfg: Dict[str, Any]) -> List[str]:
-    """Resolve DoH upstreams from config.
-
-    Supported forms:
-    - dns.doh_upstream: "https://example/dns-query"
-    - dns.doh_upstreams: ["https://a/dns-query", "https://b/dns-query"]
-    - dns.doh_upstream: '["https://a/dns-query","https://b/dns-query"]'
-    """
-    dns_cfg = cfg.get("dns", {})
-    raw_upstreams: Any = dns_cfg.get("doh_upstreams", dns_cfg.get("doh_upstream"))
-
-    if raw_upstreams is None:
-        raise ValueError("missing dns.doh_upstream(s) configuration")
-
-    if isinstance(raw_upstreams, str):
-        raw = raw_upstreams.strip()
-        if raw.startswith("["):
-            try:
-                raw_upstreams = json.loads(raw)
-            except json.JSONDecodeError as exc:
-                raise ValueError("dns.doh_upstream JSON list is invalid") from exc
-        else:
-            raw_upstreams = [raw]
-
-    if not isinstance(raw_upstreams, list):
-        raise ValueError("dns.doh_upstream(s) must be a string or list of strings")
-
-    upstreams: List[str] = []
-    for item in raw_upstreams:
-        if not isinstance(item, str):
-            raise ValueError("dns.doh_upstream(s) entries must be strings")
-        stripped = item.strip()
-        if stripped:
-            upstreams.append(stripped)
-
-    if not upstreams:
-        raise ValueError("at least one DoH upstream is required")
-
-    return upstreams
-
-
 def start_funkydns(cfg: Dict[str, Any]) -> Optional[subprocess.Popen]:
     launch_funkydns = bool(cfg.get("dns", {}).get("launch_funkydns", False))
     if not launch_funkydns:
         return None
     fn_bin = cfg["supervisor"].get("funkydns_bin", "funkydns")
     dns_port = str(cfg["dns"]["port"])
-    doh_upstream = json.dumps(get_doh_upstreams(cfg))
+    dns_cfg = cfg.get("dns", {})
+    doh_value: Any = dns_cfg.get("doh_upstreams", dns_cfg.get("doh_upstream"))
+    doh_upstream = encode_funkydns_upstreams(doh_value)
     argv = [fn_bin, "server", "--dns-port", dns_port, "--doh-port", "443", "--upstream", doh_upstream]
     logging.info("starting funkydns argv=%s", " ".join(argv))
     proc = spawn_process(argv)
