@@ -13,7 +13,7 @@ services:
         "--doh-port",
         "443",
         "--upstream",
-        "https://cloudflare-dns.com/dns-query"
+        "[\"https://cloudflare-dns.com/dns-query\"]"
       ]
     ports:
       - "5353:53/udp"
@@ -120,12 +120,12 @@ services:
           "CMD",
           "python3",
           "-c",
-          "import sys, urllib.request; r = urllib.request.urlopen('http://127.0.0.1:9191/ready', timeout=2); sys.exit(0 if r.status == 200 else 1)",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9191/ready', timeout=2)"
         ]
-      interval: 10s
+      interval: 5s
       timeout: 3s
       retries: 12
-      start_period: 20s
+      start_period: 5s
     networks:
       egressnet:
         ipv4_address: 172.18.0.5
