@@ -1,4 +1,4 @@
-.PHONY: smoke down logs health bundle pycheck
+.PHONY: smoke down logs health bundle pycheck test check
 
 smoke:
 	docker compose up --build
@@ -14,6 +14,11 @@ health:
 
 pycheck:
 	python3 -m py_compile egressd/supervisor.py egressd/chain.py client/test_client.py exitserver/echo_server.py
+
+test:
+	python3 -m unittest discover -s egressd -p "test_*.py"
+
+check: pycheck test
 
 bundle:
 	tar -czf egressd-starter.tar.gz .

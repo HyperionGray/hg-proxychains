@@ -7,6 +7,7 @@
 - [ ] `docker compose up`
 - [ ] Confirm `client` prints `200 Connection Established`
 - [ ] Confirm `client` receives `OK from exit-server`
+- [ ] `curl -f http://localhost:9191/ready`
 - [ ] `curl http://localhost:9191/health`
 - [ ] Confirm hop probes are green or at least responding with expected policy/auth status
 

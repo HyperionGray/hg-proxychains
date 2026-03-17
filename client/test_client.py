@@ -1,5 +1,6 @@
 import socket
 import sys
+import time
 
 
 def main() -> int:
@@ -8,7 +9,21 @@ def main() -> int:
     target_host = "exitserver"
     target_port = 9999
 
-    sock = socket.create_connection((proxy_host, proxy_port), timeout=5)
+    sock = None
+    for attempt in range(1, 16):
+        try:
+            sock = socket.create_connection((proxy_host, proxy_port), timeout=5)
+            break
+        except OSError as exc:
+            if attempt == 15:
+                print(f"failed to connect to proxy after {attempt} attempts: {exc}")
+                return 3
+            print(f"proxy not ready yet (attempt {attempt}/15): {exc}")
+            time.sleep(1)
+
+    if sock is None:
+        print("failed to initialize client socket")
+        return 3
     request = (
         f"CONNECT {target_host}:{target_port} HTTP/1.1\r\n"
         f"Host: {target_host}:{target_port}\r\n"

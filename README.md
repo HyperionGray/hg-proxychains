@@ -70,7 +70,13 @@ docker compose up
 ### 3. Check results
 
 - `client` should print a successful `CONNECT` followed by `OK from exit-server`
-- health endpoint:
+- readiness endpoint (returns 200 only when `egressd` is ready to carry traffic):
+
+```bash
+curl -f http://localhost:9191/ready
+```
+
+- health endpoint (liveness + status payload):
 
 ```bash
 curl http://localhost:9191/health
@@ -97,6 +103,10 @@ For host mode, `egressd/config.host.example.json5` shows how to launch FunkyDNS 
 ## What to tweak first
 
 - `egressd/config.json5`: proxy hop URLs, canary target, health port
+- `egressd/config*.json5` supervisor readiness policy:
+  - `require_all_hops_healthy`
+  - `ready_grace_period_s`
+  - `max_hop_status_age_s`
 - `scripts/host-egress-owner.sh`: upstream proxy and DoH IPs
 - `scripts/host-nftables.sh`: bridge interface name and infra CIDRs
 

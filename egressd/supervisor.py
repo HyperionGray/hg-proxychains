@@ -19,11 +19,13 @@ import pyjson5
 from chain import build_relay_string
 
 CFG_PATH = os.environ.get("EGRESSD_CONFIG", "/opt/egressd/config.json5")
+RUNTIME_CFG: Dict[str, Any] = {}
 STATE: Dict[str, Any] = {
     "pproxy": "down",
     "funkydns": "disabled",
     "last_start": None,
     "last_exit": None,
+    "last_hop_check": None,
     "hops": {},
 }
 
@@ -57,10 +59,38 @@ def load_cfg(path: str = CFG_PATH) -> Dict[str, Any]:
     return pyjson5.decode(Path(path).read_text(encoding="utf-8"))
 
 
-def encode_funkydns_upstreams(value: Any) -> str:
+def _normalize_upstream_values(value: Any) -> list[str]:
     if isinstance(value, str):
-        return json.dumps([value])
-    return json.dumps(value)
+        candidates = [value]
+    elif isinstance(value, list):
+        candidates = value
+    else:
+        raise ValueError("dns upstream must be a string or list of strings")
+
+    if not candidates:
+        raise ValueError("dns upstream list must not be empty")
+
+    normalized: list[str] = []
+    for candidate in candidates:
+        if not isinstance(candidate, str) or not candidate.strip():
+            raise ValueError("dns upstream entries must be non-empty strings")
+        parsed = urlparse(candidate)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError(f"invalid dns upstream URL: {candidate}")
+        normalized.append(candidate)
+    return normalized
+
+
+def get_funkydns_upstreams(dns_cfg: Dict[str, Any]) -> list[str]:
+    if "doh_upstreams" in dns_cfg:
+        return _normalize_upstream_values(dns_cfg["doh_upstreams"])
+    if "doh_upstream" in dns_cfg:
+        return _normalize_upstream_values(dns_cfg["doh_upstream"])
+    raise ValueError("dns.doh_upstream or dns.doh_upstreams is required when launch_funkydns=true")
+
+
+def encode_funkydns_upstreams(value: Any) -> str:
+    return json.dumps(_normalize_upstream_values(value))
 
 
 def spawn_process(argv: list[str], env: Optional[Dict[str, str]] = None) -> subprocess.Popen:
@@ -91,7 +121,7 @@ def start_funkydns(cfg: Dict[str, Any]) -> Optional[subprocess.Popen]:
         return None
     fn_bin = cfg["supervisor"].get("funkydns_bin", "funkydns")
     dns_port = str(cfg["dns"]["port"])
-    doh_upstream = encode_funkydns_upstreams(cfg["dns"]["doh_upstream"])
+    doh_upstream = json.dumps(get_funkydns_upstreams(cfg["dns"]))
     argv = [fn_bin, "server", "--dns-port", dns_port, "--doh-port", "443", "--upstream", doh_upstream]
     logging.info("starting funkydns argv=%s", " ".join(argv))
     proc = spawn_process(argv)
@@ -102,12 +132,19 @@ def start_funkydns(cfg: Dict[str, Any]) -> Optional[subprocess.Popen]:
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
-        if self.path != "/health":
+        if self.path not in {"/health", "/ready"}:
             self.send_response(404)
             self.end_headers()
             return
-        body = json.dumps(STATE).encode("utf-8")
-        self.send_response(200)
+        payload: Dict[str, Any] = dict(STATE)
+        status = 200
+        if self.path == "/ready":
+            ready, reason = evaluate_readiness(RUNTIME_CFG)
+            payload = {"ready": ready, "reason": reason, "state": payload}
+            status = 200 if ready else 503
+
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -179,6 +216,61 @@ def check_hop_connectivity(hop_url: str, target: str, timeout: int = 3) -> Dict[
                 pass
 
 
+def _as_bool(value: Any, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
+def evaluate_readiness(cfg: Dict[str, Any], now: Optional[float] = None) -> Tuple[bool, str]:
+    now_ts = int(now if now is not None else time.time())
+    if STATE.get("pproxy") != "running":
+        return False, "pproxy not running"
+
+    hop_cfg = cfg.get("chain", {}).get("hops", [])
+    if not hop_cfg:
+        return True, "ready (no hops configured)"
+
+    sup_cfg = cfg.get("supervisor", {})
+    grace_s = int(sup_cfg.get("ready_grace_period_s", 15))
+    interval_s = int(sup_cfg.get("hop_check_interval_s", 5))
+    max_age_s = int(sup_cfg.get("max_hop_status_age_s", max(grace_s, interval_s * 2)))
+
+    last_hop_check = STATE.get("last_hop_check")
+    if not isinstance(last_hop_check, int):
+        last_start = STATE.get("last_start")
+        if isinstance(last_start, int) and (now_ts - last_start) <= grace_s:
+            return False, "waiting for initial hop probes"
+        return False, "hop probes unavailable"
+
+    age_s = now_ts - last_hop_check
+    if age_s > max_age_s:
+        return False, f"hop probe data stale ({age_s}s old)"
+
+    hop_states = STATE.get("hops", {})
+    if not isinstance(hop_states, dict) or not hop_states:
+        return False, "hop probes unavailable"
+
+    expected_hops = len(hop_cfg)
+    if len(hop_states) < expected_hops:
+        return False, "hop probes incomplete"
+
+    hop_ok = [bool(status.get("ok")) for status in hop_states.values() if isinstance(status, dict)]
+    if len(hop_ok) < expected_hops:
+        return False, "hop probes incomplete"
+
+    require_all = _as_bool(sup_cfg.get("require_all_hops_healthy"), default=False)
+    if require_all and not all(hop_ok):
+        return False, "at least one hop is unhealthy"
+    if not require_all and not any(hop_ok):
+        return False, "all hops are unhealthy"
+    return True, "ready"
+
+
 def hop_health_loop(cfg: Dict[str, Any]) -> None:
     interval = int(cfg["supervisor"].get("hop_check_interval_s", 5))
     target = cfg["chain"].get("canary_target", "example.com:443")
@@ -187,11 +279,14 @@ def hop_health_loop(cfg: Dict[str, Any]) -> None:
         for idx, hop in enumerate(cfg["chain"].get("hops", [])):
             statuses[f"hop_{idx}"] = check_hop_connectivity(hop["url"], target)
         STATE["hops"] = statuses
+        STATE["last_hop_check"] = int(time.time())
         time.sleep(interval)
 
 
 def main() -> int:
+    global RUNTIME_CFG
     cfg = load_cfg()
+    RUNTIME_CFG = cfg
     configure_logging(cfg)
 
     run_health_server(cfg["supervisor"].get("health_bind", "0.0.0.0"), int(cfg["supervisor"].get("health_port", 9191)))
