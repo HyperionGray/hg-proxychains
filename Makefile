@@ -1,4 +1,7 @@
-.PHONY: smoke down logs health bundle pycheck
+.PHONY: deps smoke down logs health bundle pycheck
+
+deps:
+	./scripts/bootstrap-third-party.sh
 
 smoke:
 	docker compose up --build

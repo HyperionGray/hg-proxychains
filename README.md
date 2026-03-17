@@ -43,6 +43,7 @@ The design goal is intentionally boring:
 │   ├── Dockerfile
 │   └── test_client.py
 ├── scripts/
+│   ├── bootstrap-third-party.sh
 │   ├── host-nftables.sh
 │   └── host-egress-owner.sh
 └── third_party/
@@ -51,14 +52,16 @@ The design goal is intentionally boring:
 
 ## Quick start
 
-### 1. Add FunkyDNS locally
+### 1. Initialize third-party dependencies
 
-Configure authenticated GitHub access, then clone the private
-`P4X-ng/FunkyDNS` repository into `third_party/FunkyDNS`:
+Configure authenticated GitHub access, then bootstrap the pinned FunkyDNS checkout:
 
 ```bash
-git clone https://github.com/P4X-ng/FunkyDNS.git third_party/FunkyDNS
+make deps
 ```
+
+This uses `scripts/bootstrap-third-party.sh`, which checks out the exact gitlink
+revision for `third_party/FunkyDNS` and normalizes the remote URL after auth.
 
 ### 2. Build and run the smoke harness
 
