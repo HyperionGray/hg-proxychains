@@ -162,15 +162,23 @@ Run repository maintenance checks (unfinished markers, backup files, stale artif
 
 ```bash
 make maintenance
+# equivalent: python3 scripts/repo_hygiene.py scan --repo-root .
 ```
 
 For automatic cleanup of removable clutter (backup files and known stale artifacts):
 
 ```bash
 make maintenance-fix
+# equivalent: python3 scripts/repo_hygiene.py clean --repo-root .
 ```
 
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
+
+By default the scanner excludes `third_party/FunkyDNS` so external dependency TODOs do not block first-party hygiene checks. To include third-party paths explicitly:
+
+```bash
+python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
+```
 
 ## Notes on FunkyDNS review
 

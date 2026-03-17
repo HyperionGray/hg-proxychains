@@ -19,8 +19,8 @@ This repository includes a small maintenance utility at
   - Python cache outputs (`__pycache__/`, `*.pyc`, `*.pyo`)
   - common metadata noise (`.DS_Store`, `Thumbs.db`)
 
-The scanner intentionally skips `third_party/FunkyDNS/` when checking
-unfinished markers, because that path is managed as an external dependency.
+By default, the scanner skips `third_party/FunkyDNS/` for unfinished markers
+and stray-file cleanup, because that path is managed as an external dependency.
 
 ## Usage
 
@@ -29,6 +29,12 @@ From repo root:
 ```bash
 python3 scripts/repo_hygiene.py scan --repo-root .
 python3 scripts/repo_hygiene.py clean --repo-root .
+
+# include third-party paths explicitly
+python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
+
+# machine-readable output for automation
+python3 scripts/repo_hygiene.py scan --repo-root . --json
 ```
 
 Or through Make targets:
@@ -36,7 +42,12 @@ Or through Make targets:
 ```bash
 make repo-scan
 make repo-clean
+make maintenance
+make maintenance-fix
 ```
+
+`scripts/repo_maintenance.py` is retained as a compatibility wrapper and now
+delegates to `scripts/repo_hygiene.py`.
 
 ## Exit codes
 

@@ -1,6 +1,8 @@
 # Repository maintenance workflow
 
-This repository includes `scripts/repo_maintenance.py` to support recurring automation checks and cleanup.
+This repository's canonical maintenance utility is `scripts/repo_hygiene.py`.
+The older `scripts/repo_maintenance.py` entry point remains as a compatibility
+wrapper and delegates to `repo_hygiene.py`.
 
 ## What it checks
 
@@ -8,22 +10,23 @@ This repository includes `scripts/repo_maintenance.py` to support recurring auto
 - Backup files (`*~`, `*.bak`, `*.orig`, `*.old`, `*.tmp`)
 - Known stale artifacts (currently `egressd-starter.tar.gz`)
 
-By default, marker scanning also includes tracked files in `third_party/FunkyDNS` when that repository is present.
+By default, `repo_hygiene.py` excludes `third_party/FunkyDNS` so external
+dependency TODOs do not block first-party maintenance checks.
 
 ## Commands
 
 ```bash
 # Human-readable summary + findings (exits non-zero if issues exist)
-python3 scripts/repo_maintenance.py
+python3 scripts/repo_hygiene.py scan --repo-root .
 
 # JSON output for automation
-python3 scripts/repo_maintenance.py --json
+python3 scripts/repo_hygiene.py scan --repo-root . --json
 
-# Exclude third_party marker scan
-python3 scripts/repo_maintenance.py --no-include-third-party
+# Include third_party marker and stray-file scan explicitly
+python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
-# Remove backup files + stale artifacts while scanning
-python3 scripts/repo_maintenance.py --fix
+# Remove stray artifacts while scanning
+python3 scripts/repo_hygiene.py clean --repo-root .
 ```
 
 Makefile wrappers:
@@ -35,6 +38,6 @@ make maintenance-fix
 
 ## Notes
 
-- `--fix` only removes backup files and known stale artifacts.
+- `clean` removes tracked stray artifacts and prints how many paths were deleted.
 - Unfinished markers are reported but not modified automatically.
-- Exit code is `1` when any issues are found, making this suitable for scheduled jobs and CI gates.
+- Exit code is `1` when unfinished markers exist, and for `scan` also when stray files are found.
