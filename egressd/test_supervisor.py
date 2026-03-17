@@ -1,9 +1,13 @@
 import copy
+import json
 import os
 import sys
+import types
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+if "pyjson5" not in sys.modules:
+    sys.modules["pyjson5"] = types.SimpleNamespace(decode=json.loads)
 import supervisor
 
 
