@@ -4,10 +4,12 @@ import os
 import sys
 import types
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 if "pyjson5" not in sys.modules:
     sys.modules["pyjson5"] = types.SimpleNamespace(decode=json.loads)
+
 import supervisor
 
 
@@ -54,25 +56,9 @@ class SupervisorStateTests(unittest.TestCase):
         self.assertTrue(supervisor.STATE["ready"])
 
 
-if __name__ == "__main__":
-    unittest.main()
-import importlib
-import sys
-from pathlib import Path
-from types import SimpleNamespace
-import unittest
-from unittest.mock import patch
-
-sys.modules.setdefault("pyjson5", SimpleNamespace(decode=lambda value: value))
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-supervisor = importlib.import_module("supervisor")
-
-
-class SupervisorTests(unittest.TestCase):
+class SupervisorProcessTests(unittest.TestCase):
     def test_encode_funkydns_upstreams_wraps_single_url_as_json_array(self) -> None:
         value = supervisor.encode_funkydns_upstreams("https://cloudflare-dns.com/dns-query")
-
         self.assertEqual(value, '["https://cloudflare-dns.com/dns-query"]')
 
     def test_start_funkydns_passes_json_encoded_upstreams(self) -> None:
@@ -86,13 +72,11 @@ class SupervisorTests(unittest.TestCase):
                 "funkydns_bin": "funkydns",
             },
         }
-
         with patch("supervisor.spawn_process") as spawn_process, patch("supervisor.threading.Thread") as thread:
             proc = spawn_process.return_value
             proc.pid = 123
             proc.stdout = []
             proc.stderr = []
-
             supervisor.start_funkydns(cfg)
 
         spawn_process.assert_called_once_with(
@@ -108,3 +92,7 @@ class SupervisorTests(unittest.TestCase):
             ]
         )
         self.assertEqual(thread.call_count, 2)
+
+
+if __name__ == "__main__":
+    unittest.main()
