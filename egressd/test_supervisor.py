@@ -1,4 +1,5 @@
 import importlib
+import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,12 +18,37 @@ class SupervisorTests(unittest.TestCase):
 
         self.assertEqual(value, '["https://cloudflare-dns.com/dns-query"]')
 
+    def test_encode_funkydns_upstreams_accepts_comma_separated_urls(self) -> None:
+        value = supervisor.encode_funkydns_upstreams(
+            "https://cloudflare-dns.com/dns-query, https://dns.google/dns-query"
+        )
+
+        self.assertEqual(
+            value,
+            '["https://cloudflare-dns.com/dns-query", "https://dns.google/dns-query"]',
+        )
+
+    def test_encode_funkydns_upstreams_accepts_json_array_string(self) -> None:
+        value = supervisor.encode_funkydns_upstreams(
+            '["https://cloudflare-dns.com/dns-query", "https://dns.google/dns-query"]'
+        )
+        parsed = json.loads(value)
+
+        self.assertEqual(
+            parsed,
+            ["https://cloudflare-dns.com/dns-query", "https://dns.google/dns-query"],
+        )
+
+    def test_encode_funkydns_upstreams_rejects_invalid_url(self) -> None:
+        with self.assertRaises(ValueError):
+            supervisor.encode_funkydns_upstreams("not-a-url")
+
     def test_start_funkydns_passes_json_encoded_upstreams(self) -> None:
         cfg = {
             "dns": {
                 "launch_funkydns": True,
                 "port": 53,
-                "doh_upstream": "https://cloudflare-dns.com/dns-query",
+                "doh_upstream": "https://cloudflare-dns.com/dns-query,https://dns.google/dns-query",
             },
             "supervisor": {
                 "funkydns_bin": "funkydns",
@@ -46,7 +72,7 @@ class SupervisorTests(unittest.TestCase):
                 "--doh-port",
                 "443",
                 "--upstream",
-                '["https://cloudflare-dns.com/dns-query"]',
+                '["https://cloudflare-dns.com/dns-query", "https://dns.google/dns-query"]',
             ]
         )
         self.assertEqual(thread.call_count, 2)
