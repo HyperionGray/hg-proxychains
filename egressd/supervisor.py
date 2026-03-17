@@ -401,11 +401,9 @@ def parse_proxy_url(url: str) -> Tuple[str, int, Optional[str]]:
 
 
 def check_hop_connectivity(hop_url: str, target: str, timeout: float = 3.0) -> Dict[str, Any]:
-    host, port, auth_header = parse_proxy_url(hop_url)
     sock: Optional[socket.socket] = None
     proxy_label = hop_url
     start = time.time()
-    proxy = hop_url
     try:
         host, port, auth_header = parse_proxy_url(hop_url)
         proxy_label = f"{host}:{port}"
