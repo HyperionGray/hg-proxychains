@@ -16,6 +16,7 @@ This repo's compose stack is only a smoke harness. Real enforcement happens on a
    - `pyjson5`
 3. Copy `egressd/` to `/opt/egressd`
 4. Put a host config at `/etc/egressd/config.json5` based on `config.host.example.json5`
+   - For embedded FunkyDNS, set `dns.doh_upstreams` to one or more DoH endpoints.
 5. Run `scripts/host-nftables.sh`
 6. Run `scripts/host-egress-owner.sh`
 7. Install and start `egressd/systemd/egressd.service`

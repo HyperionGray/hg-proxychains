@@ -11,7 +11,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 import pyjson5
@@ -83,6 +83,47 @@ def start_pproxy(cfg: Dict[str, Any]) -> subprocess.Popen:
     threading.Thread(target=pipe_stream, args=(f"pproxy[{proc.pid}][OUT]", proc.stdout), daemon=True).start()
     threading.Thread(target=pipe_stream, args=(f"pproxy[{proc.pid}][ERR]", proc.stderr), daemon=True).start()
     return proc
+
+
+def get_doh_upstreams(cfg: Dict[str, Any]) -> List[str]:
+    """Resolve DoH upstreams from config.
+
+    Supported forms:
+    - dns.doh_upstream: "https://example/dns-query"
+    - dns.doh_upstreams: ["https://a/dns-query", "https://b/dns-query"]
+    - dns.doh_upstream: '["https://a/dns-query","https://b/dns-query"]'
+    """
+    dns_cfg = cfg.get("dns", {})
+    raw_upstreams: Any = dns_cfg.get("doh_upstreams", dns_cfg.get("doh_upstream"))
+
+    if raw_upstreams is None:
+        raise ValueError("missing dns.doh_upstream(s) configuration")
+
+    if isinstance(raw_upstreams, str):
+        raw = raw_upstreams.strip()
+        if raw.startswith("["):
+            try:
+                raw_upstreams = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise ValueError("dns.doh_upstream JSON list is invalid") from exc
+        else:
+            raw_upstreams = [raw]
+
+    if not isinstance(raw_upstreams, list):
+        raise ValueError("dns.doh_upstream(s) must be a string or list of strings")
+
+    upstreams: List[str] = []
+    for item in raw_upstreams:
+        if not isinstance(item, str):
+            raise ValueError("dns.doh_upstream(s) entries must be strings")
+        stripped = item.strip()
+        if stripped:
+            upstreams.append(stripped)
+
+    if not upstreams:
+        raise ValueError("at least one DoH upstream is required")
+
+    return upstreams
 
 
 def start_funkydns(cfg: Dict[str, Any]) -> Optional[subprocess.Popen]:
