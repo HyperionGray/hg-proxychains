@@ -158,19 +158,25 @@ invalid hop URL, empty chain, or missing binary path).
 
 ## Maintenance and cleanup
 
-Run repository maintenance checks (unfinished markers, backup files, stale artifacts):
+Run repository maintenance checks (unfinished markers + stray artifacts):
 
 ```bash
 make maintenance
 ```
 
-For automatic cleanup of removable clutter (backup files and known stale artifacts):
+For automatic cleanup of removable clutter (untracked stray artifacts):
 
 ```bash
 make maintenance-fix
 ```
 
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
+
+To include `third_party/FunkyDNS` in the scan explicitly, use:
+
+```bash
+python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party --json
+```
 
 ## Notes on FunkyDNS review
 

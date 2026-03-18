@@ -32,6 +32,23 @@ class RepoHygieneTests(unittest.TestCase):
             ],
         )
 
+    def test_classify_stray_paths_skips_third_party_unless_enabled(self) -> None:
+        paths = [
+            "third_party/FunkyDNS/archive/funkydns.py~",
+            "tmp/output.tmp",
+        ]
+        default_scan = repo_hygiene.classify_stray_paths(paths)
+        self.assertEqual(default_scan, ["tmp/output.tmp"])
+
+        with_third_party = repo_hygiene.classify_stray_paths(paths, include_third_party=True)
+        self.assertEqual(
+            with_third_party,
+            [
+                "third_party/FunkyDNS/archive/funkydns.py~",
+                "tmp/output.tmp",
+            ],
+        )
+
     def test_find_unfinished_markers_ignores_skipped_paths(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -52,6 +69,24 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(findings[0].path, "src.py")
         self.assertEqual(findings[0].line_number, 2)
         self.assertEqual(findings[0].marker, "TODO")
+
+    def test_find_unfinished_markers_can_include_third_party(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src_file = root / "src.py"
+            dep_file = root / "third_party" / "FunkyDNS" / "dep.py"
+            dep_file.parent.mkdir(parents=True, exist_ok=True)
+            src_file.write_text("# TO" "DO: fix this\n", encoding="utf-8")
+            dep_file.write_text("# TO" "DO: dependency todo\n", encoding="utf-8")
+
+            findings = repo_hygiene.find_unfinished_markers(
+                root,
+                ["src.py", "third_party/FunkyDNS/dep.py"],
+                include_third_party=True,
+            )
+
+        self.assertEqual(len(findings), 2)
+        self.assertEqual({finding.path for finding in findings}, {"src.py", "third_party/FunkyDNS/dep.py"})
 
     def test_delete_paths_removes_files_and_empty_parents(self) -> None:
         with tempfile.TemporaryDirectory() as td:

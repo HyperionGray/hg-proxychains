@@ -18,28 +18,46 @@ This repository includes a small maintenance utility at
   - temporary files (`*.tmp`)
   - Python cache outputs (`__pycache__/`, `*.pyc`, `*.pyo`)
   - common metadata noise (`.DS_Store`, `Thumbs.db`)
+- Tracked stray artifacts (reported, not auto-deleted) that match the same
+  backup/cache patterns.
 
-The scanner intentionally skips `third_party/FunkyDNS/` when checking
-unfinished markers, because that path is managed as an external dependency.
+By default, the scanner skips `third_party/FunkyDNS/` because that path is
+managed as an external dependency.
 
 ## Usage
 
 From repo root:
 
 ```bash
+# Text report
 python3 scripts/repo_hygiene.py scan --repo-root .
+
+# JSON report for automation
+python3 scripts/repo_hygiene.py scan --repo-root . --json
+
+# Include third-party dependency tree explicitly
+python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
+
+# Remove untracked stray files/directories
 python3 scripts/repo_hygiene.py clean --repo-root .
 ```
 
 Or through Make targets:
 
 ```bash
+make maintenance
+make maintenance-fix
 make repo-scan
 make repo-clean
 ```
 
 ## Exit codes
 
-- `0`: no unfinished markers found (`clean` may still remove stray files)
-- `1`: unfinished markers found and/or stray files found during `scan`
+- `0`: no unfinished markers or stray files found
+- `1`: unfinished markers and/or stray files found
 - `2`: invalid invocation (for example, non-git directory)
+
+## Compatibility
+
+`scripts/repo_maintenance.py` is still available as a compatibility wrapper and
+delegates to `scripts/repo_hygiene.py`.

@@ -1,4 +1,4 @@
-.PHONY: smoke down logs health bundle pycheck test check
+.PHONY: smoke down logs health ready pycheck unittest test check validate-config maintenance maintenance-fix repo-scan repo-clean bundle clean
 
 smoke:
 	docker compose up --build
@@ -22,28 +22,28 @@ unittest:
 	python3 -m unittest egressd/test_supervisor_readiness.py
 
 test:
-	python3 -m unittest discover -s egressd -p "test_*.py"
+	python3 -m unittest egressd/test_supervisor.py egressd/test_supervisor_readiness.py scripts/test_repo_hygiene.py
 
 check: pycheck test
-
-test:
-	python3 -m unittest egressd/test_supervisor.py
 
 validate-config:
 	docker compose run --rm --no-deps --build -e EGRESSD_VALIDATE_ONLY=1 egressd python3 /opt/egressd/supervisor.py
 
-test:
-	python3 -m unittest egressd/test_supervisor.py scripts/test_repo_hygiene.py
-
-repo-scan:
+maintenance:
 	python3 scripts/repo_hygiene.py scan --repo-root .
 
-repo-clean:
+maintenance-fix:
 	python3 scripts/repo_hygiene.py clean --repo-root .
+
+repo-scan:
+	$(MAKE) maintenance
+
+repo-clean:
+	$(MAKE) maintenance-fix
 
 bundle:
 	tar -czf egressd-starter.tar.gz .
 
 clean:
-	rm -rf __pycache__ client/__pycache__ egressd/__pycache__ exitserver/__pycache__
+	rm -rf __pycache__ client/__pycache__ egressd/__pycache__ exitserver/__pycache__ scripts/__pycache__
 	rm -f *.log egressd-starter.tar.gz

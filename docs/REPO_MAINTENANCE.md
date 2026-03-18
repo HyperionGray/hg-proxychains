@@ -1,14 +1,18 @@
 # Repository maintenance workflow
 
-This repository includes `scripts/repo_maintenance.py` to support recurring automation checks and cleanup.
+This repository includes `scripts/repo_maintenance.py` as a compatibility
+entry point for recurring automation checks and cleanup.
+
+The implementation now lives in `scripts/repo_hygiene.py`; maintenance calls
+are delegated there so only one scanner/cleaner logic path must be maintained.
 
 ## What it checks
 
-- Unfinished markers in tracked files (`TODO`, `FIXME`, `STUB`, `TBD`, `XXX`, `UNFINISHED`)
-- Backup files (`*~`, `*.bak`, `*.orig`, `*.old`, `*.tmp`)
-- Known stale artifacts (currently `egressd-starter.tar.gz`)
+- Unfinished markers in tracked files (`TODO`, `FIXME`, `STUB`, `TBD`, `XXX`, `WIP`, `UNFINISHED`)
+- Stray backup/cache artifacts in tracked and untracked paths (`*~`, `*.bak`, `*.orig`, `*.rej`, `*.tmp`, `__pycache__`, `*.pyc`, `*.pyo`)
 
-By default, marker scanning also includes tracked files in `third_party/FunkyDNS` when that repository is present.
+By default, this compatibility command includes `third_party/FunkyDNS`
+(`--include-third-party`) to preserve previous behavior.
 
 ## Commands
 
@@ -19,10 +23,10 @@ python3 scripts/repo_maintenance.py
 # JSON output for automation
 python3 scripts/repo_maintenance.py --json
 
-# Exclude third_party marker scan
+# Exclude third_party marker and stray scan
 python3 scripts/repo_maintenance.py --no-include-third-party
 
-# Remove backup files + stale artifacts while scanning
+# Remove untracked stray artifacts while scanning
 python3 scripts/repo_maintenance.py --fix
 ```
 
@@ -35,6 +39,6 @@ make maintenance-fix
 
 ## Notes
 
-- `--fix` only removes backup files and known stale artifacts.
-- Unfinished markers are reported but not modified automatically.
+- `--fix` only removes untracked stray artifacts.
+- Unfinished markers and tracked stray files are reported but not modified automatically.
 - Exit code is `1` when any issues are found, making this suitable for scheduled jobs and CI gates.
