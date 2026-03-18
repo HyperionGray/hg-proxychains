@@ -156,12 +156,13 @@ class RepoHygieneTests(unittest.TestCase):
             stale = root / "egressd-starter.tar.gz"
             stale.write_text("bundle\n", encoding="utf-8")
 
-            rc = repo_hygiene.command_clean(
-                root,
-                include_third_party=False,
-                baseline_path=".repo-hygiene-baseline.json",
-                json_output=True,
-            )
+            with contextlib.redirect_stdout(io.StringIO()):
+                rc = repo_hygiene.command_clean(
+                    root,
+                    include_third_party=False,
+                    baseline_path=".repo-hygiene-baseline.json",
+                    json_output=True,
+                )
 
             self.assertEqual(rc, 0)
             self.assertFalse(notes.exists())
@@ -193,12 +194,13 @@ class RepoHygieneTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            rc = repo_hygiene.command_scan(
-                root,
-                include_third_party=False,
-                baseline_path=".repo-hygiene-baseline.json",
-                json_output=True,
-            )
+            with contextlib.redirect_stdout(io.StringIO()):
+                rc = repo_hygiene.command_scan(
+                    root,
+                    include_third_party=False,
+                    baseline_path=".repo-hygiene-baseline.json",
+                    json_output=True,
+                )
 
         self.assertEqual(rc, 0)
 
