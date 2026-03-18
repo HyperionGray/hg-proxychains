@@ -10,6 +10,11 @@ import repo_hygiene
 class RepoHygieneTests(unittest.TestCase):
     def test_should_skip_for_unfinished(self) -> None:
         self.assertTrue(repo_hygiene.should_skip_for_unfinished("third_party/FunkyDNS/dns_server/doh.py"))
+        self.assertFalse(
+            repo_hygiene.should_skip_for_unfinished(
+                "third_party/FunkyDNS/dns_server/doh.py", include_third_party=True
+            )
+        )
         self.assertFalse(repo_hygiene.should_skip_for_unfinished("egressd/supervisor.py"))
 
     def test_classify_stray_paths_detects_backups_and_caches(self) -> None:
@@ -47,11 +52,25 @@ class RepoHygieneTests(unittest.TestCase):
                 root,
                 ["src.py", "NOTES.md", "third_party/FunkyDNS/dep.py"],
             )
+            findings_with_third_party = repo_hygiene.find_unfinished_markers(
+                root,
+                ["src.py", "NOTES.md", "third_party/FunkyDNS/dep.py"],
+                include_third_party=True,
+            )
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
         self.assertEqual(findings[0].line_number, 2)
         self.assertEqual(findings[0].marker, "TODO")
+        self.assertEqual(len(findings_with_third_party), 2)
+
+    def test_find_stale_artifacts_splits_tracked_and_untracked(self) -> None:
+        tracked, untracked = repo_hygiene.find_stale_artifacts(
+            tracked_paths=["README.md", "egressd-starter.tar.gz"],
+            untracked_paths=["tmp/file.tmp", "egressd-starter.tar.gz"],
+        )
+        self.assertEqual(tracked, ["egressd-starter.tar.gz"])
+        self.assertEqual(untracked, ["egressd-starter.tar.gz"])
 
     def test_delete_paths_removes_files_and_empty_parents(self) -> None:
         with tempfile.TemporaryDirectory() as td:

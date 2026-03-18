@@ -1,40 +1,11 @@
 # Repository maintenance workflow
 
-This repository includes `scripts/repo_maintenance.py` to support recurring automation checks and cleanup.
+`scripts/repo_hygiene.py` is the canonical maintenance utility.
 
-## What it checks
+- Primary documentation: `docs/REPO-HYGIENE.md`
+- Preferred automation entrypoints:
+  - `make maintenance`
+  - `make maintenance-fix`
 
-- Unfinished markers in tracked files (`TODO`, `FIXME`, `STUB`, `TBD`, `XXX`, `UNFINISHED`)
-- Backup files (`*~`, `*.bak`, `*.orig`, `*.old`, `*.tmp`)
-- Known stale artifacts (currently `egressd-starter.tar.gz`)
-
-By default, marker scanning also includes tracked files in `third_party/FunkyDNS` when that repository is present.
-
-## Commands
-
-```bash
-# Human-readable summary + findings (exits non-zero if issues exist)
-python3 scripts/repo_maintenance.py
-
-# JSON output for automation
-python3 scripts/repo_maintenance.py --json
-
-# Exclude third_party marker scan
-python3 scripts/repo_maintenance.py --no-include-third-party
-
-# Remove backup files + stale artifacts while scanning
-python3 scripts/repo_maintenance.py --fix
-```
-
-Makefile wrappers:
-
-```bash
-make maintenance
-make maintenance-fix
-```
-
-## Notes
-
-- `--fix` only removes backup files and known stale artifacts.
-- Unfinished markers are reported but not modified automatically.
-- Exit code is `1` when any issues are found, making this suitable for scheduled jobs and CI gates.
+`scripts/repo_maintenance.py` remains as a compatibility wrapper that forwards to
+`scripts/repo_hygiene.py` so existing automation jobs do not break.

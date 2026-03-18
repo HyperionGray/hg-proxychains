@@ -26,7 +26,7 @@ The design goal is intentionally boring:
 │   ├── BRINGUP-CHECKLIST.md
 │   ├── FUNKYDNS-REVIEW.md
 │   ├── HOST-DEPLOYMENT.md
-│   └── REPO_MAINTENANCE.md
+│   └── REPO-HYGIENE.md
 ├── egressd/
 │   ├── Dockerfile
 │   ├── requirements.txt
@@ -170,7 +170,15 @@ For automatic cleanup of removable clutter (backup files and known stale artifac
 make maintenance-fix
 ```
 
-For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
+`make maintenance` and `make maintenance-fix` emit JSON suitable for scheduled automation.
+
+For a deeper sweep that also checks unfinished markers in `third_party/FunkyDNS`:
+
+```bash
+python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party --json
+```
+
+Keep maintenance checks in the loop to catch new TODO/STUB markers and stray files early.
 
 ## Notes on FunkyDNS review
 
