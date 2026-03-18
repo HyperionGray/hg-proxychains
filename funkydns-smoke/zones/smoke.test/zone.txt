@@ -1,0 +1,2 @@
+# Local smoke-test zone for validating DoH without external DNS.
+smoke.test A 203.0.113.10

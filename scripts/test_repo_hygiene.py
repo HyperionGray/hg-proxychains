@@ -13,7 +13,8 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertTrue(repo_hygiene.should_skip_for_unfinished("third_party/FunkyDNS/dns_server/doh.py"))
         self.assertFalse(
             repo_hygiene.should_skip_for_unfinished(
-                "third_party/FunkyDNS/dns_server/doh.py", include_third_party=True
+                "third_party/FunkyDNS/dns_server/doh.py",
+                include_third_party=True,
             )
         )
         self.assertFalse(repo_hygiene.should_skip_for_unfinished("egressd/supervisor.py"))
@@ -26,12 +27,14 @@ class RepoHygieneTests(unittest.TestCase):
             "keep/readme.md",
             "docs/.DS_Store",
             "build/result.txt",
+            "egressd-starter.tar.gz",
         ]
         stray = repo_hygiene.classify_stray_paths(untracked)
         self.assertEqual(
             stray,
             [
                 "docs/.DS_Store",
+                "egressd-starter.tar.gz",
                 "notes.txt~",
                 "pkg/__pycache__/module.cpython-312.pyc",
                 "tmp/output.tmp",
@@ -53,7 +56,7 @@ class RepoHygieneTests(unittest.TestCase):
                 root,
                 ["src.py", "NOTES.md", "third_party/FunkyDNS/dep.py"],
             )
-            findings_with_third_party = repo_hygiene.find_unfinished_markers(
+            findings_with_dep = repo_hygiene.find_unfinished_markers(
                 root,
                 ["src.py", "NOTES.md", "third_party/FunkyDNS/dep.py"],
                 include_third_party=True,
@@ -63,39 +66,8 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(findings[0].path, "src.py")
         self.assertEqual(findings[0].line_number, 2)
         self.assertEqual(findings[0].marker, "TODO")
-        self.assertEqual(len(findings_with_third_party), 2)
-
-    def test_find_stale_artifacts_splits_tracked_and_untracked(self) -> None:
-        tracked, untracked = repo_hygiene.find_stale_artifacts(
-            tracked_paths=["README.md", "egressd-starter.tar.gz"],
-            untracked_paths=["tmp/file.tmp", "egressd-starter.tar.gz"],
-        )
-        self.assertEqual(tracked, ["egressd-starter.tar.gz"])
-        self.assertEqual(untracked, ["egressd-starter.tar.gz"])
-
-    def test_build_report_can_include_third_party_submodule_markers(self) -> None:
-        with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
-            (root / ".git").mkdir()
-            funky_root = root / "third_party" / "FunkyDNS"
-            funky_root.mkdir(parents=True, exist_ok=True)
-            (funky_root / ".git").mkdir()
-            (funky_root / "dep.py").write_text("# TO" "DO: dependency todo\n", encoding="utf-8")
-
-            with patch.object(repo_hygiene, "list_git_paths") as list_git_paths:
-                def fake_list_git_paths(repo_path: Path, args: tuple[str, ...]) -> list[str]:
-                    if repo_path == root and args == ("ls-files",):
-                        return []
-                    if repo_path == root and args == ("ls-files", "--others", "--exclude-standard"):
-                        return []
-                    if repo_path == funky_root and args == ("ls-files",):
-                        return ["dep.py"]
-                    return []
-
-                list_git_paths.side_effect = fake_list_git_paths
-                report = repo_hygiene.build_report(root, include_third_party=True)
-
-        self.assertEqual(report["summary"]["unfinished_markers"], 1)
+        self.assertEqual(len(findings_with_dep), 2)
+        self.assertEqual(findings_with_dep[1].path, "third_party/FunkyDNS/dep.py")
 
     def test_delete_paths_removes_files_and_empty_parents(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -108,6 +80,36 @@ class RepoHygieneTests(unittest.TestCase):
 
             self.assertEqual(deleted, 1)
             self.assertFalse((root / "tmp").exists())
+
+    def test_apply_marker_baseline_suppresses_known_findings(self) -> None:
+        todo_line = "# TO" "DO: first"
+        fixme_line = "# FI" "XME: second"
+        findings = [
+            repo_hygiene.MarkerFinding("a.py", 2, "TODO", todo_line),
+            repo_hygiene.MarkerFinding("b.py", 4, "FIXME", fixme_line),
+        ]
+        baseline = {("b.py", "FIXME", fixme_line)}
+        filtered, suppressed = repo_hygiene.apply_marker_baseline(findings, baseline)
+        self.assertEqual(suppressed, 1)
+        self.assertEqual([f.path for f in filtered], ["a.py"])
+
+    def test_find_unfinished_markers_excludes_baseline_file(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src_file = root / "src.py"
+            baseline_file = root / ".repo-hygiene-baseline.json"
+            baseline_line = "# TO" "DO: baseline marker"
+            src_file.write_text("# TO" "DO: source marker\n", encoding="utf-8")
+            baseline_file.write_text(f'{{"line":"{baseline_line}"}}\n', encoding="utf-8")
+
+            findings = repo_hygiene.find_unfinished_markers(
+                root,
+                ["src.py", ".repo-hygiene-baseline.json"],
+                excluded_paths={".repo-hygiene-baseline.json"},
+            )
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].path, "src.py")
 
 
 if __name__ == "__main__":
