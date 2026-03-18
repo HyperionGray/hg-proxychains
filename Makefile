@@ -1,4 +1,4 @@
-.PHONY: smoke down logs health bundle pycheck test check
+.PHONY: smoke down logs health ready bundle pycheck unittest test check validate-config repo-scan repo-clean maintenance maintenance-fix maintenance-baseline clean
 
 smoke:
 	docker compose up --build
@@ -16,30 +16,33 @@ ready:
 	curl -i http://localhost:9191/ready
 
 pycheck:
-	python3 -m py_compile egressd/supervisor.py egressd/chain.py egressd/test_supervisor_readiness.py client/test_client.py exitserver/echo_server.py
+	python3 -m py_compile egressd/supervisor.py egressd/chain.py egressd/test_supervisor.py egressd/test_supervisor_readiness.py client/test_client.py exitserver/echo_server.py scripts/test_repo_hygiene.py
 
 unittest:
-	python3 -m unittest egressd/test_supervisor_readiness.py
-
-test:
-	python3 -m unittest discover -s egressd -p "test_*.py"
-
-check: pycheck test
-
-test:
 	python3 -m unittest egressd/test_supervisor.py
+
+test:
+	python3 -m unittest egressd/test_supervisor.py scripts/test_repo_hygiene.py
 
 validate-config:
 	docker compose run --rm --no-deps --build -e EGRESSD_VALIDATE_ONLY=1 egressd python3 /opt/egressd/supervisor.py
 
-test:
-	python3 -m unittest egressd/test_supervisor.py scripts/test_repo_hygiene.py
+check: pycheck test
 
 repo-scan:
 	python3 scripts/repo_hygiene.py scan --repo-root .
 
 repo-clean:
 	python3 scripts/repo_hygiene.py clean --repo-root .
+
+maintenance:
+	python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
+
+maintenance-fix:
+	python3 scripts/repo_hygiene.py clean --repo-root . --include-third-party
+
+maintenance-baseline:
+	python3 scripts/repo_hygiene.py baseline --repo-root . --include-third-party
 
 bundle:
 	tar -czf egressd-starter.tar.gz .

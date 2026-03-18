@@ -26,6 +26,7 @@ The design goal is intentionally boring:
 │   ├── BRINGUP-CHECKLIST.md
 │   ├── FUNKYDNS-REVIEW.md
 │   ├── HOST-DEPLOYMENT.md
+│   ├── REPO-HYGIENE.md
 │   └── REPO_MAINTENANCE.md
 ├── egressd/
 │   ├── Dockerfile
@@ -168,6 +169,12 @@ For automatic cleanup of removable clutter (backup files and known stale artifac
 
 ```bash
 make maintenance-fix
+```
+
+To refresh the baseline used for known upstream unfinished markers:
+
+```bash
+make maintenance-baseline
 ```
 
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.

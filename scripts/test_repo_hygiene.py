@@ -10,6 +10,12 @@ import repo_hygiene
 class RepoHygieneTests(unittest.TestCase):
     def test_should_skip_for_unfinished(self) -> None:
         self.assertTrue(repo_hygiene.should_skip_for_unfinished("third_party/FunkyDNS/dns_server/doh.py"))
+        self.assertFalse(
+            repo_hygiene.should_skip_for_unfinished(
+                "third_party/FunkyDNS/dns_server/doh.py",
+                include_third_party=True,
+            )
+        )
         self.assertFalse(repo_hygiene.should_skip_for_unfinished("egressd/supervisor.py"))
 
     def test_classify_stray_paths_detects_backups_and_caches(self) -> None:
@@ -47,11 +53,18 @@ class RepoHygieneTests(unittest.TestCase):
                 root,
                 ["src.py", "NOTES.md", "third_party/FunkyDNS/dep.py"],
             )
+            findings_with_dep = repo_hygiene.find_unfinished_markers(
+                root,
+                ["src.py", "NOTES.md", "third_party/FunkyDNS/dep.py"],
+                include_third_party=True,
+            )
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
         self.assertEqual(findings[0].line_number, 2)
         self.assertEqual(findings[0].marker, "TODO")
+        self.assertEqual(len(findings_with_dep), 2)
+        self.assertEqual(findings_with_dep[1].path, "third_party/FunkyDNS/dep.py")
 
     def test_delete_paths_removes_files_and_empty_parents(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -64,6 +77,18 @@ class RepoHygieneTests(unittest.TestCase):
 
             self.assertEqual(deleted, 1)
             self.assertFalse((root / "tmp").exists())
+
+    def test_apply_marker_baseline_suppresses_known_findings(self) -> None:
+        todo_line = "# TO" "DO: first"
+        fixme_line = "# FI" "XME: second"
+        findings = [
+            repo_hygiene.MarkerFinding("a.py", 2, "TODO", todo_line),
+            repo_hygiene.MarkerFinding("b.py", 4, "FIXME", fixme_line),
+        ]
+        baseline = {("b.py", "FIXME", fixme_line)}
+        filtered, suppressed = repo_hygiene.apply_marker_baseline(findings, baseline)
+        self.assertEqual(suppressed, 1)
+        self.assertEqual([f.path for f in filtered], ["a.py"])
 
 
 if __name__ == "__main__":
