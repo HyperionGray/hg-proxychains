@@ -80,7 +80,7 @@ class RepoHygieneTests(unittest.TestCase):
             funky_root = root / "third_party" / "FunkyDNS"
             funky_root.mkdir(parents=True, exist_ok=True)
             (funky_root / ".git").mkdir()
-            (funky_root / "dep.py").write_text("# TODO: dependency todo\n", encoding="utf-8")
+            (funky_root / "dep.py").write_text("# TO" "DO: dependency todo\n", encoding="utf-8")
 
             with patch.object(repo_hygiene, "list_git_paths") as list_git_paths:
                 def fake_list_git_paths(repo_path: Path, args: tuple[str, ...]) -> list[str]:
