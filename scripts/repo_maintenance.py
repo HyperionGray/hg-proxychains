@@ -1,39 +1,64 @@
 #!/usr/bin/env python3
-"""Compatibility wrapper for the consolidated repo hygiene utility."""
+"""Compatibility wrapper for legacy maintenance invocations.
+
+This script delegates to scripts/repo_hygiene.py.
+"""
 
 from __future__ import annotations
 
+import argparse
 import subprocess
 import sys
 from pathlib import Path
+from typing import Sequence
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = argv if argv is not None else sys.argv[1:]
-    parser_args = list(args)
+def parse_args(argv: Sequence[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Legacy wrapper for repo hygiene checks."
+    )
+    parser.add_argument("--root", default=".", help="Repository root path (default: current directory)")
+    parser.add_argument(
+        "--include-third-party",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Include third_party/FunkyDNS in marker/stray scanning (default: true).",
+    )
+    parser.add_argument("--fix", action="store_true", help="Remove untracked stray artifacts.")
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Accepted for compatibility; output remains the repo_hygiene text format.",
+    )
+    parser.add_argument(
+        "--baseline-file",
+        default=".repo-hygiene-baseline.json",
+        help="Marker baseline path relative to --root (default: .repo-hygiene-baseline.json).",
+    )
+    return parser.parse_args(argv)
 
-    # Maintain legacy flag support:
-    #   --root <path>               -> --repo-root <path>
-    #   --fix                       -> clean
-    #   --include-third-party true  -> forwarded unchanged
-    if "--root" in parser_args:
-        index = parser_args.index("--root")
-        parser_args[index] = "--repo-root"
 
-    if "--fix" in parser_args:
-        parser_args.remove("--fix")
-        parser_args.insert(0, "clean")
-    elif not parser_args or parser_args[0].startswith("-"):
-        parser_args.insert(0, "scan")
+def main(argv: Sequence[str] | None = None) -> int:
+    args = parse_args(argv or sys.argv[1:])
+    root = Path(args.root).resolve()
+    hygiene_script = Path(__file__).resolve().parent / "repo_hygiene.py"
+    command = "clean" if args.fix else "scan"
 
-    if (
-        "--include-third-party" not in parser_args
-        and "--no-include-third-party" not in parser_args
-    ):
-        parser_args.append("--include-third-party")
+    cmd = [
+        sys.executable,
+        str(hygiene_script),
+        command,
+        "--repo-root",
+        str(root),
+        "--baseline-file",
+        args.baseline_file,
+    ]
+    if args.include_third_party:
+        cmd.append("--include-third-party")
+    if args.json:
+        print("warn: --json is deprecated in repo_maintenance.py compatibility mode", file=sys.stderr)
 
-    script = Path(__file__).resolve().with_name("repo_hygiene.py")
-    proc = subprocess.run([sys.executable, str(script), *parser_args], check=False)
+    proc = subprocess.run(cmd, check=False)
     return proc.returncode
 
 
