@@ -210,7 +210,8 @@ def start_funkydns(cfg: Dict[str, Any]) -> Optional[subprocess.Popen]:
         return None
     fn_bin = cfg["supervisor"].get("funkydns_bin", "funkydns")
     dns_port = str(cfg["dns"]["port"])
-    doh_upstream = json.dumps(get_funkydns_upstreams(cfg["dns"]))
+    raw_upstreams = cfg["dns"].get("doh_upstreams", cfg["dns"].get("doh_upstream"))
+    doh_upstream = encode_funkydns_upstreams(raw_upstreams)
     argv = [fn_bin, "server", "--dns-port", dns_port, "--doh-port", "443", "--upstream", doh_upstream]
     logging.info("starting funkydns argv=%s", " ".join(argv))
     proc = spawn_process(argv)
