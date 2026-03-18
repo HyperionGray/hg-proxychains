@@ -1,6 +1,7 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
+`scripts/repo_hygiene.py` is the primary scanner/cleaner for repository hygiene checks.
+`scripts/repo_maintenance.py` remains as a compatibility wrapper.
 
 This repository includes a small maintenance utility at
 `scripts/repo_hygiene.py` for scheduled cleanups and local checks.
@@ -48,7 +49,9 @@ python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
 # Remove untracked stray files/directories
 python3 scripts/repo_hygiene.py clean --repo-root .
-python3 scripts/repo_hygiene.py scan --repo-root . --json
+
+# Write/refresh baseline suppressions (useful for known upstream debt)
+python3 scripts/repo_hygiene.py baseline --repo-root . --include-third-party
 ```
 
 JSON output for automation:
@@ -69,13 +72,17 @@ Or through Make targets:
 ```bash
 make maintenance
 make maintenance-fix
+make maintenance-json
+make maintenance-all
+make maintenance-all-json
 make repo-scan
 make repo-clean
 make repo-scan-json
 ```
 
-`scripts/repo_maintenance.py` is retained as a compatibility wrapper and now
-delegates to `scripts/repo_hygiene.py`.
+`make maintenance*` uses the compatibility wrapper in first-party mode by
+default (`--no-include-third-party`), while `maintenance-all*` opts in to
+third-party scanning.
 
 ## Exit codes
 
@@ -95,7 +102,13 @@ Override with `--baseline-file <path>`.
 
 The baseline currently suppresses marker findings only (not stray files).
 
-## Legacy script
+## JSON output fields
 
-`scripts/repo_maintenance.py` remains as a compatibility wrapper and delegates
-to `repo_hygiene.py`.
+`scan --json` and `clean --json` include:
+
+- `unfinished_markers`
+- `stray_untracked_paths`
+- `stale_tracked_artifacts`
+- `stale_untracked_artifacts`
+- `suppressed_unfinished_markers`
+- `summary.total_issues` and per-category counts

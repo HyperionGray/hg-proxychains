@@ -2,7 +2,6 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import repo_hygiene
@@ -27,14 +26,13 @@ class RepoHygieneTests(unittest.TestCase):
             "keep/readme.md",
             "docs/.DS_Store",
             "build/result.txt",
-            "egressd-starter.tar.gz",
+            "third_party/FunkyDNS/archive/funkydns.py~",
         ]
         stray = repo_hygiene.classify_stray_paths(untracked)
         self.assertEqual(
             stray,
             [
                 "docs/.DS_Store",
-                "egressd-starter.tar.gz",
                 "notes.txt~",
                 "pkg/__pycache__/module.cpython-312.pyc",
                 "tmp/output.tmp",
@@ -86,7 +84,7 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(findings[0].line_number, 2)
         self.assertEqual(findings[0].marker, "TODO")
         self.assertEqual(len(findings_with_dep), 2)
-        self.assertEqual(findings_with_dep[1].path, "third_party/FunkyDNS/dep.py")
+        self.assertEqual({f.path for f in findings_with_dep}, {"src.py", "third_party/FunkyDNS/dep.py"})
 
     def test_find_unfinished_markers_can_include_third_party(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -147,6 +145,49 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_find_stale_artifacts_splits_tracked_and_untracked(self) -> None:
+        stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(
+            tracked_paths=["README.md", "egressd-starter.tar.gz"],
+            untracked_paths=["scratch.txt", "egressd-starter.tar.gz"],
+        )
+        self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
+        self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
+
+    def test_build_scan_report_includes_summary_fields(self) -> None:
+        findings = [repo_hygiene.MarkerFinding("a.py", 3, "TODO", "# TODO: fix")]
+        report = repo_hygiene.build_scan_report(
+            repo_root=Path("/repo"),
+            findings=findings,
+            stray_paths=["tmp/output.tmp"],
+            stale_tracked=["egressd-starter.tar.gz"],
+            stale_untracked=[],
+            suppressed_markers=2,
+            include_third_party=False,
+        )
+        self.assertEqual(report["suppressed_unfinished_markers"], 2)
+        self.assertEqual(report["summary"]["unfinished_markers"], 1)
+        self.assertEqual(report["summary"]["stray_untracked_paths"], 1)
+        self.assertEqual(report["summary"]["stale_tracked_artifacts"], 1)
+        self.assertEqual(report["summary"]["total_issues"], 3)
+
+    def test_parse_args_supports_include_third_party_and_baseline_file(self) -> None:
+        parsed = repo_hygiene.parse_args(
+            [
+                "scan",
+                "--repo-root",
+                "/tmp/repo",
+                "--include-third-party",
+                "--baseline-file",
+                "custom-baseline.json",
+                "--json",
+            ]
+        )
+        self.assertEqual(parsed.command, "scan")
+        self.assertEqual(parsed.repo_root, "/tmp/repo")
+        self.assertTrue(parsed.include_third_party)
+        self.assertEqual(parsed.baseline_file, "custom-baseline.json")
+        self.assertTrue(parsed.json)
 
 
 if __name__ == "__main__":
