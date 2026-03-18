@@ -1,36 +1,29 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
+`scripts/repo_hygiene.py` is the primary maintenance scanner/cleaner used by
+scheduled automation and local checks.
 
-This repository includes a small maintenance utility at
-`scripts/repo_hygiene.py` for scheduled cleanups and local checks.
+`scripts/repo_maintenance.py` remains as a compatibility wrapper that forwards
+to `repo_hygiene.py`.
 
 ## What it checks
 
-- Unfinished markers in tracked files:
-  - `TODO`
-  - `FIXME`
-  - `STUB`
-  - `TBD`
-  - `XXX`
-  - `WIP`
-  - `UNFINISHED`
-- Common untracked stray artifacts:
+- Unfinished markers in tracked source files:
+  - `TODO`, `FIXME`, `STUB`, `TBD`, `XXX`, `WIP`, `UNFINISHED`
+- Untracked stray artifacts:
   - editor backups (`*~`, `*.bak`, `*.orig`, `*.rej`)
   - temporary files (`*.tmp`)
-  - Python cache outputs (`__pycache__/`, `*.pyc`, `*.pyo`)
-  - common metadata noise (`.DS_Store`, `Thumbs.db`)
-  - known generated bundles (`egressd-starter.tar.gz`)
+  - Python caches (`__pycache__/`, `*.pyc`, `*.pyo`)
+  - metadata noise (`.DS_Store`, `Thumbs.db`)
+- Known stale artifacts:
+  - `egressd-starter.tar.gz` (tracked or untracked)
+- Embedded git repositories:
+  - reports nested `.git` paths outside the allowed dependency path
+    `third_party/FunkyDNS/.git`
 
-The scanner intentionally skips `third_party/FunkyDNS/` when checking
-unfinished markers by default, because that path is managed as an external
-dependency.
-
-When you do want full-repo scanning (including nested third-party git state),
-use `--include-third-party`.
-
-Known upstream unfinished markers can be recorded in a baseline file so
-scheduled jobs can fail only on new findings.
+By default, unfinished-marker and stray scans skip
+`third_party/FunkyDNS/` to reduce noise from external dependency internals.
+Use `--include-third-party` for full-repo scanning.
 
 ## Usage
 
@@ -46,56 +39,43 @@ python3 scripts/repo_hygiene.py scan --repo-root . --json
 # Include third-party dependency tree explicitly
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
-# Remove untracked stray files/directories
+# Remove removable clutter (stray artifacts + stale untracked artifacts)
 python3 scripts/repo_hygiene.py clean --repo-root .
-python3 scripts/repo_hygiene.py scan --repo-root . --json
-```
-
-JSON output for automation:
-
-```bash
-python3 scripts/repo_hygiene.py scan --repo-root . --json
 python3 scripts/repo_hygiene.py clean --repo-root . --json
 ```
 
-Optional deep scan including `third_party/FunkyDNS` unfinished markers:
+Useful Make targets:
 
 ```bash
-python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
+make maintenance           # first-party scan
+make maintenance-fix       # first-party cleanup
+make maintenance-json      # first-party JSON scan
+make maintenance-all       # include third_party/FunkyDNS
+make maintenance-all-json  # include third_party/FunkyDNS + JSON
+make maintenance-baseline  # write/update baseline for known markers
 ```
-
-Or through Make targets:
-
-```bash
-make maintenance
-make maintenance-fix
-make repo-scan
-make repo-clean
-make repo-scan-json
-```
-
-`scripts/repo_maintenance.py` is retained as a compatibility wrapper and now
-delegates to `scripts/repo_hygiene.py`.
 
 ## Exit codes
 
-- `0`: no issues remain after the command completes
-- `1`: blocking issues found
-  - `scan`: unfinished markers, stray untracked files, or stale artifacts
-  - `clean`: unfinished markers or tracked stale artifacts (removable clutter is deleted)
+- `0`: no issues remain after command completion
+- `1`: issues remain
+  - `scan`: any findings
+  - `clean`: findings that remain after removable clutter is deleted
 - `2`: invalid invocation (for example, non-git directory)
 
 ## Baseline file
 
-By default, `scan`/`clean` load marker suppressions from:
+`scan` and `clean` suppress known marker findings via baseline entries from:
 
-- `.repo-hygiene-baseline.json`
+- `.repo-hygiene-baseline.json` (default)
 
 Override with `--baseline-file <path>`.
 
-The baseline currently suppresses marker findings only (not stray files).
+`baseline` command writes current marker findings in baseline format:
 
-## Legacy script
+```bash
+python3 scripts/repo_hygiene.py baseline --repo-root . --include-third-party
+```
 
-`scripts/repo_maintenance.py` remains as a compatibility wrapper and delegates
-to `repo_hygiene.py`.
+The baseline suppresses marker findings only; it does not suppress stray files,
+stale artifacts, or embedded git path findings.

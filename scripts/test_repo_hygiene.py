@@ -1,11 +1,17 @@
+import io
+import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
-from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import repo_hygiene
+
+
+def _run_git(root: Path, *args: str) -> None:
+    subprocess.run(["git", *args], cwd=root, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
 class RepoHygieneTests(unittest.TestCase):
@@ -27,14 +33,13 @@ class RepoHygieneTests(unittest.TestCase):
             "keep/readme.md",
             "docs/.DS_Store",
             "build/result.txt",
-            "egressd-starter.tar.gz",
+            "third_party/FunkyDNS/archive/funkydns.py~",
         ]
         stray = repo_hygiene.classify_stray_paths(untracked)
         self.assertEqual(
             stray,
             [
                 "docs/.DS_Store",
-                "egressd-starter.tar.gz",
                 "notes.txt~",
                 "pkg/__pycache__/module.cpython-312.pyc",
                 "tmp/output.tmp",
@@ -42,23 +47,6 @@ class RepoHygieneTests(unittest.TestCase):
         )
         stray_with_third_party = repo_hygiene.classify_stray_paths(untracked, include_third_party=True)
         self.assertIn("third_party/FunkyDNS/archive/funkydns.py~", stray_with_third_party)
-
-    def test_classify_stray_paths_skips_third_party_unless_enabled(self) -> None:
-        paths = [
-            "third_party/FunkyDNS/archive/funkydns.py~",
-            "tmp/output.tmp",
-        ]
-        default_scan = repo_hygiene.classify_stray_paths(paths)
-        self.assertEqual(default_scan, ["tmp/output.tmp"])
-
-        with_third_party = repo_hygiene.classify_stray_paths(paths, include_third_party=True)
-        self.assertEqual(
-            with_third_party,
-            [
-                "third_party/FunkyDNS/archive/funkydns.py~",
-                "tmp/output.tmp",
-            ],
-        )
 
     def test_find_unfinished_markers_ignores_skipped_paths(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -87,24 +75,6 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(findings[0].marker, "TODO")
         self.assertEqual(len(findings_with_dep), 2)
         self.assertEqual(findings_with_dep[1].path, "third_party/FunkyDNS/dep.py")
-
-    def test_find_unfinished_markers_can_include_third_party(self) -> None:
-        with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
-            src_file = root / "src.py"
-            dep_file = root / "third_party" / "FunkyDNS" / "dep.py"
-            dep_file.parent.mkdir(parents=True, exist_ok=True)
-            src_file.write_text("# TO" "DO: fix this\n", encoding="utf-8")
-            dep_file.write_text("# TO" "DO: dependency todo\n", encoding="utf-8")
-
-            findings = repo_hygiene.find_unfinished_markers(
-                root,
-                ["src.py", "third_party/FunkyDNS/dep.py"],
-                include_third_party=True,
-            )
-
-        self.assertEqual(len(findings), 2)
-        self.assertEqual({finding.path for finding in findings}, {"src.py", "third_party/FunkyDNS/dep.py"})
 
     def test_delete_paths_removes_files_and_empty_parents(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -147,6 +117,55 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_find_stale_artifacts_separates_tracked_and_untracked(self) -> None:
+        stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(
+            tracked_paths=["egressd-starter.tar.gz", "README.md"],
+            untracked_paths=["tmp/output.tmp", "egressd-starter.tar.gz"],
+        )
+        self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
+        self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
+
+    def test_find_embedded_git_paths_skips_root_and_allowed_submodule(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            (root / "third_party" / "FunkyDNS").mkdir(parents=True)
+            (root / "third_party" / "FunkyDNS" / ".git").write_text("gitdir: ../../.git/modules/FunkyDNS\n")
+            (root / "tmp" / "nested").mkdir(parents=True)
+            (root / "tmp" / "nested" / ".git").mkdir()
+            (root / "vendor").mkdir()
+            (root / "vendor" / ".git").write_text("gitdir: ../.git\n")
+
+            findings_default = repo_hygiene.find_embedded_git_paths(root, include_third_party=False)
+            findings_with_third_party = repo_hygiene.find_embedded_git_paths(root, include_third_party=True)
+
+        self.assertEqual(findings_default, ["tmp/nested/.git", "vendor/.git"])
+        self.assertEqual(findings_with_third_party, ["tmp/nested/.git", "vendor/.git"])
+
+    def test_command_clean_exit_code_reflects_post_fix_state(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _run_git(root, "init")
+            _run_git(root, "config", "user.email", "test@example.com")
+            _run_git(root, "config", "user.name", "Test User")
+
+            tracked = root / "src.py"
+            tracked.write_text("# TO" "DO: keep marker\n", encoding="utf-8")
+            _run_git(root, "add", "src.py")
+
+            removable = root / "tmp.tmp"
+            removable.write_text("x", encoding="utf-8")
+
+            with redirect_stdout(io.StringIO()):
+                exit_code = repo_hygiene.command_clean(
+                    root,
+                    include_third_party=False,
+                    baseline_path=".repo-hygiene-baseline.json",
+                    json_output=True,
+                )
+            self.assertEqual(exit_code, 1)
+            self.assertFalse(removable.exists())
 
 
 if __name__ == "__main__":
