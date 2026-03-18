@@ -1,0 +1,2 @@
+# Smoke-only local hosts entries for resolver order checks.
+198.51.100.21 hosts.smoke.internal

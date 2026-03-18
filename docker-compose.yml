@@ -1,34 +1,84 @@
+x-funkydns-smoke-build: &funkydns_smoke_build
+  context: .
+  dockerfile: funkydns-smoke/Dockerfile
+
 services:
-  funky:
-    build:
-      context: .
-      dockerfile: funkydns-smoke/Dockerfile
-    container_name: funky
+  searchdns:
+    build: *funkydns_smoke_build
+    container_name: searchdns
+    init: true
     command:
       [
+        "python3",
+        "/opt/funkydns-smoke/run_funkydns.py",
         "funkydns",
         "server",
         "--dns-port",
         "53",
-        "--doh-port",
-        "443",
-        "--upstream",
-        "[\"https://cloudflare-dns.com/dns-query\"]"
+        "--no-doh",
+        "--no-dot",
+        "--no-system-resolver",
+        "--no-hosts-file",
       ]
-    ports:
-      - "5353:53/udp"
-      - "5353:53/tcp"
-      - "8443:443"
+    environment:
+      - ZONES_DIR=/opt/funkydns-smoke/upstream-zones
     healthcheck:
       test:
         [
           "CMD",
           "python3",
-          "-c",
-          "import socket; s = socket.create_connection(('127.0.0.1', 443), 2); s.close()",
+          "/opt/funkydns-smoke/check_resolution.py",
+          "--protocol",
+          "dns",
+          "--dns-server",
+          "127.0.0.1",
+          "--name",
+          "printer.corp.test",
+          "--record-type",
+          "A",
+          "--expect",
+          "198.51.100.42",
+          "--expect-owner",
+          "printer.corp.test.",
+          "--quiet",
         ]
       interval: 10s
-      timeout: 3s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    networks:
+      egressnet:
+        ipv4_address: 172.18.0.40
+
+  funky:
+    build: *funkydns_smoke_build
+    container_name: funky
+    init: true
+    depends_on:
+      searchdns:
+        condition: service_healthy
+    ports:
+      - "15353:53/udp"
+      - "15353:53/tcp"
+      - "18443:443"
+    environment:
+      - HOSTS_FILE_PATH=/opt/funkydns-smoke/etc/hosts
+      - RESOLV_CONF_PATH=/opt/funkydns-smoke/etc/resolv.conf
+      - USE_SYSTEM_RESOLVER=true
+      - RESPECT_HOSTS_FILE=true
+    volumes:
+      - ./funkydns-smoke/etc/hosts:/opt/funkydns-smoke/etc/hosts:ro
+      - ./funkydns-smoke/etc/resolv.conf:/opt/funkydns-smoke/etc/resolv.conf:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python3",
+          "/opt/funkydns-smoke/check_resolution.py",
+          "--quiet",
+        ]
+      interval: 10s
+      timeout: 5s
       retries: 12
       start_period: 15s
     networks:
@@ -38,6 +88,7 @@ services:
   proxy1:
     build: ./proxy
     container_name: proxy1
+    init: true
     command: ["pproxy", "-l", "http://0.0.0.0:3128"]
     healthcheck:
       test:
@@ -58,6 +109,7 @@ services:
   proxy2:
     build: ./proxy
     container_name: proxy2
+    init: true
     command: ["pproxy", "-l", "http://0.0.0.0:3128"]
     healthcheck:
       test:
@@ -78,6 +130,7 @@ services:
   exitserver:
     build: ./exitserver
     container_name: exitserver
+    init: true
     ports:
       - "9999:9999"
     healthcheck:
