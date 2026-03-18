@@ -1,5 +1,6 @@
 import importlib
 import json
+import os
 import sys
 import time
 from copy import deepcopy
@@ -10,7 +11,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 if "pyjson5" not in sys.modules:
-    sys.modules["pyjson5"] = types.SimpleNamespace(decode=json.loads)
+    sys.modules["pyjson5"] = SimpleNamespace(decode=json.loads)
 
 import supervisor
 
