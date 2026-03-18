@@ -184,6 +184,8 @@ def get_doh_upstreams(cfg: Dict[str, Any]) -> List[str]:
                 raw_upstreams = json.loads(raw)
             except json.JSONDecodeError as exc:
                 raise ValueError("dns.doh_upstream JSON list is invalid") from exc
+        elif "," in raw:
+            raw_upstreams = [item.strip() for item in raw.split(",")]
         else:
             raw_upstreams = [raw]
 
