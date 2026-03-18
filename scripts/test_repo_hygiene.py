@@ -2,6 +2,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import repo_hygiene
@@ -71,6 +72,30 @@ class RepoHygieneTests(unittest.TestCase):
         )
         self.assertEqual(tracked, ["egressd-starter.tar.gz"])
         self.assertEqual(untracked, ["egressd-starter.tar.gz"])
+
+    def test_build_report_can_include_third_party_submodule_markers(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            funky_root = root / "third_party" / "FunkyDNS"
+            funky_root.mkdir(parents=True, exist_ok=True)
+            (funky_root / ".git").mkdir()
+            (funky_root / "dep.py").write_text("# TODO: dependency todo\n", encoding="utf-8")
+
+            with patch.object(repo_hygiene, "list_git_paths") as list_git_paths:
+                def fake_list_git_paths(repo_path: Path, args: tuple[str, ...]) -> list[str]:
+                    if repo_path == root and args == ("ls-files",):
+                        return []
+                    if repo_path == root and args == ("ls-files", "--others", "--exclude-standard"):
+                        return []
+                    if repo_path == funky_root and args == ("ls-files",):
+                        return ["dep.py"]
+                    return []
+
+                list_git_paths.side_effect = fake_list_git_paths
+                report = repo_hygiene.build_report(root, include_third_party=True)
+
+        self.assertEqual(report["summary"]["unfinished_markers"], 1)
 
     def test_delete_paths_removes_files_and_empty_parents(self) -> None:
         with tempfile.TemporaryDirectory() as td:

@@ -205,6 +205,16 @@ def delete_paths(repo_root: Path, relative_paths: Iterable[str]) -> int:
 def build_report(repo_root: Path, include_third_party: bool) -> dict[str, object]:
     tracked = list_git_paths(repo_root, ("ls-files",))
     untracked = list_git_paths(repo_root, ("ls-files", "--others", "--exclude-standard"))
+    if include_third_party:
+        funky_root = repo_root / "third_party" / "FunkyDNS"
+        if (funky_root / ".git").exists():
+            try:
+                submodule_tracked = list_git_paths(funky_root, ("ls-files",))
+                tracked.extend(
+                    f"third_party/FunkyDNS/{rel_path}" for rel_path in submodule_tracked
+                )
+            except RuntimeError:
+                pass
     findings = find_unfinished_markers(repo_root, tracked, include_third_party=include_third_party)
     stray = classify_stray_paths(untracked)
     stale_tracked, stale_untracked = find_stale_artifacts(tracked, untracked)
