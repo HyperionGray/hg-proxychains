@@ -115,9 +115,13 @@ def find_unfinished_markers(
     repo_root: Path,
     tracked_paths: Iterable[str],
     include_third_party: bool = False,
+    excluded_paths: set[str] | None = None,
 ) -> list[MarkerFinding]:
+    excluded = excluded_paths or set()
     findings: list[MarkerFinding] = []
     for rel_path in tracked_paths:
+        if rel_path in excluded:
+            continue
         if should_skip_for_unfinished(rel_path, include_third_party=include_third_party):
             continue
         path_obj = Path(rel_path)
@@ -278,10 +282,12 @@ def command_scan(repo_root: Path, include_third_party: bool, baseline_path: str)
         ("ls-files", "--others", "--exclude-standard"),
         include_third_party=include_third_party,
     )
+    baseline_rel_path = Path(baseline_path).as_posix()
     findings = find_unfinished_markers(
         repo_root,
         tracked,
         include_third_party=include_third_party,
+        excluded_paths={baseline_rel_path},
     )
     baseline = load_marker_baseline(repo_root, baseline_path)
     findings, suppressed = apply_marker_baseline(findings, baseline)
@@ -297,10 +303,12 @@ def command_clean(repo_root: Path, include_third_party: bool, baseline_path: str
         ("ls-files", "--others", "--exclude-standard"),
         include_third_party=include_third_party,
     )
+    baseline_rel_path = Path(baseline_path).as_posix()
     findings = find_unfinished_markers(
         repo_root,
         tracked,
         include_third_party=include_third_party,
+        excluded_paths={baseline_rel_path},
     )
     baseline = load_marker_baseline(repo_root, baseline_path)
     findings, suppressed = apply_marker_baseline(findings, baseline)
@@ -317,10 +325,12 @@ def command_clean(repo_root: Path, include_third_party: bool, baseline_path: str
 
 def command_baseline(repo_root: Path, include_third_party: bool, baseline_path: str) -> int:
     tracked = collect_git_paths(repo_root, ("ls-files",), include_third_party=include_third_party)
+    baseline_rel_path = Path(baseline_path).as_posix()
     findings = find_unfinished_markers(
         repo_root,
         tracked,
         include_third_party=include_third_party,
+        excluded_paths={baseline_rel_path},
     )
     payload = {
         "unfinished_markers": [

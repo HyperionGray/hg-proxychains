@@ -90,6 +90,24 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(suppressed, 1)
         self.assertEqual([f.path for f in filtered], ["a.py"])
 
+    def test_find_unfinished_markers_excludes_baseline_file(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src_file = root / "src.py"
+            baseline_file = root / ".repo-hygiene-baseline.json"
+            baseline_line = "# TO" "DO: baseline marker"
+            src_file.write_text("# TO" "DO: source marker\n", encoding="utf-8")
+            baseline_file.write_text(f'{{"line":"{baseline_line}"}}\n', encoding="utf-8")
+
+            findings = repo_hygiene.find_unfinished_markers(
+                root,
+                ["src.py", ".repo-hygiene-baseline.json"],
+                excluded_paths={".repo-hygiene-baseline.json"},
+            )
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].path, "src.py")
+
 
 if __name__ == "__main__":
     unittest.main()
