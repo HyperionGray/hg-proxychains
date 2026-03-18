@@ -1,4 +1,5 @@
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -143,7 +144,7 @@ class RepoHygieneTests(unittest.TestCase):
     def test_command_clean_clears_removable_clutter(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            (root / ".git").mkdir()
+            subprocess.run(["git", "init"], cwd=root, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
             notes = root / "notes.tmp"
             notes.write_text("temp\n", encoding="utf-8")
@@ -164,11 +165,12 @@ class RepoHygieneTests(unittest.TestCase):
     def test_command_scan_uses_baseline_suppression(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            (root / ".git").mkdir()
+            subprocess.run(["git", "init"], cwd=root, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
             src = root / "src.py"
             marker_line = "# TO" "DO: keep for upstream"
             src.write_text(marker_line + "\n", encoding="utf-8")
+            subprocess.run(["git", "add", "src.py"], cwd=root, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
             baseline = root / ".repo-hygiene-baseline.json"
             baseline.write_text(
