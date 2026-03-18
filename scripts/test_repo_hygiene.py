@@ -1,3 +1,5 @@
+import contextlib
+import io
 import json
 import subprocess
 import sys
@@ -91,8 +93,11 @@ class RepoHygieneTests(unittest.TestCase):
             root = Path(td)
             baseline = root / ".repo-hygiene-baseline.json"
             baseline.write_text("{\n", encoding="utf-8")
-            loaded = repo_hygiene.load_marker_baseline(root, ".repo-hygiene-baseline.json")
+            stderr_buffer = io.StringIO()
+            with contextlib.redirect_stderr(stderr_buffer):
+                loaded = repo_hygiene.load_marker_baseline(root, ".repo-hygiene-baseline.json")
         self.assertEqual(loaded, set())
+        self.assertIn("warn: failed to load baseline", stderr_buffer.getvalue())
 
     def test_find_stale_artifacts_splits_tracked_and_untracked(self) -> None:
         tracked = ["README.md", "egressd-starter.tar.gz"]
