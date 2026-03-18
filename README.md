@@ -220,7 +220,11 @@ also includes `third_party/FunkyDNS`, use:
 ```bash
 make maintenance-all
 make maintenance-all-json
+make maintenance-baseline
 ```
+
+`maintenance-baseline` regenerates `.repo-hygiene-baseline.json` from current
+marker findings (including third-party paths).
 
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
 

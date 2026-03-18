@@ -1,52 +1,40 @@
-# Repository maintenance workflow (legacy note)
+# Repository maintenance workflow
 
-`scripts/repo_maintenance.py` is now a compatibility wrapper.
+For the full scanner behavior, see `docs/REPO-HYGIENE.md`.
 
-Use `scripts/repo_hygiene.py` directly for all maintenance checks and cleanup.
-Primary documentation has moved to:
+`scripts/repo_maintenance.py` remains as a compatibility wrapper for legacy
+automation invocations. It delegates to `scripts/repo_hygiene.py`.
 
-- Unfinished markers in tracked files (`TODO`, `FIXME`, `STUB`, `TBD`, `XXX`, `UNFINISHED`)
-- Backup files (`*~`, `*.bak`, `*.orig`, `*.old`, `*.tmp`)
-- Stray Python cache directories (`__pycache__/`)
-- Known stale artifacts (currently `egressd-starter.tar.gz`)
-- Embedded git repositories outside the allowed third-party submodule path
-
-By default, marker scanning includes tracked files in `third_party/FunkyDNS` when that repository is present.
-For day-to-day repo automation, prefer the first-party-only mode (`--no-include-third-party`)
-to avoid noise from external dependency internals.
-
-## Commands
+## Recommended commands
 
 ```bash
-# Human-readable summary + findings (exits non-zero if issues exist)
-python3 scripts/repo_hygiene.py scan --repo-root .
+# First-party scan (default maintenance mode)
+make maintenance
 
-# JSON output for automation
-python3 scripts/repo_hygiene.py scan --repo-root . --json
+# First-party scan + cleanup of removable clutter
+make maintenance-fix
 
-# Include third_party marker scan explicitly
-python3 scripts/repo_maintenance.py --include-third-party
+# Machine-readable first-party report
+make maintenance-json
 
-# Remove backup files + stray cache dirs + stale artifacts while scanning
-python3 scripts/repo_maintenance.py --fix
-```
-
-Makefile wrappers:
-
-```bash
-make maintenance        # first-party only
-make maintenance-fix    # first-party only + cleanup
-make maintenance-json   # first-party only + JSON
-
-# optional full scan including third_party/FunkyDNS internals
+# Full scan including third_party/FunkyDNS internals
 make maintenance-all
 make maintenance-all-json
+
+# Refresh baseline from current marker findings
+make maintenance-baseline
+```
+
+Direct wrapper usage:
+
+```bash
+python3 scripts/repo_maintenance.py --no-include-third-party
+python3 scripts/repo_maintenance.py --no-include-third-party --fix
+python3 scripts/repo_maintenance.py --include-third-party
 ```
 
 ## Notes
 
-- `--fix` removes backup files, stray `__pycache__/` directories, and known stale artifacts.
-- Unfinished markers are reported but not modified automatically.
-- Embedded git repositories are reported but never auto-removed by `--fix`.
-- Without `--fix`, exit code is `1` when any issues are found.
-- With `--fix`, exit code reflects post-fix state (`0` when only removable clutter was found and removed; `1` if issues remain).
+- Cleanup removes removable clutter only (stray artifacts + stale untracked files).
+- Marker findings and tracked stale artifacts are reported but never auto-edited.
+- Embedded git repositories outside allowed paths are reported, not removed.
