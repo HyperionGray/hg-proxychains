@@ -56,7 +56,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.include_third_party:
         cmd.append("--include-third-party")
     if args.json:
-        print("warn: --json is deprecated in repo_maintenance.py compatibility mode", file=sys.stderr)
+        cmd.append("--json")
 
     proc = subprocess.run(cmd, check=False)
     return proc.returncode

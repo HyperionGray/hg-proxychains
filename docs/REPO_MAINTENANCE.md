@@ -50,3 +50,6 @@ make maintenance-all-json
 - Embedded git repositories are reported but never auto-removed by `--fix`.
 - Without `--fix`, exit code is `1` when any issues are found.
 - With `--fix`, exit code reflects post-fix state (`0` when only removable clutter was found and removed; `1` if issues remain).
+
+`repo_maintenance.py` forwards `--json` to `repo_hygiene.py`, so JSON output is
+available in compatibility mode as well.
