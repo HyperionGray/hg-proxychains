@@ -3,13 +3,21 @@
 ## Smoke harness
 
 - [ ] Initialize submodule `third_party/FunkyDNS` (`git submodule update --init --recursive third_party/FunkyDNS`)
-- [ ] `docker compose build`
-- [ ] `docker compose up`
-- [ ] Confirm `client` prints `200 Connection Established`
+- [ ] `podman-compose build`
+- [ ] `podman-compose up`
+- [ ] Confirm `client` prints `DNS OK: smoke.test A -> 203.0.113.10`
+- [ ] Confirm `client` prints `DoH OK: smoke.test A -> 203.0.113.10 (owner smoke.test.)`
+- [ ] Confirm `client` prints `DNS OK: hosts.smoke.internal A -> 198.51.100.21`
+- [ ] Confirm `client` prints `DoH OK: hosts.smoke.internal A -> 198.51.100.21`
+- [ ] Confirm `client` prints `DNS OK: printer A -> 198.51.100.42 (owner printer.corp.test.)`
+- [ ] Confirm `client` prints `DoH OK: printer A -> 198.51.100.42 (owner printer.corp.test.)`
+- [ ] Confirm `client` prints `HTTP/1.1 200 Connection established`
 - [ ] Confirm `client` receives `OK from exit-server`
+- [ ] `curl -sk https://localhost:18443/healthz`
 - [ ] `curl -f http://localhost:9191/ready`
 - [ ] `curl http://localhost:9191/health`
 - [ ] `curl -i http://localhost:9191/ready` returns HTTP 200
+- [ ] Confirm `searchdns` becomes healthy before `funky`
 - [ ] Confirm hop probes are green or at least responding with expected policy/auth status
 - [ ] Confirm `client` starts only after `egressd` healthcheck is healthy
 

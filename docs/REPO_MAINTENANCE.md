@@ -1,8 +1,9 @@
-# Repository maintenance workflow
+# Repository maintenance workflow (legacy note)
 
-This repository includes `scripts/repo_maintenance.py` to support recurring automation checks and cleanup.
+`scripts/repo_maintenance.py` is now a compatibility wrapper.
 
-## What it checks
+Use `scripts/repo_hygiene.py` directly for all maintenance checks and cleanup.
+Primary documentation has moved to:
 
 - Unfinished markers in tracked files (`TODO`, `FIXME`, `STUB`, `TBD`, `XXX`, `UNFINISHED`)
 - Backup files (`*~`, `*.bak`, `*.orig`, `*.old`, `*.tmp`)
@@ -10,7 +11,9 @@ This repository includes `scripts/repo_maintenance.py` to support recurring auto
 - Known stale artifacts (currently `egressd-starter.tar.gz`)
 - Embedded git repositories outside the allowed third-party submodule path
 
-By default, marker scanning focuses on first-party files. Use `--include-third-party` to also scan tracked files in `third_party/FunkyDNS` when that repository is present.
+By default, marker scanning includes tracked files in `third_party/FunkyDNS` when that repository is present.
+For day-to-day repo automation, prefer the first-party-only mode (`--no-include-third-party`)
+to avoid noise from external dependency internals.
 
 ## Commands
 
@@ -31,8 +34,13 @@ python3 scripts/repo_maintenance.py --fix
 Makefile wrappers:
 
 ```bash
-make maintenance
-make maintenance-fix
+make maintenance        # first-party only
+make maintenance-fix    # first-party only + cleanup
+make maintenance-json   # first-party only + JSON
+
+# optional full scan including third_party/FunkyDNS internals
+make maintenance-all
+make maintenance-all-json
 ```
 
 ## Notes

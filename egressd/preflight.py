@@ -10,7 +10,7 @@ import json
 import os
 import shutil
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 import pyjson5
@@ -66,11 +66,24 @@ def _validate_canary_target(canary: str, errors: List[str], warnings: List[str])
         warnings.append(f"chain.canary_target uses non-standard probe port: {port}")
 
 
-def run_preflight(cfg: Dict[str, Any]) -> Dict[str, Any]:
+def _validate_allowed_ports(chain_cfg: Dict[str, Any], errors: List[str]) -> None:
+    allowed_ports = chain_cfg.get("allowed_ports")
+    if allowed_ports is None:
+        return
+    if not isinstance(allowed_ports, list) or not allowed_ports:
+        errors.append("chain.allowed_ports must be a non-empty list when provided")
+        return
+    invalid_ports = [port for port in allowed_ports if not _is_valid_port(port)]
+    if invalid_ports:
+        errors.append(f"chain.allowed_ports contains invalid ports: {invalid_ports}")
+
+
+def run_preflight(cfg: Dict[str, Any], *, skip_binary_checks: Optional[bool] = None) -> Dict[str, Any]:
     """Return a report with errors/warnings and overall status."""
     errors: List[str] = []
     warnings: List[str] = []
-    skip_binary_checks = os.getenv("EGRESSD_PREFLIGHT_SKIP_BIN_CHECKS", "").lower() in {"1", "true", "yes"}
+    if skip_binary_checks is None:
+        skip_binary_checks = os.getenv("EGRESSD_PREFLIGHT_SKIP_BIN_CHECKS", "").lower() in {"1", "true", "yes"}
 
     listener = cfg.get("listener", {})
     listener_port = listener.get("port")
@@ -79,6 +92,7 @@ def run_preflight(cfg: Dict[str, Any]) -> Dict[str, Any]:
 
     chain_cfg = cfg.get("chain", {})
     hops = chain_cfg.get("hops", [])
+    _validate_allowed_ports(chain_cfg, errors)
     if not isinstance(hops, list) or not hops:
         errors.append("chain.hops must contain at least one hop")
     else:
@@ -92,6 +106,13 @@ def run_preflight(cfg: Dict[str, Any]) -> Dict[str, Any]:
     canary_target = chain_cfg.get("canary_target", "")
     if isinstance(canary_target, str) and canary_target:
         _validate_canary_target(canary_target, errors, warnings)
+        if bool(chain_cfg.get("fail_closed")) and isinstance(chain_cfg.get("allowed_ports"), list):
+            try:
+                canary_port = int(canary_target.rsplit(":", 1)[1])
+            except (IndexError, ValueError):
+                canary_port = None
+            if canary_port is not None and canary_port not in chain_cfg["allowed_ports"]:
+                errors.append("chain.canary_target port must be included in chain.allowed_ports when fail_closed=true")
     else:
         warnings.append("chain.canary_target is empty; hop probes will be less useful")
 
