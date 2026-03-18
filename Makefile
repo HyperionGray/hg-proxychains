@@ -22,7 +22,7 @@ unittest:
 	python3 -m unittest egressd/test_supervisor_readiness.py
 
 test:
-	python3 -m unittest egressd/test_supervisor.py egressd/test_supervisor_readiness.py scripts/test_repo_hygiene.py
+	python3 -m unittest egressd/test_supervisor.py scripts/test_repo_hygiene.py
 
 check: pycheck test
 
