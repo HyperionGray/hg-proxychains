@@ -4,7 +4,7 @@ A small, fail-closed prototype for container egress enforced through chained HTT
 
 This starter repo is split into two tracks:
 
-- **Smoke harness**: docker-compose setup to prove the CONNECT chain works end to end.
+- **Smoke harness**: `podman-compose` setup to prove DoH and the CONNECT chain end to end.
 - **Host deployment examples**: nftables + TPROXY + owner-gating scripts for a real host.
 
 The design goal is intentionally boring:
@@ -26,7 +26,8 @@ The design goal is intentionally boring:
 │   ├── BRINGUP-CHECKLIST.md
 │   ├── FUNKYDNS-REVIEW.md
 │   ├── HOST-DEPLOYMENT.md
-│   └── REPO_MAINTENANCE.md
+│   ├── REPO_MAINTENANCE.md
+│   └── USER-FLOW-REVIEW.md
 ├── egressd/
 │   ├── Dockerfile
 │   ├── requirements.txt
@@ -61,6 +62,9 @@ The design goal is intentionally boring:
 
 ## Quick start
 
+For a reviewed walkthrough of the smoke-harness flow, host flow, and current
+known breakpoints, see `docs/USER-FLOW-REVIEW.md`.
+
 ### 1. Initialize FunkyDNS submodule
 
 Configure authenticated GitHub access, then initialize the private submodule:
@@ -82,22 +86,27 @@ revision for `third_party/FunkyDNS` and normalizes the remote URL after auth.
 ### 2. Build and run the smoke harness
 
 ```bash
-docker compose build
-docker compose up
+podman-compose build
+podman-compose up
+```
+
+Or through the task runner:
+
+```bash
+make smoke
 ```
 
 ### 4. Check results
 
-- `client` should print a successful `CONNECT` followed by `OK from exit-server`
-- readiness endpoint (returns 200 only when `egressd` is ready to carry traffic):
+- `client` should print matching `DNS OK` and `DoH OK` lines for:
+  - `smoke.test -> 203.0.113.10`
+  - `hosts.smoke.internal -> 198.51.100.21`
+  - `printer -> 198.51.100.42 (owner printer.corp.test.)`
+- `client` should then print a successful `CONNECT` followed by `OK from exit-server`
+- `funky` exposes the smoke DoH listener on `https://localhost:18443`
 
 ```bash
-curl -f http://localhost:9191/ready
-```
-
-- health endpoint (liveness + status payload):
-
-```bash
+curl -sk https://localhost:18443/healthz
 curl http://localhost:9191/health
 curl -f http://localhost:9191/ready
 curl http://localhost:9191/live
@@ -105,11 +114,18 @@ curl http://localhost:9191/live
 
 ## What the smoke harness proves
 
+- HTTPS DoH listener on `funky:443`
+- direct DNS and DoH lookup for `smoke.test -> 203.0.113.10`
+- mounted hosts-file lookup for `hosts.smoke.internal -> 198.51.100.21`
+- mounted `resolv.conf` search-domain lookup for `printer -> printer.corp.test -> 198.51.100.42`
 - local explicit CONNECT tunnel establishment
 - multi-hop relay via `pproxy`
 - end-to-end raw TCP after CONNECT
 - per-hop health probes and readiness gating
-- optional separate FunkyDNS service for DNS work
+- separate FunkyDNS and upstream search-DNS services for DNS work
+
+The smoke config uses `exitserver:9999` as the canary target, so readiness does
+not depend on external internet reachability.
 
 It does **not** prove host enforcement. For that, use the scripts in `scripts/` on a real Linux host and follow `docs/HOST-DEPLOYMENT.md`.
 
@@ -124,14 +140,41 @@ It does **not** prove host enforcement. For that, use the scripts in `scripts/` 
 
 Readiness behavior can be tuned via:
 
-- `supervisor.ready_require_hops`
-- `supervisor.ready_require_all_hops`
+- `supervisor.require_all_hops_healthy`
+- `supervisor.max_hop_status_age_s`
+- `supervisor.block_start_until_hops_healthy`
 
 ## Important split: smoke mode vs host mode
 
 The compose harness runs FunkyDNS as a **separate service**.
 
 `egressd` does **not** launch FunkyDNS in smoke mode. That avoids double-start bugs and keeps service boundaries clean.
+
+The smoke FunkyDNS image carries a self-signed cert, a clean local zone, a
+mounted `hosts` file, and a mounted `resolv.conf` so compose can health-check:
+
+- direct DNS on `53`
+- a real DoH POST on `443`
+- local `/etc/hosts` resolution
+- search-domain recursion via a dedicated internal `searchdns` service
+
+The smoke image also uses a small local launcher to bound FunkyDNS teardown,
+because the upstream server path does not currently shut down reliably on
+container stop signals.
+
+The vendored FunkyDNS resolver now honors local host resolution before external
+upstreams:
+
+- `/etc/hosts` is checked first for A and AAAA records
+- local zone files are checked next
+- the system resolver from `/etc/resolv.conf` is preferred before explicit
+  upstreams
+- single-label names use the system resolver's search domains
+
+That makes Ubuntu-style `systemd-resolved` setups behave the way operators
+usually expect. In containerized deployments, point FunkyDNS at a usable
+`resolv.conf` if the container's default one references an unreachable loopback
+stub.
 
 For host mode, `egressd/config.host.example.json5` shows how to launch FunkyDNS locally if you want a single host-managed stack.
 
@@ -140,6 +183,13 @@ For host mode, `egressd/config.host.example.json5` shows how to launch FunkyDNS 
 `egressd` validates config and binary prerequisites before launching `pproxy`.
 If preflight fails, it exits non-zero and logs each specific failure (for example:
 invalid hop URL, empty chain, or missing binary path).
+
+Useful checks:
+
+```bash
+make preflight
+make validate-config
+```
 
 ## What to tweak first
 
@@ -187,5 +237,7 @@ I added a short review in `docs/FUNKYDNS-REVIEW.md` with the concrete issues wor
 ## Maintenance helpers
 
 - `make pycheck` compiles key Python entry points for syntax sanity.
-- `make test` runs readiness unit tests.
+- `make test` runs the repo's unit and hygiene checks.
+- `make preflight` validates config in a disposable container with binary checks skipped.
+- `make validate-config` validates the runtime image/config with normal binary checks.
 - `make clean` removes local build/test artifacts (`__pycache__`, `.pytest_cache`, bundle tarball).
