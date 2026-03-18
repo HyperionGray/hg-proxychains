@@ -1,9 +1,7 @@
-# Repository maintenance workflow (legacy note)
+# Repository maintenance workflow
 
-`scripts/repo_maintenance.py` is now a compatibility wrapper.
-
-Use `scripts/repo_hygiene.py` directly for all maintenance checks and cleanup.
-Primary documentation has moved to:
+Primary maintenance tooling is `scripts/repo_hygiene.py`.
+`scripts/repo_maintenance.py` remains a compatibility wrapper.
 
 - Unfinished markers in tracked files (`TODO`, `FIXME`, `STUB`, `TBD`, `XXX`, `UNFINISHED`)
 - Backup files (`*~`, `*.bak`, `*.orig`, `*.old`, `*.tmp`)
@@ -11,9 +9,8 @@ Primary documentation has moved to:
 - Known stale artifacts (currently `egressd-starter.tar.gz`)
 - Embedded git repositories outside the allowed third-party submodule path
 
-By default, marker scanning includes tracked files in `third_party/FunkyDNS` when that repository is present.
-For day-to-day repo automation, prefer the first-party-only mode (`--no-include-third-party`)
-to avoid noise from external dependency internals.
+By default, scans are first-party only (`--no-include-third-party` behavior).
+Use `--include-third-party` when you need full dependency coverage.
 
 ## Commands
 
@@ -25,10 +22,13 @@ python3 scripts/repo_hygiene.py scan --repo-root .
 python3 scripts/repo_hygiene.py scan --repo-root . --json
 
 # Include third_party marker scan explicitly
-python3 scripts/repo_maintenance.py --include-third-party
+python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
 # Remove backup files + stray cache dirs + stale artifacts while scanning
-python3 scripts/repo_maintenance.py --fix
+python3 scripts/repo_hygiene.py clean --repo-root .
+
+# Generate/refresh unfinished-marker baseline
+python3 scripts/repo_hygiene.py baseline --repo-root . --include-third-party
 ```
 
 Makefile wrappers:
@@ -41,12 +41,13 @@ make maintenance-json   # first-party only + JSON
 # optional full scan including third_party/FunkyDNS internals
 make maintenance-all
 make maintenance-all-json
+make maintenance-baseline
 ```
 
 ## Notes
 
-- `--fix` removes backup files, stray `__pycache__/` directories, and known stale artifacts.
+- `clean` removes backup files, stray `__pycache__/` directories, and known stale artifacts.
 - Unfinished markers are reported but not modified automatically.
-- Embedded git repositories are reported but never auto-removed by `--fix`.
-- Without `--fix`, exit code is `1` when any issues are found.
-- With `--fix`, exit code reflects post-fix state (`0` when only removable clutter was found and removed; `1` if issues remain).
+- Embedded git repositories are reported but never auto-removed by `clean`.
+- `scan` exits `1` when issues are found.
+- `clean` exits based on post-clean state (`0` when only removable clutter was found and removed; `1` if issues remain).

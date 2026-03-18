@@ -2,7 +2,6 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import repo_hygiene
@@ -24,6 +23,7 @@ class RepoHygieneTests(unittest.TestCase):
             "notes.txt~",
             "tmp/output.tmp",
             "pkg/__pycache__/module.cpython-312.pyc",
+            "third_party/FunkyDNS/archive/funkydns.py~",
             "keep/readme.md",
             "docs/.DS_Store",
             "build/result.txt",
@@ -147,6 +147,39 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_find_stale_artifacts_returns_tracked_and_untracked(self) -> None:
+        stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(
+            tracked_paths=["egressd-starter.tar.gz", "README.md"],
+            untracked_paths=["egressd-starter.tar.gz", "tmp/out.tmp"],
+        )
+        self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
+        self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
+
+    def test_find_embedded_git_repositories_detects_unexpected_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            rogue = root / "nested" / "tooling" / ".git"
+            rogue.mkdir(parents=True, exist_ok=True)
+
+            findings = repo_hygiene.find_embedded_git_repositories(root)
+
+        self.assertEqual(findings, ["nested/tooling"])
+
+    def test_find_embedded_git_repositories_allows_known_submodule_path(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            allowed = root / "third_party" / "FunkyDNS"
+            allowed.mkdir(parents=True, exist_ok=True)
+            (allowed / ".git").write_text("gitdir: ../../.git/modules/third_party/FunkyDNS\n", encoding="utf-8")
+
+            findings_default = repo_hygiene.find_embedded_git_repositories(root)
+            findings_include_third_party = repo_hygiene.find_embedded_git_repositories(root, include_third_party=True)
+
+        self.assertEqual(findings_default, [])
+        self.assertEqual(findings_include_third_party, [])
 
 
 if __name__ == "__main__":
