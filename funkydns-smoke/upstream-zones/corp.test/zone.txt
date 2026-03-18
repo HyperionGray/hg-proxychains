@@ -1,0 +1,2 @@
+# Internal upstream zone for resolv.conf search-domain smoke checks.
+printer.corp.test A 198.51.100.42

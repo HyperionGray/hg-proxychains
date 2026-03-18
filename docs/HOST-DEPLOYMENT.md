@@ -40,7 +40,9 @@ DNS must go only to the local DoH-capable stub. Raw UDP/TCP 53 from workloads sh
 
 - `supervisor.block_start_until_hops_healthy` (default `true` in examples):
   - when enabled, `pproxy` startup is delayed until hop probes meet policy
-- `supervisor.min_healthy_hops`:
-  - minimum number of healthy hops required for readiness
+- `supervisor.require_all_hops_healthy`:
+  - when `true`, every configured hop must be healthy for readiness
+- `supervisor.max_hop_status_age_s`:
+  - readiness fails when hop probe data goes stale
 
 This allows stricter behavior on hosts where fail-closed semantics are required before accepting traffic.
