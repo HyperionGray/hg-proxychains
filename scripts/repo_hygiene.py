@@ -4,6 +4,7 @@
 This utility focuses on repository maintenance concerns:
 1) unfinished markers in tracked source files (TODO, FIXME, STUB, ...)
 2) common stray files (editor backups, Python caches, temp files)
+3) stale artifacts and unexpected embedded git repositories
 """
 
 from __future__ import annotations
@@ -17,11 +18,13 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Iterable, Sequence
 
 
 UNFINISHED_PATTERN = re.compile(r"\b(TODO|FIXME|STUB|TBD|XXX|WIP|UNFINISHED)\b\s*:")
-FUNKYDNS_PREFIX = "third_party/FunkyDNS/"
+THIRD_PARTY_PREFIX = "third_party/"
+FUNKYDNS_SUBMODULE = "third_party/FunkyDNS"
+FUNKYDNS_PREFIX = f"{FUNKYDNS_SUBMODULE}/"
 UNFINISHED_SKIP_PREFIXES = (".git/",)
 STRAY_FILE_PATTERNS = (
     "*~",
@@ -40,7 +43,7 @@ STRAY_DIR_NAMES = {
     ".mypy_cache",
     ".ruff_cache",
 }
-STALE_UNTRACKED_NAMES = {
+STALE_ARTIFACT_PATHS = {
     "egressd-starter.tar.gz",
 }
 UNFINISHED_SCAN_SUFFIXES = {
@@ -58,6 +61,9 @@ UNFINISHED_SCAN_SUFFIXES = {
 UNFINISHED_SCAN_FILENAMES = {
     "Dockerfile",
     "Makefile",
+}
+ALLOWED_EMBEDDED_GIT_PATHS = {
+    f"{FUNKYDNS_SUBMODULE}/.git",
 }
 BASELINE_DEFAULT_PATH = ".repo-hygiene-baseline.json"
 
@@ -93,6 +99,18 @@ def list_submodule_paths(repo_root: Path, submodule_rel: str, args: Sequence[str
     except RuntimeError:
         return []
     return [f"{submodule_rel}/{path}" for path in paths]
+
+
+def collect_git_paths(
+    repo_root: Path,
+    list_args: Sequence[str],
+    include_third_party: bool = False,
+) -> list[str]:
+    paths = set(list_git_paths(repo_root, list_args))
+    if include_third_party:
+        for dep_path in list_submodule_paths(repo_root, FUNKYDNS_SUBMODULE, list_args):
+            paths.add(dep_path)
+    return sorted(paths)
 
 
 def is_text_file(path: Path) -> bool:
@@ -152,27 +170,27 @@ def find_unfinished_markers(
     return findings
 
 
-def collect_git_paths(
-    repo_root: Path,
-    list_args: Sequence[str],
-    include_third_party: bool = False,
-) -> list[str]:
-    paths = set(list_git_paths(repo_root, list_args))
-    if include_third_party:
-        funky_root = repo_root / "third_party" / "FunkyDNS"
-        if (funky_root / ".git").exists():
-            for dep_path in list_git_paths(funky_root, list_args):
-                prefixed = str(Path(FUNKYDNS_PREFIX) / dep_path)
-                paths.add(prefixed)
-    return sorted(paths)
-
-
 def marker_baseline_key(finding: MarkerFinding) -> tuple[str, str, str]:
     return finding.path, finding.marker, finding.line
 
 
+def baseline_target_path(repo_root: Path, baseline_path: str) -> Path:
+    target = Path(baseline_path)
+    if target.is_absolute():
+        return target
+    return repo_root / target
+
+
+def baseline_relative_path(repo_root: Path, baseline_path: str) -> str | None:
+    target = baseline_target_path(repo_root, baseline_path)
+    try:
+        return target.resolve().relative_to(repo_root).as_posix()
+    except ValueError:
+        return None
+
+
 def load_marker_baseline(repo_root: Path, baseline_path: str) -> set[tuple[str, str, str]]:
-    candidate = repo_root / baseline_path
+    candidate = baseline_target_path(repo_root, baseline_path)
     if not candidate.is_file():
         return set()
     try:
@@ -212,10 +230,10 @@ def apply_marker_baseline(
     return kept, suppressed
 
 
-def classify_stray_paths(untracked_paths: Iterable[str]) -> list[str]:
+def classify_stray_paths(untracked_paths: Iterable[str], include_third_party: bool = False) -> list[str]:
     stray: list[str] = []
     for rel_path in untracked_paths:
-        if not include_third_party and rel_path.startswith(THIRD_PARTY_PREFIX):
+        if not include_third_party and rel_path.startswith(FUNKYDNS_PREFIX):
             continue
         path_obj = Path(rel_path)
         basename = path_obj.name
@@ -225,8 +243,6 @@ def classify_stray_paths(untracked_paths: Iterable[str]) -> list[str]:
         if any(fnmatch.fnmatch(basename, pattern) for pattern in STRAY_FILE_PATTERNS):
             stray.append(rel_path)
             continue
-        if basename in STALE_UNTRACKED_NAMES:
-            stray.append(rel_path)
     return sorted(set(stray))
 
 
@@ -238,6 +254,22 @@ def find_stale_artifacts(
     stale_tracked = sorted(path for path in STALE_ARTIFACT_PATHS if path in tracked_set)
     stale_untracked = sorted(path for path in STALE_ARTIFACT_PATHS if path in untracked_set)
     return stale_tracked, stale_untracked
+
+
+def find_embedded_git_repos(repo_root: Path, include_third_party: bool = False) -> list[str]:
+    findings: list[str] = []
+    for git_path in repo_root.rglob(".git"):
+        if not git_path.is_dir() and not git_path.is_file():
+            continue
+        rel_path = git_path.relative_to(repo_root).as_posix()
+        if rel_path == ".git":
+            continue
+        if rel_path in ALLOWED_EMBEDDED_GIT_PATHS:
+            continue
+        if not include_third_party and rel_path.startswith(FUNKYDNS_PREFIX):
+            continue
+        findings.append(rel_path)
+    return sorted(set(findings))
 
 
 def prune_empty_parents(repo_root: Path, start_path: Path) -> None:
@@ -269,7 +301,15 @@ def delete_paths(repo_root: Path, relative_paths: Iterable[str]) -> int:
     return deleted
 
 
-def build_scan_report(findings: Sequence[MarkerFinding], stray_paths: Sequence[str]) -> dict[str, object]:
+def build_scan_report(
+    findings: Sequence[MarkerFinding],
+    stray_paths: Sequence[str],
+    stale_tracked: Sequence[str],
+    stale_untracked: Sequence[str],
+    embedded_git_repos: Sequence[str],
+    suppressed_markers: int = 0,
+) -> dict[str, object]:
+    total = len(findings) + len(stray_paths) + len(stale_tracked) + len(stale_untracked) + len(embedded_git_repos)
     return {
         "unfinished_markers": [
             {
@@ -281,28 +321,39 @@ def build_scan_report(findings: Sequence[MarkerFinding], stray_paths: Sequence[s
             for finding in findings
         ],
         "stray_untracked_paths": list(stray_paths),
+        "stale_tracked_artifacts": list(stale_tracked),
+        "stale_untracked_artifacts": list(stale_untracked),
+        "embedded_git_repos": list(embedded_git_repos),
         "summary": {
             "unfinished_markers": len(findings),
+            "unfinished_markers_suppressed_by_baseline": suppressed_markers,
             "stray_untracked_paths": len(stray_paths),
-            "total_issues": len(findings) + len(stray_paths),
+            "stale_tracked_artifacts": len(stale_tracked),
+            "stale_untracked_artifacts": len(stale_untracked),
+            "embedded_git_repos": len(embedded_git_repos),
+            "total_issues": total,
         },
     }
 
 
-def print_scan_results(findings: Sequence[MarkerFinding], stray_paths: Sequence[str]) -> None:
+def print_scan_results(
+    findings: Sequence[MarkerFinding],
+    stray_paths: Sequence[str],
+    stale_tracked: Sequence[str],
+    stale_untracked: Sequence[str],
+    embedded_git_repos: Sequence[str],
+    suppressed_markers: int,
+) -> None:
     print("== Repo hygiene scan ==")
     print(f"unfinished markers: {len(findings)}")
     if suppressed_markers:
         print(f"unfinished markers suppressed by baseline: {suppressed_markers}")
     if findings:
         for finding in findings:
-            print(
-                f"  - {finding['path']}:{finding['line_number']}: "
-                f"{finding['marker']} -> {finding['line']}"
-            )
-    print(f"stray untracked files: {len(stray_untracked_paths)}")
-    if stray_untracked_paths:
-        for rel_path in stray_untracked_paths:
+            print(f"  - {finding.path}:{finding.line_number}: {finding.marker} -> {finding.line}")
+    print(f"stray untracked files: {len(stray_paths)}")
+    if stray_paths:
+        for rel_path in stray_paths:
             print(f"  - {rel_path}")
     print(f"stale tracked artifacts: {len(stale_tracked)}")
     if stale_tracked:
@@ -312,52 +363,136 @@ def print_scan_results(findings: Sequence[MarkerFinding], stray_paths: Sequence[
     if stale_untracked:
         for rel_path in stale_untracked:
             print(f"  - {rel_path}")
+    print(f"embedded git repos: {len(embedded_git_repos)}")
+    if embedded_git_repos:
+        for rel_path in embedded_git_repos:
+            print(f"  - {rel_path}")
 
 
-def command_scan(repo_root: Path, json_output: bool = False) -> int:
-    tracked = list_git_paths(repo_root, ("ls-files",))
-    untracked = list_git_paths(repo_root, ("ls-files", "--others", "--exclude-standard"))
-    findings = find_unfinished_markers(repo_root, tracked)
-    stray = classify_stray_paths(untracked)
-    report = build_scan_report(findings, stray)
-    if json_output:
-        print(json.dumps(report, indent=2, sort_keys=True))
-    else:
-        print_scan_results(findings, stray)
-    return 1 if findings or stray else 0
-
-
-def command_clean(repo_root: Path, json_output: bool = False) -> int:
-    tracked = list_git_paths(repo_root, ("ls-files",))
-    untracked = list_git_paths(repo_root, ("ls-files", "--others", "--exclude-standard"))
-    findings = find_unfinished_markers(repo_root, tracked)
-    stray = classify_stray_paths(untracked)
-    report = build_scan_report(findings, stray)
-
-    if not json_output:
-        print_scan_results(findings, stray)
-    if stray:
-        deleted = delete_paths(repo_root, stray)
-        report["clean"] = {"deleted_stray_paths": deleted}
-        if not json_output:
-            print(f"deleted stray paths: {deleted}")
-    else:
-        report["clean"] = {"deleted_stray_paths": 0}
-        if not json_output:
-            print("deleted stray paths: 0")
-    if json_output:
-        print(json.dumps(report, indent=2, sort_keys=True))
-    return 1 if findings else 0
-
-
-def command_baseline(repo_root: Path, include_third_party: bool, baseline_path: str) -> int:
+def command_scan(
+    repo_root: Path,
+    include_third_party: bool = False,
+    baseline_path: str = BASELINE_DEFAULT_PATH,
+    json_output: bool = False,
+) -> int:
     tracked = collect_git_paths(repo_root, ("ls-files",), include_third_party=include_third_party)
-    baseline_rel_path = Path(baseline_path).as_posix()
+    untracked = collect_git_paths(
+        repo_root,
+        ("ls-files", "--others", "--exclude-standard"),
+        include_third_party=include_third_party,
+    )
+    baseline = load_marker_baseline(repo_root, baseline_path)
+    baseline_rel = baseline_relative_path(repo_root, baseline_path)
+    excluded = {baseline_rel} if baseline_rel else set()
     findings = find_unfinished_markers(
         repo_root,
         tracked,
         include_third_party=include_third_party,
-        excluded_paths={baseline_rel_path},
+        excluded_paths=excluded,
+    )
+    findings, suppressed_markers = apply_marker_baseline(findings, baseline)
+    stray = classify_stray_paths(untracked, include_third_party=include_third_party)
+    stale_tracked, stale_untracked = find_stale_artifacts(tracked, untracked)
+    embedded_git = find_embedded_git_repos(repo_root, include_third_party=include_third_party)
+    report = build_scan_report(
+        findings,
+        stray,
+        stale_tracked,
+        stale_untracked,
+        embedded_git,
+        suppressed_markers=suppressed_markers,
+    )
+    if json_output:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        print_scan_results(
+            findings,
+            stray,
+            stale_tracked,
+            stale_untracked,
+            embedded_git,
+            suppressed_markers=suppressed_markers,
+        )
+    has_issues = bool(findings or stray or stale_tracked or stale_untracked or embedded_git)
+    return 1 if has_issues else 0
+
+
+def command_clean(
+    repo_root: Path,
+    include_third_party: bool = False,
+    baseline_path: str = BASELINE_DEFAULT_PATH,
+    json_output: bool = False,
+) -> int:
+    tracked = collect_git_paths(repo_root, ("ls-files",), include_third_party=include_third_party)
+    untracked = collect_git_paths(
+        repo_root,
+        ("ls-files", "--others", "--exclude-standard"),
+        include_third_party=include_third_party,
+    )
+    baseline = load_marker_baseline(repo_root, baseline_path)
+    baseline_rel = baseline_relative_path(repo_root, baseline_path)
+    excluded = {baseline_rel} if baseline_rel else set()
+    findings = find_unfinished_markers(
+        repo_root,
+        tracked,
+        include_third_party=include_third_party,
+        excluded_paths=excluded,
+    )
+    findings, suppressed_markers = apply_marker_baseline(findings, baseline)
+    stray = classify_stray_paths(untracked, include_third_party=include_third_party)
+    stale_tracked, stale_untracked = find_stale_artifacts(tracked, untracked)
+    embedded_git = find_embedded_git_repos(repo_root, include_third_party=include_third_party)
+
+    deletable = sorted(set(stray) | set(stale_untracked))
+    deleted = delete_paths(repo_root, deletable) if deletable else 0
+
+    post_untracked = collect_git_paths(
+        repo_root,
+        ("ls-files", "--others", "--exclude-standard"),
+        include_third_party=include_third_party,
+    )
+    remaining_stray = classify_stray_paths(post_untracked, include_third_party=include_third_party)
+    _, remaining_stale_untracked = find_stale_artifacts(tracked, post_untracked)
+
+    report = build_scan_report(
+        findings,
+        remaining_stray,
+        stale_tracked,
+        remaining_stale_untracked,
+        embedded_git,
+        suppressed_markers=suppressed_markers,
+    )
+    report["clean"] = {
+        "deleted_paths": deleted,
+        "requested_deletions": len(deletable),
+    }
+
+    if json_output:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        print_scan_results(
+            findings,
+            remaining_stray,
+            stale_tracked,
+            remaining_stale_untracked,
+            embedded_git,
+            suppressed_markers=suppressed_markers,
+        )
+        print(f"deleted paths: {deleted}")
+
+    has_issues = bool(findings or remaining_stray or stale_tracked or remaining_stale_untracked or embedded_git)
+    return 1 if has_issues else 0
+
+
+def command_baseline(repo_root: Path, include_third_party: bool, baseline_path: str) -> int:
+    tracked = collect_git_paths(repo_root, ("ls-files",), include_third_party=include_third_party)
+    baseline_rel = baseline_relative_path(repo_root, baseline_path)
+    excluded = {baseline_rel} if baseline_rel else set()
+    findings = find_unfinished_markers(
+        repo_root,
+        tracked,
+        include_third_party=include_third_party,
+        excluded_paths=excluded,
     )
     payload = {
         "unfinished_markers": [
@@ -369,9 +504,14 @@ def command_baseline(repo_root: Path, include_third_party: bool, baseline_path: 
             for finding in findings
         ]
     }
-    target = repo_root / baseline_path
+    target = baseline_target_path(repo_root, baseline_path)
+    target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(f"wrote baseline entries: {len(findings)} -> {target.relative_to(repo_root)}")
+    try:
+        label = target.resolve().relative_to(repo_root).as_posix()
+    except ValueError:
+        label = str(target)
+    print(f"wrote baseline entries: {len(findings)} -> {label}")
     return 0
 
 
@@ -382,7 +522,7 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         nargs="?",
         choices=("scan", "clean", "baseline"),
         default="scan",
-        help="scan for issues, clean stray artifacts, or write a marker baseline file",
+        help="scan for issues, clean removable clutter, or write a marker baseline file",
     )
     parser.add_argument(
         "--repo-root",
@@ -394,6 +534,17 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         action="store_true",
         help="emit machine-readable JSON output",
     )
+    parser.add_argument(
+        "--include-third-party",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="include third_party/FunkyDNS in marker/stray scanning (default: false)",
+    )
+    parser.add_argument(
+        "--baseline-file",
+        default=BASELINE_DEFAULT_PATH,
+        help=f"marker baseline path (default: {BASELINE_DEFAULT_PATH})",
+    )
     return parser.parse_args(argv)
 
 
@@ -404,9 +555,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"error: {repo_root} is not a git repository", file=sys.stderr)
         return 2
 
+    if args.command == "baseline":
+        return command_baseline(
+            repo_root,
+            include_third_party=args.include_third_party,
+            baseline_path=args.baseline_file,
+        )
     if args.command == "clean":
-        return command_clean(repo_root, json_output=args.json)
-    return command_scan(repo_root, json_output=args.json)
+        return command_clean(
+            repo_root,
+            include_third_party=args.include_third_party,
+            baseline_path=args.baseline_file,
+            json_output=args.json,
+        )
+    return command_scan(
+        repo_root,
+        include_third_party=args.include_third_party,
+        baseline_path=args.baseline_file,
+        json_output=args.json,
+    )
 
 
 if __name__ == "__main__":

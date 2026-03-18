@@ -2,7 +2,6 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import repo_hygiene
@@ -24,6 +23,7 @@ class RepoHygieneTests(unittest.TestCase):
             "notes.txt~",
             "tmp/output.tmp",
             "pkg/__pycache__/module.cpython-312.pyc",
+            "third_party/FunkyDNS/archive/funkydns.py~",
             "keep/readme.md",
             "docs/.DS_Store",
             "build/result.txt",
@@ -34,7 +34,6 @@ class RepoHygieneTests(unittest.TestCase):
             stray,
             [
                 "docs/.DS_Store",
-                "egressd-starter.tar.gz",
                 "notes.txt~",
                 "pkg/__pycache__/module.cpython-312.pyc",
                 "tmp/output.tmp",
@@ -59,6 +58,45 @@ class RepoHygieneTests(unittest.TestCase):
                 "tmp/output.tmp",
             ],
         )
+
+    def test_find_stale_artifacts(self) -> None:
+        tracked = ["Makefile", "egressd-starter.tar.gz"]
+        untracked = ["tmp/output.tmp", "egressd-starter.tar.gz"]
+        stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(tracked, untracked)
+        self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
+        self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
+
+    def test_find_embedded_git_repos_respects_allowlist(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir(parents=True, exist_ok=True)
+            (root / "tools" / "tmp" / ".git").mkdir(parents=True, exist_ok=True)
+            (root / "third_party" / "FunkyDNS" / ".git").mkdir(parents=True, exist_ok=True)
+            (root / "third_party" / "other" / ".git").mkdir(parents=True, exist_ok=True)
+
+            findings = repo_hygiene.find_embedded_git_repos(root)
+            findings_with_third_party = repo_hygiene.find_embedded_git_repos(
+                root, include_third_party=True
+            )
+
+        self.assertEqual(findings, ["third_party/other/.git", "tools/tmp/.git"])
+        self.assertEqual(findings_with_third_party, ["third_party/other/.git", "tools/tmp/.git"])
+
+    def test_parse_args_supports_baseline_and_third_party_flags(self) -> None:
+        args = repo_hygiene.parse_args(
+            [
+                "scan",
+                "--repo-root",
+                "/tmp/repo",
+                "--include-third-party",
+                "--baseline-file",
+                "custom-baseline.json",
+            ]
+        )
+        self.assertEqual(args.command, "scan")
+        self.assertEqual(args.repo_root, "/tmp/repo")
+        self.assertTrue(args.include_third_party)
+        self.assertEqual(args.baseline_file, "custom-baseline.json")
 
     def test_find_unfinished_markers_ignores_skipped_paths(self) -> None:
         with tempfile.TemporaryDirectory() as td:
