@@ -18,6 +18,7 @@ This repository includes a small maintenance utility at
   - temporary files (`*.tmp`)
   - Python cache outputs (`__pycache__/`, `*.pyc`, `*.pyo`)
   - common metadata noise (`.DS_Store`, `Thumbs.db`)
+  - known generated bundles (`egressd-starter.tar.gz`)
 
 The scanner intentionally skips `third_party/FunkyDNS/` when checking
 unfinished markers by default, because that path is managed as an external
@@ -36,12 +37,7 @@ From repo root:
 ```bash
 python3 scripts/repo_hygiene.py scan --repo-root .
 python3 scripts/repo_hygiene.py clean --repo-root .
-
-# Include third-party dependency scanning
-python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
-
-# Refresh marker baseline from current findings
-python3 scripts/repo_hygiene.py baseline --repo-root . --include-third-party
+python3 scripts/repo_hygiene.py scan --repo-root . --json
 ```
 
 Or through Make targets:
@@ -49,9 +45,7 @@ Or through Make targets:
 ```bash
 make repo-scan
 make repo-clean
-make maintenance
-make maintenance-fix
-make maintenance-baseline
+make repo-scan-json
 ```
 
 ## Exit codes

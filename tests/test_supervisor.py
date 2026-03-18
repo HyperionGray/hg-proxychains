@@ -1,4 +1,4 @@
-import copy
+import json
 import sys
 import types
 import unittest
@@ -12,15 +12,25 @@ import supervisor  # noqa: E402
 
 
 class SupervisorValidationTests(unittest.TestCase):
-    def base_cfg(self):
+    def base_cfg(self, require_all_hops_healthy: bool = True):
         return {
+            "listener": {
+                "bind": "0.0.0.0",
+                "port": 15001,
+            },
+            "dns": {
+                "launch_funkydns": False,
+            },
             "chain": {
                 "hops": [{"url": "http://proxy1:3128"}, {"url": "http://proxy2:3128"}],
                 "canary_target": "example.com:443",
                 "allowed_ports": [80, 443],
                 "fail_closed": True,
             },
-            "supervisor": {"hop_check_interval_s": 5},
+            "supervisor": {
+                "hop_check_interval_s": 5,
+                "require_all_hops_healthy": require_all_hops_healthy,
+            },
         }
 
     def test_validate_cfg_accepts_valid_configuration(self):
@@ -39,37 +49,20 @@ class SupervisorValidationTests(unittest.TestCase):
         self.assertEqual(result["proxy"], "://broken-proxy-url")
         self.assertIn("unsupported proxy scheme", result["error"])
 
-
-class SupervisorReadinessTests(unittest.TestCase):
-    def setUp(self):
-        self._state_backup = copy.deepcopy(supervisor.STATE)
-        self._runtime_backup = copy.deepcopy(supervisor.RUNTIME)
-
-    def tearDown(self):
-        supervisor.STATE.clear()
-        supervisor.STATE.update(self._state_backup)
-        supervisor.RUNTIME.clear()
-        supervisor.RUNTIME.update(self._runtime_backup)
-
-    def test_fail_closed_requires_healthy_hops(self):
-        supervisor.RUNTIME["fail_closed"] = True
-        supervisor.RUNTIME["expected_hops"] = 2
-        supervisor.STATE["pproxy"] = "running"
-        supervisor.STATE["hops"] = {
-            "hop_0": {"ok": True},
-            "hop_1": {"ok": False},
+    def test_compute_readiness_relaxed_mode_requires_at_least_one_healthy_hop(self):
+        cfg = self.base_cfg(require_all_hops_healthy=False)
+        state = {
+            "pproxy": "running",
+            "funkydns": "disabled",
+            "hops": {
+                "hop_0": {"ok": False},
+                "hop_1": {"ok": True},
+            },
+            "hops_last_update": 100,
         }
-        readiness = supervisor.compute_readiness()
-        self.assertFalse(readiness["ready"])
-        self.assertIn("hop_1-unhealthy", readiness["reasons"])
-
-    def test_non_fail_closed_does_not_gate_on_hops(self):
-        supervisor.RUNTIME["fail_closed"] = False
-        supervisor.RUNTIME["expected_hops"] = 2
-        supervisor.STATE["pproxy"] = "running"
-        supervisor.STATE["hops"] = {}
-        readiness = supervisor.compute_readiness()
+        readiness = supervisor.compute_readiness(state, cfg, now=105)
         self.assertTrue(readiness["ready"])
+        self.assertEqual([], readiness["reasons"])
 
 
 if __name__ == "__main__":

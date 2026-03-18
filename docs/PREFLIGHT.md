@@ -22,14 +22,24 @@ From the repo root:
 make preflight
 ```
 
-The Makefile target sets `EGRESSD_PREFLIGHT_SKIP_BIN_CHECKS=true` so local
-validation still works when binaries like `pproxy` only exist inside containers.
+The Makefile target builds the `egressd` image and runs the supervisor in
+`--check-config` mode with `EGRESSD_PREFLIGHT_SKIP_BIN_CHECKS=true`, so config
+validation still works even when binaries like `pproxy` only exist inside the
+container image.
+
+For a full image-level validation with binary checks enabled:
+
+```bash
+make validate-config
+```
 
 Or directly:
 
 ```bash
 python3 egressd/supervisor.py --check-config --config egressd/config.json5
 ```
+
+The direct command requires local Python dependencies such as `pyjson5`.
 
 The command prints a JSON report:
 

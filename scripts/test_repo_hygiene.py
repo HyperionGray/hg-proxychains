@@ -26,12 +26,14 @@ class RepoHygieneTests(unittest.TestCase):
             "keep/readme.md",
             "docs/.DS_Store",
             "build/result.txt",
+            "egressd-starter.tar.gz",
         ]
         stray = repo_hygiene.classify_stray_paths(untracked)
         self.assertEqual(
             stray,
             [
                 "docs/.DS_Store",
+                "egressd-starter.tar.gz",
                 "notes.txt~",
                 "pkg/__pycache__/module.cpython-312.pyc",
                 "tmp/output.tmp",

@@ -82,3 +82,64 @@ Even if you keep using FunkyDNS, the cleanest deployment boundary is still:
 - `funkydns`: DNS stub / DoH resolver
 
 Running them as separate services makes restarts, logs, and blast radius much cleaner.
+
+## 6. Missing certs do not actually disable DoH
+
+### Why it matters
+
+Server mode claims SSL features are disabled when cert files are missing, but
+the process still tries to start Hypercorn with those missing PEM paths. That
+leaves UDP/TCP DNS up while DoH dies later in startup.
+
+### Suggested fix
+
+When certs are absent and auto-cert is off, either:
+
+- explicitly disable DoH and DoT in config before startup continues, or
+- fail fast and exit non-zero before any partial listener set comes up.
+
+Status:
+- patched in this vendored copy on 2026-03-17 by disabling DoH and DoT when
+  TLS files are missing and `AUTO_CERT` is off, plus a defensive DoH startup
+  guard.
+- carry the same fix forward on future FunkyDNS rebases.
+
+## 7. Server mode does not stop reliably on container signals
+
+### Why it matters
+
+In the smoke harness, direct `SIGTERM` and `SIGINT` delivery to the
+`funkydns server` process does not reliably stop it, which leaves local wrapper
+code doing bounded shutdown on its behalf.
+
+### Suggested fix
+
+Rework the server-mode signal path so shutdown is scheduled from the active
+event loop in a way that reliably stops the UDP, TCP, and DoH tasks on
+`SIGTERM` and `SIGINT`.
+
+## 8. Local host resolution should match the host OS
+
+### Why it matters
+
+Operators expect a local resolver to respect `/etc/hosts` and the system
+resolver configuration in `/etc/resolv.conf`, including Ubuntu-style
+`systemd-resolved` search domains and stub resolvers.
+
+### Suggested fix
+
+Prefer local resolution in this order:
+
+- `/etc/hosts`
+- local zones
+- the resolver loaded from `resolv.conf`
+- explicit upstream DNS and DoH servers
+
+Status:
+- patched in this vendored copy on 2026-03-17
+- added config toggles for `USE_SYSTEM_RESOLVER`, `RESOLV_CONF_PATH`,
+  `RESPECT_HOSTS_FILE`, and `HOSTS_FILE_PATH`
+- added regression tests for hosts-file resolution and `resolv.conf` search
+  behavior
+- the smoke harness now mounts custom `hosts` and `resolv.conf` fixtures and
+  proves both behaviors over direct DNS and DoH
