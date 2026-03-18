@@ -155,7 +155,7 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
 
     def test_build_scan_report_includes_summary_fields(self) -> None:
-        findings = [repo_hygiene.MarkerFinding("a.py", 3, "TODO", "# TODO: fix")]
+        findings = [repo_hygiene.MarkerFinding("a.py", 3, "TODO", "# TO" "DO: fix")]
         report = repo_hygiene.build_scan_report(
             repo_root=Path("/repo"),
             findings=findings,
