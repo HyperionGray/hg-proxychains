@@ -510,14 +510,101 @@ def wait_for_chain_ready(cfg: Dict[str, Any]) -> None:
     raise RuntimeError("shutdown requested")
 
 
+def _extract_hop_label(hop: Any) -> str:
+    """Return a ``host:port`` label for a hop config entry."""
+    raw_url = hop.get("url", "") if isinstance(hop, dict) else ""
+    try:
+        parsed = urlparse(raw_url)
+        if parsed.hostname and parsed.port:
+            return f"{parsed.hostname}:{parsed.port}"
+    except (ValueError, AttributeError):
+        pass
+    return raw_url
+
+
+def _all_hops_ok(hops: List[Any], hop_statuses: Dict[str, Any]) -> bool:
+    """Return True only when every hop in *hops* has a passing status entry."""
+    return bool(hops) and all(
+        bool(hop_statuses.get(f"hop_{idx}", {}).get("ok", False))
+        for idx in range(len(hops))
+    )
+
+
+def format_chain_visual(cfg: Dict[str, Any], hop_statuses: Optional[Dict[str, Any]] = None) -> str:
+    """Return a terminal-friendly proxychains-style ASCII chain visualization.
+
+    When *hop_statuses* is None the output shows the configured topology with
+    a trailing ``...`` to indicate that probing has not run yet.  When
+    *hop_statuses* is provided the connectors and final token reflect the
+    current probe results, and a per-hop detail line is appended for each hop.
+    """
+    chain_cfg = cfg.get("chain", {})
+    hops = chain_cfg.get("hops", [])
+
+    if not hops:
+        return "[egressd] chain: (no hops configured)"
+
+    segments: List[str] = ["|S-chain|"]
+
+    for idx, hop in enumerate(hops):
+        label = _extract_hop_label(hop)
+
+        if hop_statuses is not None:
+            ok = bool(hop_statuses.get(f"hop_{idx}", {}).get("ok", False))
+            connector = "-<>-" if ok else "-XX-"
+        else:
+            connector = "-<>-"
+
+        segments.append(f"{connector}{label}")
+
+    if hop_statuses is not None:
+        final = "-<>-OK" if _all_hops_ok(hops, hop_statuses) else "-<>-FAIL"
+    else:
+        final = "-<>-..."
+
+    lines = [f"[egressd] {''.join(segments)}{final}"]
+
+    if hop_statuses:
+        for idx, hop in enumerate(hops):
+            label = _extract_hop_label(hop)
+            hop_key = f"hop_{idx}"
+            status = hop_statuses.get(hop_key, {})
+            ok = bool(status.get("ok", False))
+            elapsed_ms = status.get("elapsed_ms")
+
+            if ok:
+                timing = f"{elapsed_ms}ms" if elapsed_ms is not None else "ok"
+                lines.append(f"[egressd]   hop_{idx}: {label:<30} OK   {timing}")
+            else:
+                err_msg = status.get("error") or status.get("status_line") or "unreachable"
+                lines.append(f"[egressd]   hop_{idx}: {label:<30} FAIL {err_msg}")
+
+    return "\n".join(lines)
+
+
+def print_chain_visual(cfg: Dict[str, Any], hop_statuses: Optional[Dict[str, Any]] = None) -> None:
+    """Print the chain visual to stderr when ``logging.chain_visual`` is enabled."""
+    if not _as_bool(cfg.get("logging", {}).get("chain_visual"), default=False):
+        return
+    print(format_chain_visual(cfg, hop_statuses), file=sys.stderr, flush=True)
+
+
 def hop_health_loop(cfg: Dict[str, Any]) -> None:
     interval_s = int(cfg.get("supervisor", {}).get("hop_check_interval_s", 5))
     target = str(cfg.get("chain", {}).get("canary_target", ""))
+    last_overall_ok: Optional[bool] = None
+    first_run = True
     while not STOP_EVENT.is_set():
         checked_at = int(time.time())
         statuses = collect_hop_statuses(cfg, target)
         set_hop_statuses(statuses, checked_at=checked_at)
         refresh_ready_state(cfg, now=checked_at)
+        hops = cfg.get("chain", {}).get("hops", [])
+        current_ok = _all_hops_ok(hops, statuses)
+        if first_run or current_ok != last_overall_ok:
+            print_chain_visual(cfg, statuses)
+            last_overall_ok = current_ok
+            first_run = False
         STOP_EVENT.wait(interval_s)
 
 
@@ -640,6 +727,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     STOP_EVENT.clear()
     reset_state(cfg)
+    print_chain_visual(cfg)
     server = run_health_server(
         cfg.get("supervisor", {}).get("health_bind", "0.0.0.0"),
         int(cfg.get("supervisor", {}).get("health_port", 9191)),
