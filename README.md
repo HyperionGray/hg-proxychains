@@ -214,6 +214,12 @@ make maintenance-fix
 # equivalent: python3 scripts/repo_hygiene.py clean --repo-root .
 ```
 
+To refresh the baseline of known upstream unfinished markers:
+
+```bash
+make maintenance-baseline
+```
+
 `maintenance*` targets focus on first-party code by default. For a full scan that
 also includes `third_party/FunkyDNS`, use:
 
