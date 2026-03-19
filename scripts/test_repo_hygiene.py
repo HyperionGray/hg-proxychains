@@ -2,7 +2,6 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import repo_hygiene
@@ -34,14 +33,11 @@ class RepoHygieneTests(unittest.TestCase):
             stray,
             [
                 "docs/.DS_Store",
-                "egressd-starter.tar.gz",
                 "notes.txt~",
                 "pkg/__pycache__/module.cpython-312.pyc",
                 "tmp/output.tmp",
             ],
         )
-        stray_with_third_party = repo_hygiene.classify_stray_paths(untracked, include_third_party=True)
-        self.assertIn("third_party/FunkyDNS/archive/funkydns.py~", stray_with_third_party)
 
     def test_classify_stray_paths_skips_third_party_unless_enabled(self) -> None:
         paths = [
@@ -147,6 +143,44 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_find_stale_artifacts_separates_tracked_and_untracked(self) -> None:
+        stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(
+            tracked_paths=["egressd-starter.tar.gz", "README.md"],
+            untracked_paths=["tmp/file.tmp"],
+        )
+        self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
+        self.assertEqual(stale_untracked, [])
+
+        stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(
+            tracked_paths=["README.md"],
+            untracked_paths=["egressd-starter.tar.gz"],
+        )
+        self.assertEqual(stale_tracked, [])
+        self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
+
+    def test_find_embedded_git_repos_detects_unexpected_nested_repos(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            (root / "nested" / ".git").mkdir(parents=True)
+            (root / "third_party" / "FunkyDNS" / ".git").mkdir(parents=True)
+
+            repos = repo_hygiene.find_embedded_git_repos(root)
+
+        self.assertEqual(repos, ["nested"])
+
+    def test_find_embedded_git_repos_skips_other_third_party_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            (root / "third_party" / "SomeDep" / ".git").mkdir(parents=True)
+
+            default = repo_hygiene.find_embedded_git_repos(root, include_third_party=False)
+            include = repo_hygiene.find_embedded_git_repos(root, include_third_party=True)
+
+        self.assertEqual(default, [])
+        self.assertEqual(include, ["third_party/SomeDep"])
 
 
 if __name__ == "__main__":

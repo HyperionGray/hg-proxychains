@@ -21,8 +21,8 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument(
         "--include-third-party",
         action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Include third_party/FunkyDNS in marker/stray scanning (default: true).",
+        default=False,
+        help="Include third_party/FunkyDNS in marker/stray scanning (default: false).",
     )
     parser.add_argument("--fix", action="store_true", help="Remove untracked stray artifacts.")
     parser.add_argument(
