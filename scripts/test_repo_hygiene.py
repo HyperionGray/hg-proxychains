@@ -24,6 +24,7 @@ class RepoHygieneTests(unittest.TestCase):
             "notes.txt~",
             "tmp/output.tmp",
             "pkg/__pycache__/module.cpython-312.pyc",
+            "third_party/FunkyDNS/archive/funkydns.py~",
             "keep/readme.md",
             "docs/.DS_Store",
             "build/result.txt",
@@ -147,6 +148,20 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_discover_embedded_git_repos_skips_allowed_submodule(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            allowed = root / "third_party" / "FunkyDNS" / ".git"
+            allowed.parent.mkdir(parents=True, exist_ok=True)
+            allowed.write_text("gitdir: ../../.git/modules/third_party/FunkyDNS\n", encoding="utf-8")
+            nested = root / "scratch" / ".git"
+            nested.mkdir(parents=True, exist_ok=True)
+
+            found = repo_hygiene.discover_embedded_git_repos(root, include_third_party=True)
+
+        self.assertEqual([str(path.relative_to(root)) for path in found], ["scratch"])
 
 
 if __name__ == "__main__":
