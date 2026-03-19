@@ -1,9 +1,8 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
-
-This repository includes a small maintenance utility at
-`scripts/repo_hygiene.py` for scheduled cleanups and local checks.
+This repository includes a maintenance utility at `scripts/repo_hygiene.py`
+for scheduled cleanups and local checks. The compatibility wrapper
+`scripts/repo_maintenance.py` delegates to the same scanner.
 
 ## What it checks
 
@@ -22,9 +21,9 @@ This repository includes a small maintenance utility at
   - common metadata noise (`.DS_Store`, `Thumbs.db`)
   - known generated bundles (`egressd-starter.tar.gz`)
 
-The scanner intentionally skips `third_party/FunkyDNS/` when checking
-unfinished markers by default, because that path is managed as an external
-dependency.
+By default, scans target first-party code and skip `third_party/FunkyDNS/`
+for unfinished markers and stray-file checks because that path is managed as
+an external dependency.
 
 When you do want full-repo scanning (including nested third-party git state),
 use `--include-third-party`.
@@ -64,6 +63,14 @@ Optional deep scan including `third_party/FunkyDNS` unfinished markers:
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 ```
 
+Use a marker baseline file (default: `.repo-hygiene-baseline.json`) to
+suppress known inherited markers while still failing on newly introduced ones:
+
+```bash
+python3 scripts/repo_hygiene.py scan --repo-root . --baseline-file .repo-hygiene-baseline.json
+python3 scripts/repo_hygiene.py baseline --repo-root . --include-third-party
+```
+
 Or through Make targets:
 
 ```bash
@@ -74,8 +81,8 @@ make repo-clean
 make repo-scan-json
 ```
 
-`scripts/repo_maintenance.py` is retained as a compatibility wrapper and now
-delegates to `scripts/repo_hygiene.py`.
+`scripts/repo_maintenance.py` remains a compatibility wrapper and delegates to
+`scripts/repo_hygiene.py`.
 
 ## Exit codes
 
