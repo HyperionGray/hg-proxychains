@@ -28,13 +28,13 @@ class RepoHygieneTests(unittest.TestCase):
             "docs/.DS_Store",
             "build/result.txt",
             "egressd-starter.tar.gz",
+            "third_party/FunkyDNS/archive/funkydns.py~",
         ]
         stray = repo_hygiene.classify_stray_paths(untracked)
         self.assertEqual(
             stray,
             [
                 "docs/.DS_Store",
-                "egressd-starter.tar.gz",
                 "notes.txt~",
                 "pkg/__pycache__/module.cpython-312.pyc",
                 "tmp/output.tmp",
@@ -147,6 +147,31 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_find_stale_artifacts_reports_tracked_and_untracked(self) -> None:
+        tracked = ["egressd-starter.tar.gz", "README.md"]
+        untracked = ["egressd-starter.tar.gz", "notes.tmp"]
+        stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(tracked, untracked)
+        self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
+        self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
+
+    def test_parse_args_supports_baseline_and_include_third_party(self) -> None:
+        args = repo_hygiene.parse_args(
+            [
+                "scan",
+                "--repo-root",
+                "/tmp/repo",
+                "--include-third-party",
+                "--baseline-file",
+                "custom-baseline.json",
+                "--json",
+            ]
+        )
+        self.assertEqual(args.command, "scan")
+        self.assertEqual(args.repo_root, "/tmp/repo")
+        self.assertTrue(args.include_third_party)
+        self.assertEqual(args.baseline_file, "custom-baseline.json")
+        self.assertTrue(args.json)
 
 
 if __name__ == "__main__":
