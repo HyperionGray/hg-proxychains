@@ -28,6 +28,7 @@ class RepoHygieneTests(unittest.TestCase):
             "docs/.DS_Store",
             "build/result.txt",
             "egressd-starter.tar.gz",
+            "third_party/FunkyDNS/archive/funkydns.py~",
         ]
         stray = repo_hygiene.classify_stray_paths(untracked)
         self.assertEqual(
