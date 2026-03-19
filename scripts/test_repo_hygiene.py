@@ -167,7 +167,8 @@ class RepoHygieneTests(unittest.TestCase):
             root = Path(td)
             self._git(root, "init")
             src = root / "src.py"
-            src.write_text("# TO" "DO: keep tracked marker\n", encoding="utf-8")
+            marker_line = "# TO" "DO: keep tracked marker"
+            src.write_text(f"{marker_line}\n", encoding="utf-8")
             self._git(root, "add", "src.py")
             baseline_path = root / ".repo-hygiene-baseline.json"
             baseline_path.write_text(
@@ -177,7 +178,7 @@ class RepoHygieneTests(unittest.TestCase):
                             {
                                 "path": "src.py",
                                 "marker": "TODO",
-                                "line": "# TODO: keep tracked marker",
+                                "line": marker_line,
                             }
                         ]
                     }
