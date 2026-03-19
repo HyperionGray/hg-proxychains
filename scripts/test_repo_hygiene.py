@@ -1,6 +1,10 @@
+import io
+import json
+import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -28,6 +32,7 @@ class RepoHygieneTests(unittest.TestCase):
             "docs/.DS_Store",
             "build/result.txt",
             "egressd-starter.tar.gz",
+            "third_party/FunkyDNS/archive/funkydns.py~",
         ]
         stray = repo_hygiene.classify_stray_paths(untracked)
         self.assertEqual(
@@ -147,6 +152,76 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_parse_args_supports_include_third_party_and_baseline_file(self) -> None:
+        args = repo_hygiene.parse_args(
+            ["scan", "--include-third-party", "--baseline-file", "foo.json", "--json"]
+        )
+        self.assertEqual(args.command, "scan")
+        self.assertTrue(args.include_third_party)
+        self.assertEqual(args.baseline_file, "foo.json")
+        self.assertTrue(args.json)
+
+    def test_command_scan_json_reports_suppressed_markers(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self._git(root, "init")
+            src = root / "src.py"
+            src.write_text("# TO" "DO: keep tracked marker\n", encoding="utf-8")
+            self._git(root, "add", "src.py")
+            baseline_path = root / ".repo-hygiene-baseline.json"
+            baseline_path.write_text(
+                json.dumps(
+                    {
+                        "unfinished_markers": [
+                            {
+                                "path": "src.py",
+                                "marker": "TODO",
+                                "line": "# TODO: keep tracked marker",
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                rc = repo_hygiene.command_scan(root, json_output=True)
+
+        payload = json.loads(output.getvalue())
+        self.assertEqual(rc, 0)
+        self.assertEqual(payload["summary"]["unfinished_markers"], 0)
+        self.assertEqual(payload["summary"]["suppressed_markers"], 1)
+
+    def test_command_clean_json_deletes_stray_untracked_files(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self._git(root, "init")
+            stray = root / "notes.tmp"
+            stray.write_text("trash\n", encoding="utf-8")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                rc = repo_hygiene.command_clean(root, json_output=True)
+
+            self.assertFalse(stray.exists())
+
+        payload = json.loads(output.getvalue())
+        self.assertEqual(rc, 0)
+        self.assertEqual(payload["clean"]["deleted_stray_paths"], 1)
+        self.assertEqual(payload["summary"]["total_issues"], 0)
+
+    @staticmethod
+    def _git(root: Path, *args: str) -> None:
+        subprocess.run(
+            ["git", *args],
+            cwd=root,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
 
 
 if __name__ == "__main__":
