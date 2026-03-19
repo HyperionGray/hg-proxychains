@@ -214,12 +214,24 @@ make maintenance-fix
 # equivalent: python3 scripts/repo_hygiene.py clean --repo-root .
 ```
 
+The scanner now reports embedded git repositories (directories containing an
+unexpected `.git`) so accidental nested repos are caught early in automation.
+Only the repository root `.git` and `third_party/FunkyDNS/.git` are allowed by
+default.
+
 `maintenance*` targets focus on first-party code by default. For a full scan that
 also includes `third_party/FunkyDNS`, use:
 
 ```bash
 make maintenance-all
 make maintenance-all-json
+```
+
+To refresh the unfinished-marker baseline for known external debt:
+
+```bash
+make maintenance-baseline
+# equivalent: python3 scripts/repo_hygiene.py baseline --repo-root . --include-third-party
 ```
 
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.

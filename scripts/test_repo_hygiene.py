@@ -2,7 +2,6 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import repo_hygiene
@@ -28,6 +27,7 @@ class RepoHygieneTests(unittest.TestCase):
             "docs/.DS_Store",
             "build/result.txt",
             "egressd-starter.tar.gz",
+            "third_party/FunkyDNS/archive/funkydns.py~",
         ]
         stray = repo_hygiene.classify_stray_paths(untracked)
         self.assertEqual(
@@ -147,6 +147,31 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_discover_embedded_git_repos_skips_allowed_submodule(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+
+            allowed = root / "third_party" / "FunkyDNS" / ".git"
+            allowed.parent.mkdir(parents=True, exist_ok=True)
+            allowed.write_text("gitdir: ../../.git/modules/third_party/FunkyDNS\n", encoding="utf-8")
+
+            nested = root / "scratch" / ".git"
+            nested.mkdir(parents=True, exist_ok=True)
+
+            found = repo_hygiene.discover_embedded_git_repos(root, include_third_party=True)
+            self.assertEqual(found, ["scratch"])
+
+    def test_discover_embedded_git_repos_can_skip_third_party_tree(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            third_party_nested = root / "third_party" / "FunkyDNS" / "scratch" / ".git"
+            third_party_nested.mkdir(parents=True, exist_ok=True)
+
+            found = repo_hygiene.discover_embedded_git_repos(root, include_third_party=False)
+            self.assertEqual(found, [])
 
 
 if __name__ == "__main__":

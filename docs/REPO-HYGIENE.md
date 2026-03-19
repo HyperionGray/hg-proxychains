@@ -21,6 +21,11 @@ This repository includes a small maintenance utility at
   - Python cache outputs (`__pycache__/`, `*.pyc`, `*.pyo`)
   - common metadata noise (`.DS_Store`, `Thumbs.db`)
   - known generated bundles (`egressd-starter.tar.gz`)
+- Stale generated artifacts even when tracked by mistake
+  (currently `egressd-starter.tar.gz`)
+- Unexpected embedded git repositories outside allowed paths:
+  - repository root `.git`
+  - `third_party/FunkyDNS/.git` (submodule pointer/repo)
 
 The scanner intentionally skips `third_party/FunkyDNS/` when checking
 unfinished markers by default, because that path is managed as an external
@@ -48,7 +53,9 @@ python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
 # Remove untracked stray files/directories
 python3 scripts/repo_hygiene.py clean --repo-root .
-python3 scripts/repo_hygiene.py scan --repo-root . --json
+
+# Override marker baseline path
+python3 scripts/repo_hygiene.py scan --repo-root . --baseline-file .repo-hygiene-baseline.json
 ```
 
 JSON output for automation:
@@ -82,7 +89,7 @@ delegates to `scripts/repo_hygiene.py`.
 - `0`: no issues remain after the command completes
 - `1`: blocking issues found
   - `scan`: unfinished markers, stray untracked files, or stale artifacts
-  - `clean`: unfinished markers or tracked stale artifacts (removable clutter is deleted)
+  - `clean`: unfinished markers, tracked stale artifacts, embedded git repos, or leftover removable clutter after cleanup
 - `2`: invalid invocation (for example, non-git directory)
 
 ## Baseline file
