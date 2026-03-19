@@ -15,7 +15,15 @@ if "pyjson5" not in sys.modules:
 import supervisor  # noqa: E402
 
 
-def sample_cfg(require_all_hops_healthy: bool = True) -> dict:
+def sample_cfg(require_all_hops_healthy: bool = True, min_healthy_hops: int = 1) -> dict:
+    supervisor_cfg = {
+        "hop_check_interval_s": 5,
+        "max_hop_status_age_s": 10,
+        "require_all_hops_healthy": require_all_hops_healthy,
+    }
+    if not require_all_hops_healthy:
+        supervisor_cfg["min_healthy_hops"] = min_healthy_hops
+
     return {
         "chain": {
             "hops": [{"url": "http://proxy1:3128"}, {"url": "http://proxy2:3128"}],
@@ -23,11 +31,7 @@ def sample_cfg(require_all_hops_healthy: bool = True) -> dict:
         "dns": {
             "launch_funkydns": False,
         },
-        "supervisor": {
-            "hop_check_interval_s": 5,
-            "max_hop_status_age_s": 10,
-            "require_all_hops_healthy": require_all_hops_healthy,
-        },
+        "supervisor": supervisor_cfg,
     }
 
 
@@ -120,6 +124,40 @@ class ReadinessTests(unittest.TestCase):
             "funkydns": "disabled",
             "hops": {
                 "hop_0": {"ok": False},
+                "hop_1": {"ok": True},
+            },
+            "hops_last_update": now - 1,
+        }
+        readiness = supervisor.compute_readiness(state, cfg, now=now)
+        self.assertTrue(readiness["ready"])
+        self.assertEqual([], readiness["reasons"])
+
+    def test_relaxed_mode_can_require_minimum_healthy_hops(self) -> None:
+        cfg = sample_cfg(require_all_hops_healthy=False, min_healthy_hops=2)
+        now = 7_000
+        state = {
+            "pproxy": "running",
+            "funkydns": "disabled",
+            "hops": {
+                "hop_0": {"ok": False},
+                "hop_1": {"ok": True},
+            },
+            "hops_last_update": now - 1,
+        }
+        readiness = supervisor.compute_readiness(state, cfg, now=now)
+        self.assertFalse(readiness["ready"])
+        self.assertIn("insufficient_healthy_hops:1/2", readiness["reasons"])
+        self.assertEqual(1, readiness["healthy_hops"])
+        self.assertEqual(2, readiness["required_healthy_hops"])
+
+    def test_relaxed_mode_minimum_healthy_hops_passes_when_threshold_met(self) -> None:
+        cfg = sample_cfg(require_all_hops_healthy=False, min_healthy_hops=2)
+        now = 8_000
+        state = {
+            "pproxy": "running",
+            "funkydns": "disabled",
+            "hops": {
+                "hop_0": {"ok": True},
                 "hop_1": {"ok": True},
             },
             "hops_last_update": now - 1,

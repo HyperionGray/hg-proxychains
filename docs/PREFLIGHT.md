@@ -9,6 +9,7 @@ runtime prerequisites before the supervisor starts services.
 - `chain.hops` is non-empty
 - each hop URL uses `http` or `https` and includes a hostname
 - `chain.canary_target` uses `host:port` format
+- `supervisor.min_healthy_hops` (when set) is a positive integer and does not exceed configured hop count
 - `supervisor.pproxy_bin` exists and is executable / on `PATH`
 - if `dns.launch_funkydns=true`:
   - `supervisor.funkydns_bin` exists and is executable / on `PATH`

@@ -78,6 +78,34 @@ def _validate_allowed_ports(chain_cfg: Dict[str, Any], errors: List[str]) -> Non
         errors.append(f"chain.allowed_ports contains invalid ports: {invalid_ports}")
 
 
+def _validate_min_healthy_hops(
+    chain_cfg: Dict[str, Any],
+    supervisor_cfg: Dict[str, Any],
+    errors: List[str],
+    warnings: List[str],
+) -> None:
+    min_healthy_hops = supervisor_cfg.get("min_healthy_hops")
+    if min_healthy_hops is None:
+        return
+
+    if isinstance(min_healthy_hops, bool) or not isinstance(min_healthy_hops, int) or min_healthy_hops < 1:
+        errors.append("supervisor.min_healthy_hops must be an integer >= 1 when provided")
+        return
+
+    hops = chain_cfg.get("hops", [])
+    if isinstance(hops, list) and hops and min_healthy_hops > len(hops):
+        errors.append(
+            "supervisor.min_healthy_hops cannot exceed number of configured hops "
+            f"({len(hops)})"
+        )
+
+    require_all_hops = bool(supervisor_cfg.get("require_all_hops_healthy", True))
+    if require_all_hops:
+        warnings.append(
+            "supervisor.min_healthy_hops is ignored when supervisor.require_all_hops_healthy=true"
+        )
+
+
 def run_preflight(cfg: Dict[str, Any], *, skip_binary_checks: Optional[bool] = None) -> Dict[str, Any]:
     """Return a report with errors/warnings and overall status."""
     errors: List[str] = []
@@ -103,6 +131,9 @@ def run_preflight(cfg: Dict[str, Any], *, skip_binary_checks: Optional[bool] = N
                 continue
             _validate_hop_url(hop_url, idx, errors)
 
+    supervisor_cfg = cfg.get("supervisor", {})
+    _validate_min_healthy_hops(chain_cfg, supervisor_cfg, errors, warnings)
+
     canary_target = chain_cfg.get("canary_target", "")
     if isinstance(canary_target, str) and canary_target:
         _validate_canary_target(canary_target, errors, warnings)
@@ -116,7 +147,6 @@ def run_preflight(cfg: Dict[str, Any], *, skip_binary_checks: Optional[bool] = N
     else:
         warnings.append("chain.canary_target is empty; hop probes will be less useful")
 
-    supervisor_cfg = cfg.get("supervisor", {})
     pproxy_bin = str(supervisor_cfg.get("pproxy_bin", "pproxy"))
     if skip_binary_checks:
         warnings.append("binary checks skipped by EGRESSD_PREFLIGHT_SKIP_BIN_CHECKS")

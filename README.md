@@ -141,8 +141,13 @@ It does **not** prove host enforcement. For that, use the scripts in `scripts/` 
 Readiness behavior can be tuned via:
 
 - `supervisor.require_all_hops_healthy`
+- `supervisor.min_healthy_hops` (used only when `require_all_hops_healthy=false`)
 - `supervisor.max_hop_status_age_s`
 - `supervisor.block_start_until_hops_healthy`
+
+When relaxed mode is enabled (`require_all_hops_healthy=false`), `min_healthy_hops`
+sets the minimum number of healthy hops required for `/ready` to return `200`
+and for startup gating to pass. If omitted, the default remains `1`.
 
 ## Important split: smoke mode vs host mode
 

@@ -321,12 +321,36 @@ def _stale_after_s(cfg: Dict[str, Any]) -> int:
     )
 
 
+def _configured_min_healthy_hops(cfg: Dict[str, Any], expected_hops: int) -> int:
+    raw_min = cfg.get("supervisor", {}).get("min_healthy_hops", 1)
+    if isinstance(raw_min, bool) or not isinstance(raw_min, int):
+        raw_min = 1
+    if raw_min < 1:
+        raw_min = 1
+    if expected_hops <= 0:
+        return 0
+    return min(raw_min, expected_hops)
+
+
+def _required_healthy_hops(cfg: Dict[str, Any], expected_hops: int) -> int:
+    if expected_hops <= 0:
+        return 0
+    require_all_hops = _as_bool(
+        cfg.get("supervisor", {}).get("require_all_hops_healthy"),
+        default=True,
+    )
+    if require_all_hops:
+        return expected_hops
+    return _configured_min_healthy_hops(cfg, expected_hops)
+
+
 def _compute_relaxed_readiness(
     state: Dict[str, Any],
     cfg: Dict[str, Any],
     stale_after_s: int,
     require_funkydns: bool,
     expected_hops: int,
+    required_healthy_hops: int,
     now: Optional[int] = None,
 ) -> Dict[str, Any]:
     ts_now = int(time.time()) if now is None else int(now)
@@ -359,8 +383,8 @@ def _compute_relaxed_readiness(
         if bool(hop_status.get("ok", False)):
             healthy_hops += 1
 
-    if hop_checks and healthy_hops == 0:
-        reasons.append("all_hops_unhealthy")
+    if hop_checks and healthy_hops < required_healthy_hops:
+        reasons.append(f"insufficient_healthy_hops:{healthy_hops}/{required_healthy_hops}")
 
     return {
         "ready": len(reasons) == 0,
@@ -370,6 +394,8 @@ def _compute_relaxed_readiness(
         "reasons": reasons,
         "expected_hops": expected_hops,
         "observed_hops": len(hop_checks),
+        "healthy_hops": healthy_hops,
+        "required_healthy_hops": required_healthy_hops,
     }
 
 
@@ -387,6 +413,7 @@ def compute_readiness(
         runtime_cfg.get("supervisor", {}).get("require_all_hops_healthy"),
         default=True,
     )
+    required_healthy_hops = _required_healthy_hops(runtime_cfg, expected_hops)
 
     if not require_all_hops:
         return _compute_relaxed_readiness(
@@ -395,6 +422,7 @@ def compute_readiness(
             stale_after_s,
             require_funkydns,
             expected_hops,
+            required_healthy_hops,
             now=now,
         )
 
@@ -412,6 +440,8 @@ def compute_readiness(
     report["ready"] = len(reasons) == 0
     report["expected_hops"] = expected_hops
     report["observed_hops"] = len(observed_hops)
+    report["healthy_hops"] = sum(1 for hop in observed_hops.values() if bool(hop.get("ok", False)))
+    report["required_healthy_hops"] = required_healthy_hops
     return report
 
 
@@ -441,8 +471,14 @@ def _summarize_readiness(report: Dict[str, Any], state: Dict[str, Any], cfg: Dic
         return "hop probes incomplete"
     if any(reason.endswith("_down") for reason in reasons):
         return "at least one hop is unhealthy"
-    if "all_hops_unhealthy" in reasons:
-        return "all hops are unhealthy"
+    for reason in reasons:
+        if reason.startswith("insufficient_healthy_hops:"):
+            try:
+                _, counts = reason.split(":", 1)
+                healthy, required = counts.split("/", 1)
+                return f"only {healthy}/{required} required hops are healthy"
+            except ValueError:
+                return "insufficient healthy hops"
     if "hop_checks_missing" in reasons:
         return "hop probes unavailable"
     return reasons[0] if reasons else "not ready"
@@ -485,15 +521,11 @@ def _compute_startup_gate(state: Dict[str, Any], cfg: Dict[str, Any], now: Optio
     if len(hop_states) < expected_hops:
         return False, "hop probes incomplete"
 
-    require_all_hops = _as_bool(
-        cfg.get("supervisor", {}).get("require_all_hops_healthy"),
-        default=True,
-    )
+    required_healthy_hops = _required_healthy_hops(cfg, expected_hops)
     hop_ok = [bool(hop_states.get(f"hop_{idx}", {}).get("ok")) for idx in range(expected_hops)]
-    if require_all_hops and not all(hop_ok):
-        return False, "at least one hop is unhealthy"
-    if not require_all_hops and not any(hop_ok):
-        return False, "all hops are unhealthy"
+    healthy_hops = sum(1 for ok in hop_ok if ok)
+    if healthy_hops < required_healthy_hops:
+        return False, f"only {healthy_hops}/{required_healthy_hops} required hops are healthy"
     return True, "ready"
 
 

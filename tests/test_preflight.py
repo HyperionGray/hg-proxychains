@@ -242,5 +242,31 @@ class PreflightBinaryCheckTests(unittest.TestCase):
         self.assertTrue(any("pproxy_bin" in e for e in report["errors"]))
 
 
+class PreflightHealthyHopThresholdTests(unittest.TestCase):
+    def test_min_healthy_hops_must_be_positive_integer(self) -> None:
+        cfg = _base_cfg()
+        cfg.setdefault("supervisor", {})["min_healthy_hops"] = 0
+        cfg["supervisor"]["require_all_hops_healthy"] = False
+        report = preflight.run_preflight(cfg, skip_binary_checks=True)
+        self.assertFalse(report["ok"])
+        self.assertTrue(any("min_healthy_hops" in e for e in report["errors"]))
+
+    def test_min_healthy_hops_cannot_exceed_configured_hops(self) -> None:
+        cfg = _base_cfg()
+        cfg.setdefault("supervisor", {})["min_healthy_hops"] = 3
+        cfg["supervisor"]["require_all_hops_healthy"] = False
+        report = preflight.run_preflight(cfg, skip_binary_checks=True)
+        self.assertFalse(report["ok"])
+        self.assertTrue(any("cannot exceed number of configured hops" in e for e in report["errors"]))
+
+    def test_min_healthy_hops_warns_when_require_all_hops_enabled(self) -> None:
+        cfg = _base_cfg()
+        cfg.setdefault("supervisor", {})["min_healthy_hops"] = 1
+        cfg["supervisor"]["require_all_hops_healthy"] = True
+        report = preflight.run_preflight(cfg, skip_binary_checks=True)
+        self.assertTrue(report["ok"], f"Expected ok=True; errors: {report['errors']}")
+        self.assertTrue(any("min_healthy_hops is ignored" in w for w in report["warnings"]))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -18,7 +18,16 @@ if "pyjson5" not in sys.modules:
 import supervisor  # noqa: E402
 
 
-def sample_cfg(require_all_hops_healthy: bool = True) -> dict:
+def sample_cfg(require_all_hops_healthy: bool = True, min_healthy_hops: int = 1) -> dict:
+    supervisor_cfg = {
+        "hop_check_interval_s": 5,
+        "ready_grace_period_s": 15,
+        "max_hop_status_age_s": 20,
+        "require_all_hops_healthy": require_all_hops_healthy,
+    }
+    if not require_all_hops_healthy:
+        supervisor_cfg["min_healthy_hops"] = min_healthy_hops
+
     return {
         "listener": {
             "bind": "0.0.0.0",
@@ -33,12 +42,7 @@ def sample_cfg(require_all_hops_healthy: bool = True) -> dict:
             "allowed_ports": [80, 443],
             "fail_closed": True,
         },
-        "supervisor": {
-            "hop_check_interval_s": 5,
-            "ready_grace_period_s": 15,
-            "max_hop_status_age_s": 20,
-            "require_all_hops_healthy": require_all_hops_healthy,
-        },
+        "supervisor": supervisor_cfg,
     }
 
 
@@ -184,6 +188,23 @@ class SupervisorTests(unittest.TestCase):
         readiness = supervisor.compute_readiness(state, cfg, now=now)
         self.assertTrue(readiness["ready"])
         self.assertEqual([], readiness["reasons"])
+
+    def test_evaluate_readiness_relaxed_mode_respects_min_healthy_hops(self) -> None:
+        now = int(time.time())
+        cfg = sample_cfg(require_all_hops_healthy=False, min_healthy_hops=2)
+        supervisor.reset_state(cfg)
+        supervisor.STATE.update(
+            {
+                "pproxy": "running",
+                "last_start": now - 30,
+                "hops": {"hop_0": {"ok": False}, "hop_1": {"ok": True}},
+                "hops_last_update": now - 1,
+            }
+        )
+
+        ready, reason = supervisor.evaluate_readiness(cfg, now=now)
+        self.assertFalse(ready)
+        self.assertEqual("only 1/2 required hops are healthy", reason)
 
 
 if __name__ == "__main__":
