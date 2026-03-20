@@ -510,14 +510,120 @@ def wait_for_chain_ready(cfg: Dict[str, Any]) -> None:
     raise RuntimeError("shutdown requested")
 
 
+def _extract_hop_label(hop: Any) -> str:
+    """Return a sanitized ``host[:port]`` label for a hop config entry."""
+    raw_url = hop.get("url", "") if isinstance(hop, dict) else ""
+    if not raw_url:
+        return ""
+
+    try:
+        parsed = urlparse(raw_url)
+    except (ValueError, AttributeError):
+        # Never return the raw URL to avoid leaking credentials.
+        return ""
+
+    host = parsed.hostname or ""
+    port = parsed.port
+
+    # Derive an effective port similar to connectivity probing defaults:
+    # - 80 for HTTP/WS when no explicit port is provided
+    # - 443 for HTTPS/WSS when no explicit port is provided
+    if port is None:
+        if parsed.scheme in ("https", "wss"):
+            port = 443
+        elif parsed.scheme in ("http", "ws"):
+            port = 80
+
+    if host and port:
+        return f"{host}:{port}"
+    if host:
+        return host
+
+    # Fall back to an empty label rather than exposing raw URL/userinfo.
+    return ""
+def _all_hops_ok(hops: List[Any], hop_statuses: Dict[str, Any]) -> bool:
+    """Return True only when every hop in *hops* has a passing status entry."""
+    return bool(hops) and all(
+        bool(hop_statuses.get(f"hop_{idx}", {}).get("ok", False))
+        for idx in range(len(hops))
+    )
+
+
+def format_chain_visual(cfg: Dict[str, Any], hop_statuses: Optional[Dict[str, Any]] = None) -> str:
+    """Return a terminal-friendly proxychains-style ASCII chain visualization.
+
+    When *hop_statuses* is None the output shows the configured topology with
+    a trailing ``...`` to indicate that probing has not run yet.  When
+    *hop_statuses* is provided the connectors and final token reflect the
+    current probe results, and a per-hop detail line is appended for each hop.
+    """
+    chain_cfg = cfg.get("chain", {})
+    hops = chain_cfg.get("hops", [])
+
+    if not hops:
+        return "[egressd] chain: (no hops configured)"
+
+    segments: List[str] = ["|S-chain|"]
+
+    for idx, hop in enumerate(hops):
+        label = _extract_hop_label(hop)
+
+        if hop_statuses is not None:
+            ok = bool(hop_statuses.get(f"hop_{idx}", {}).get("ok", False))
+            connector = "-<>-" if ok else "-XX-"
+        else:
+            connector = "-<>-"
+
+        segments.append(f"{connector}{label}")
+
+    if hop_statuses is not None:
+        final = "-<>-OK" if _all_hops_ok(hops, hop_statuses) else "-<>-FAIL"
+    else:
+        final = "-<>-..."
+
+    lines = [f"[egressd] {''.join(segments)}{final}"]
+
+    if hop_statuses:
+        for idx, hop in enumerate(hops):
+            label = _extract_hop_label(hop)
+            hop_key = f"hop_{idx}"
+            status = hop_statuses.get(hop_key, {})
+            ok = bool(status.get("ok", False))
+            elapsed_ms = status.get("elapsed_ms")
+
+            if ok:
+                timing = f"{elapsed_ms}ms" if elapsed_ms is not None else "ok"
+                lines.append(f"[egressd]   hop_{idx}: {label:<30} OK   {timing}")
+            else:
+                err_msg = status.get("error") or status.get("status_line") or "unreachable"
+                lines.append(f"[egressd]   hop_{idx}: {label:<30} FAIL {str(err_msg).splitlines()[0]}")
+
+    return "\n".join(lines)
+
+
+def print_chain_visual(cfg: Dict[str, Any], hop_statuses: Optional[Dict[str, Any]] = None) -> None:
+    """Print the chain visual to stderr when ``logging.chain_visual`` is enabled."""
+    if not _as_bool(cfg.get("logging", {}).get("chain_visual"), default=False):
+        return
+    print(format_chain_visual(cfg, hop_statuses), file=sys.stderr, flush=True)
+
+
 def hop_health_loop(cfg: Dict[str, Any]) -> None:
     interval_s = int(cfg.get("supervisor", {}).get("hop_check_interval_s", 5))
     target = str(cfg.get("chain", {}).get("canary_target", ""))
+    last_overall_ok: Optional[bool] = None
+    first_run = True
     while not STOP_EVENT.is_set():
         checked_at = int(time.time())
         statuses = collect_hop_statuses(cfg, target)
         set_hop_statuses(statuses, checked_at=checked_at)
         refresh_ready_state(cfg, now=checked_at)
+        hops = cfg.get("chain", {}).get("hops", [])
+        current_ok = _all_hops_ok(hops, statuses)
+        if first_run or current_ok != last_overall_ok:
+            print_chain_visual(cfg, statuses)
+            last_overall_ok = current_ok
+            first_run = False
         STOP_EVENT.wait(interval_s)
 
 
@@ -640,6 +746,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     STOP_EVENT.clear()
     reset_state(cfg)
+    print_chain_visual(cfg)
     server = run_health_server(
         cfg.get("supervisor", {}).get("health_bind", "0.0.0.0"),
         int(cfg.get("supervisor", {}).get("health_port", 9191)),
