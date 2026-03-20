@@ -10,7 +10,9 @@ import argparse
 import subprocess
 import sys
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
+
+import repo_hygiene
 
 
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
@@ -28,7 +30,7 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument(
         "--json",
         action="store_true",
-        help="Accepted for compatibility; output remains the repo_hygiene text format.",
+        help="Emit JSON output from repo_hygiene.",
     )
     parser.add_argument(
         "--baseline-file",
@@ -36,6 +38,18 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         help="Marker baseline path relative to --root (default: .repo-hygiene-baseline.json).",
     )
     return parser.parse_args(argv)
+
+
+def discover_embedded_git_repos(repo_root: Path, include_third_party: bool = False) -> list[Path]:
+    return repo_hygiene.discover_embedded_git_repos(repo_root, include_third_party=include_third_party)
+
+
+def discover_untracked_stray_dirs(repo_root: Path, include_third_party: bool = False) -> list[Path]:
+    return repo_hygiene.discover_untracked_stray_dirs(repo_root, include_third_party=include_third_party)
+
+
+def apply_fixes(repo_root: Path, report: dict[str, Any]) -> tuple[list[str], list[str]]:
+    return repo_hygiene.apply_fixes(repo_root, report)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -56,7 +70,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.include_third_party:
         cmd.append("--include-third-party")
     if args.json:
-        print("warn: --json is deprecated in repo_maintenance.py compatibility mode", file=sys.stderr)
+        cmd.append("--json")
 
     proc = subprocess.run(cmd, check=False)
     return proc.returncode
