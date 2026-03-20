@@ -149,6 +149,48 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
 
+    def test_parse_args_accepts_third_party_and_baseline_options(self) -> None:
+        args = repo_hygiene.parse_args(
+            [
+                "scan",
+                "--repo-root",
+                "/tmp/repo",
+                "--include-third-party",
+                "--baseline-file",
+                "custom-baseline.json",
+            ]
+        )
+        self.assertEqual(args.command, "scan")
+        self.assertEqual(args.repo_root, "/tmp/repo")
+        self.assertTrue(args.include_third_party)
+        self.assertEqual(args.baseline_file, "custom-baseline.json")
+
+        args_no_third_party = repo_hygiene.parse_args(["scan", "--no-include-third-party"])
+        self.assertFalse(args_no_third_party.include_third_party)
+
+    def test_main_routes_baseline_command(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch("repo_hygiene.command_baseline", return_value=0) as baseline_mock:
+                rc = repo_hygiene.main(
+                    [
+                        "baseline",
+                        "--repo-root",
+                        str(root),
+                        "--include-third-party",
+                        "--baseline-file",
+                        "markers.json",
+                    ]
+                )
+
+        self.assertEqual(rc, 0)
+        baseline_mock.assert_called_once_with(
+            root.resolve(),
+            include_third_party=True,
+            baseline_path="markers.json",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

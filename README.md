@@ -222,6 +222,13 @@ make maintenance-all
 make maintenance-all-json
 ```
 
+To refresh the unfinished-marker baseline file used by scheduled hygiene checks:
+
+```bash
+make maintenance-baseline
+# equivalent: python3 scripts/repo_hygiene.py baseline --repo-root . --include-third-party
+```
+
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
 
 For focused first-party hygiene scans and stray cleanup:

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Compatibility wrapper for legacy maintenance invocations.
 
-This script delegates to scripts/repo_hygiene.py.
+This script delegates to scripts/repo_hygiene.py and keeps old argument names
+working for existing automation.
 """
 
 from __future__ import annotations
@@ -17,18 +18,24 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Legacy wrapper for repo hygiene checks."
     )
-    parser.add_argument("--root", default=".", help="Repository root path (default: current directory)")
+    parser.add_argument(
+        "--root",
+        "--repo-root",
+        dest="root",
+        default=".",
+        help="Repository root path (default: current directory)",
+    )
     parser.add_argument(
         "--include-third-party",
         action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Include third_party/FunkyDNS in marker/stray scanning (default: true).",
+        default=False,
+        help="Include third_party/FunkyDNS in marker/stray scanning (default: false).",
     )
     parser.add_argument("--fix", action="store_true", help="Remove untracked stray artifacts.")
     parser.add_argument(
         "--json",
         action="store_true",
-        help="Accepted for compatibility; output remains the repo_hygiene text format.",
+        help="Emit JSON output from repo_hygiene for automation.",
     )
     parser.add_argument(
         "--baseline-file",
@@ -56,7 +63,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.include_third_party:
         cmd.append("--include-third-party")
     if args.json:
-        print("warn: --json is deprecated in repo_maintenance.py compatibility mode", file=sys.stderr)
+        cmd.append("--json")
 
     proc = subprocess.run(cmd, check=False)
     return proc.returncode
