@@ -2,7 +2,6 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import repo_hygiene
@@ -28,13 +27,13 @@ class RepoHygieneTests(unittest.TestCase):
             "docs/.DS_Store",
             "build/result.txt",
             "egressd-starter.tar.gz",
+            "third_party/FunkyDNS/archive/funkydns.py~",
         ]
         stray = repo_hygiene.classify_stray_paths(untracked)
         self.assertEqual(
             stray,
             [
                 "docs/.DS_Store",
-                "egressd-starter.tar.gz",
                 "notes.txt~",
                 "pkg/__pycache__/module.cpython-312.pyc",
                 "tmp/output.tmp",
@@ -129,6 +128,47 @@ class RepoHygieneTests(unittest.TestCase):
         filtered, suppressed = repo_hygiene.apply_marker_baseline(findings, baseline)
         self.assertEqual(suppressed, 1)
         self.assertEqual([f.path for f in filtered], ["a.py"])
+
+    def test_find_stale_artifacts_detects_tracked_and_untracked(self) -> None:
+        tracked = ["README.md", "egressd-starter.tar.gz"]
+        untracked = ["notes.txt", "egressd-starter.tar.gz"]
+        stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(tracked, untracked)
+        self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
+        self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
+
+    def test_build_scan_report_summary_counts(self) -> None:
+        findings = [repo_hygiene.MarkerFinding("a.py", 1, "TODO", "# TODO: x")]
+        report = repo_hygiene.build_scan_report(
+            findings=findings,
+            suppressed_markers=2,
+            stray_paths=["tmp/x.tmp"],
+            stale_tracked=[],
+            stale_untracked=["egressd-starter.tar.gz"],
+        )
+        self.assertEqual(report["summary"]["unfinished_markers"], 1)
+        self.assertEqual(report["summary"]["suppressed_unfinished_markers"], 2)
+        self.assertEqual(report["summary"]["stray_untracked_paths"], 1)
+        self.assertEqual(report["summary"]["stale_untracked_artifacts"], 1)
+        self.assertEqual(report["summary"]["total_issues"], 3)
+
+    def test_load_marker_baseline_handles_valid_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            baseline = root / ".repo-hygiene-baseline.json"
+            baseline.write_text(
+                """
+{
+  "unfinished_markers": [
+    {"path": "a.py", "marker": "TODO", "line": "# TODO: x"}
+  ]
+}
+""".strip()
+                + "\n",
+                encoding="utf-8",
+            )
+
+            loaded = repo_hygiene.load_marker_baseline(root, ".repo-hygiene-baseline.json")
+            self.assertEqual(loaded, {("a.py", "TODO", "# TODO: x")})
 
     def test_find_unfinished_markers_excludes_baseline_file(self) -> None:
         with tempfile.TemporaryDirectory() as td:
