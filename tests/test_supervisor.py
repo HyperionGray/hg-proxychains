@@ -4,6 +4,7 @@ import sys
 import types
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 if "pyjson5" not in sys.modules:
     sys.modules["pyjson5"] = types.SimpleNamespace(decode=lambda text: {})
@@ -169,6 +170,40 @@ class ChainVisualTests(unittest.TestCase):
         output = self._capture_stderr(supervisor.print_chain_visual, cfg)
         self.assertIn("[egressd]", output)
         self.assertIn("|S-chain|", output)
+
+    def test_hop_health_loop_reprints_when_any_hop_state_flips(self):
+        """A per-hop state flip should emit even if overall status stays FAIL."""
+        cfg = self._cfg()
+        cfg["supervisor"] = {"hop_check_interval_s": 0}
+        statuses = [
+            {
+                "hop_0": {"ok": False, "error": "timeout"},
+                "hop_1": {"ok": False, "error": "timeout"},
+            },
+            {
+                "hop_0": {"ok": True, "elapsed_ms": 10},
+                "hop_1": {"ok": False, "error": "timeout"},
+            },
+            {
+                "hop_0": {"ok": True, "elapsed_ms": 12},
+                "hop_1": {"ok": False, "error": "timeout"},
+            },
+        ]
+        with patch.object(
+            supervisor.STOP_EVENT,
+            "is_set",
+            side_effect=[False, False, False, True],
+        ), patch.object(supervisor.STOP_EVENT, "wait", return_value=False), patch(
+            "supervisor.collect_hop_statuses",
+            side_effect=statuses,
+        ), patch("supervisor.set_hop_statuses"), patch(
+            "supervisor.refresh_ready_state"
+        ), patch(
+            "supervisor.print_chain_visual"
+        ) as print_visual:
+            supervisor.hop_health_loop(cfg)
+
+        self.assertEqual(print_visual.call_count, 2)
 
 
 if __name__ == "__main__":
