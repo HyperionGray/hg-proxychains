@@ -1,52 +1,61 @@
-# Repository maintenance workflow (legacy note)
+# Repository maintenance workflow
 
-`scripts/repo_maintenance.py` is now a compatibility wrapper.
+Primary maintenance tooling is `scripts/repo_hygiene.py`.
+`scripts/repo_maintenance.py` remains as a compatibility wrapper.
 
-Use `scripts/repo_hygiene.py` directly for all maintenance checks and cleanup.
-Primary documentation has moved to:
+## What `repo_hygiene.py` checks
 
-- Unfinished markers in tracked files (`TODO`, `FIXME`, `STUB`, `TBD`, `XXX`, `UNFINISHED`)
-- Backup files (`*~`, `*.bak`, `*.orig`, `*.old`, `*.tmp`)
-- Stray Python cache directories (`__pycache__/`)
-- Known stale artifacts (currently `egressd-starter.tar.gz`)
-- Embedded git repositories outside the allowed third-party submodule path
+- Unfinished markers in tracked source/config files:
+  `TODO`, `FIXME`, `STUB`, `TBD`, `XXX`, `WIP`, `UNFINISHED`
+- Stray untracked clutter:
+  backup/temp files (`*~`, `*.bak`, `*.tmp`, `*.orig`, `*.rej`), cache files, and cache dirs
+- Known stale artifacts:
+  currently `egressd-starter.tar.gz` (tracked or untracked)
 
-By default, marker scanning includes tracked files in `third_party/FunkyDNS` when that repository is present.
-For day-to-day repo automation, prefer the first-party-only mode (`--no-include-third-party`)
-to avoid noise from external dependency internals.
+By default, scans are first-party only (`--no-include-third-party`).
+Use `--include-third-party` for full scans that include `third_party/FunkyDNS`.
+
+## Baseline support for known dependency markers
+
+When scanning with `--include-third-party`, use a marker baseline to suppress known
+dependency TODO/FIXME lines that are currently accepted:
+
+```bash
+python3 scripts/repo_hygiene.py baseline --repo-root . --include-third-party --baseline-file .repo-hygiene-baseline.json
+```
+
+During `scan` and `clean`, matching baseline entries are reported as
+`suppressed_unfinished_markers` instead of blocking the run.
 
 ## Commands
 
 ```bash
-# Human-readable summary + findings (exits non-zero if issues exist)
-python3 scripts/repo_hygiene.py scan --repo-root .
+# Human-readable summary + findings (non-zero if issues exist)
+python3 scripts/repo_hygiene.py scan --repo-root . --no-include-third-party --baseline-file .repo-hygiene-baseline.json
 
 # JSON output for automation
-python3 scripts/repo_hygiene.py scan --repo-root . --json
+python3 scripts/repo_hygiene.py scan --repo-root . --no-include-third-party --baseline-file .repo-hygiene-baseline.json --json
 
-# Include third_party marker scan explicitly
-python3 scripts/repo_maintenance.py --include-third-party
+# Remove removable clutter, then re-scan
+python3 scripts/repo_hygiene.py clean --repo-root . --no-include-third-party --baseline-file .repo-hygiene-baseline.json
 
-# Remove backup files + stray cache dirs + stale artifacts while scanning
-python3 scripts/repo_maintenance.py --fix
+# Full scan including third_party/FunkyDNS
+python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party --baseline-file .repo-hygiene-baseline.json
 ```
 
 Makefile wrappers:
 
 ```bash
-make maintenance        # first-party only
-make maintenance-fix    # first-party only + cleanup
-make maintenance-json   # first-party only + JSON
-
-# optional full scan including third_party/FunkyDNS internals
+make maintenance
+make maintenance-fix
+make maintenance-json
 make maintenance-all
 make maintenance-all-json
+make maintenance-baseline
 ```
 
-## Notes
+## Exit behavior
 
-- `--fix` removes backup files, stray `__pycache__/` directories, and known stale artifacts.
-- Unfinished markers are reported but not modified automatically.
-- Embedded git repositories are reported but never auto-removed by `--fix`.
-- Without `--fix`, exit code is `1` when any issues are found.
-- With `--fix`, exit code reflects post-fix state (`0` when only removable clutter was found and removed; `1` if issues remain).
+- `scan`: returns non-zero when any issue remains.
+- `clean`: deletes removable clutter, then re-scans; returns non-zero if any issue remains after cleanup.
+- `baseline`: always returns zero after writing the baseline file.

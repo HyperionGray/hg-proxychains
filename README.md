@@ -27,7 +27,9 @@ The design goal is intentionally boring:
 │   ├── FUNKYDNS-REVIEW.md
 │   ├── HOST-DEPLOYMENT.md
 │   ├── REPO_MAINTENANCE.md
-│   └── USER-FLOW-REVIEW.md
+│   ├── USER-FLOW-REVIEW.md
+│   └── getting-started/
+│       └── QUICKSTART.md
 ├── egressd/
 │   ├── Dockerfile
 │   ├── requirements.txt
@@ -61,6 +63,8 @@ The design goal is intentionally boring:
 ```
 
 ## Quick start
+
+For a concise startup path, see `docs/getting-started/QUICKSTART.md`.
 
 For a reviewed walkthrough of the smoke-harness flow, host flow, and current
 known breakpoints, see `docs/USER-FLOW-REVIEW.md`.
