@@ -27,6 +27,9 @@ python3 scripts/repo_hygiene.py scan --repo-root . --json
 # Include third_party marker scan explicitly
 python3 scripts/repo_maintenance.py --include-third-party
 
+# Build/update a baseline file for known upstream markers
+python3 scripts/repo_hygiene.py baseline --repo-root . --include-third-party
+
 # Remove backup files + stray cache dirs + stale artifacts while scanning
 python3 scripts/repo_maintenance.py --fix
 ```
@@ -41,6 +44,7 @@ make maintenance-json   # first-party only + JSON
 # optional full scan including third_party/FunkyDNS internals
 make maintenance-all
 make maintenance-all-json
+make maintenance-baseline
 ```
 
 ## Notes

@@ -28,6 +28,7 @@ class RepoHygieneTests(unittest.TestCase):
             "docs/.DS_Store",
             "build/result.txt",
             "egressd-starter.tar.gz",
+            "third_party/FunkyDNS/archive/funkydns.py~",
         ]
         stray = repo_hygiene.classify_stray_paths(untracked)
         self.assertEqual(
@@ -41,7 +42,17 @@ class RepoHygieneTests(unittest.TestCase):
             ],
         )
         stray_with_third_party = repo_hygiene.classify_stray_paths(untracked, include_third_party=True)
-        self.assertIn("third_party/FunkyDNS/archive/funkydns.py~", stray_with_third_party)
+        self.assertEqual(
+            stray_with_third_party,
+            [
+                "docs/.DS_Store",
+                "egressd-starter.tar.gz",
+                "notes.txt~",
+                "pkg/__pycache__/module.cpython-312.pyc",
+                "third_party/FunkyDNS/archive/funkydns.py~",
+                "tmp/output.tmp",
+            ],
+        )
 
     def test_classify_stray_paths_skips_third_party_unless_enabled(self) -> None:
         paths = [
@@ -147,6 +158,28 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_find_embedded_git_repos_detects_unexpected_nested_git_dirs(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "embedded/repo/.git").mkdir(parents=True)
+            (root / "third_party/FunkyDNS/.git").mkdir(parents=True)
+
+            detected = repo_hygiene.find_embedded_git_repos(root, include_third_party=True)
+
+        self.assertIn("embedded/repo", detected)
+        self.assertNotIn("third_party/FunkyDNS", detected)
+
+    def test_find_embedded_git_repos_skips_third_party_when_disabled(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "third_party/other_dep/.git").mkdir(parents=True)
+            (root / "top/.git").mkdir(parents=True)
+
+            detected = repo_hygiene.find_embedded_git_repos(root, include_third_party=False)
+
+        self.assertIn("top", detected)
+        self.assertNotIn("third_party/other_dep", detected)
 
 
 if __name__ == "__main__":
