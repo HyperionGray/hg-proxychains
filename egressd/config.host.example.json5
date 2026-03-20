@@ -32,6 +32,11 @@
     // Set chain_visual to true for a terminal-friendly proxychains-style
     // display showing each hop and its health status.
     chain_visual: false,
+    // Controls when chain visual lines are emitted:
+    // - "per-hop" (default): any hop health detail changes
+    // - "overall": only all-healthy/all-unhealthy transitions
+    // - "always": every probe loop
+    chain_visual_emit: "per-hop",
   },
 
   supervisor: {

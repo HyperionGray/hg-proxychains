@@ -170,6 +170,48 @@ class ChainVisualTests(unittest.TestCase):
         self.assertIn("[egressd]", output)
         self.assertIn("|S-chain|", output)
 
+    def test_chain_visual_emit_mode_defaults_to_per_hop(self):
+        cfg = {"logging": {}}
+        self.assertEqual("per-hop", supervisor._chain_visual_emit_mode(cfg))
+
+    def test_chain_visual_emit_mode_accepts_known_values(self):
+        cfg = {"logging": {"chain_visual_emit": "overall"}}
+        self.assertEqual("overall", supervisor._chain_visual_emit_mode(cfg))
+        cfg = {"logging": {"chain_visual_emit": "always"}}
+        self.assertEqual("always", supervisor._chain_visual_emit_mode(cfg))
+
+    def test_should_emit_chain_visual_per_hop_detects_detail_changes(self):
+        hops = [{"url": "http://proxy1:3128"}]
+        previous = {"hop_0": {"ok": False, "error": "timeout"}}
+        current = {"hop_0": {"ok": False, "error": "connection refused"}}
+        prev_sig = supervisor._hop_status_signature(hops, previous)
+        curr_sig = supervisor._hop_status_signature(hops, current)
+        should_emit = supervisor._should_emit_chain_visual(
+            first_run=False,
+            emit_mode="per-hop",
+            last_overall_ok=False,
+            current_overall_ok=False,
+            last_signature=prev_sig,
+            current_signature=curr_sig,
+        )
+        self.assertTrue(should_emit)
+
+    def test_should_emit_chain_visual_overall_ignores_detail_changes(self):
+        hops = [{"url": "http://proxy1:3128"}]
+        previous = {"hop_0": {"ok": False, "error": "timeout"}}
+        current = {"hop_0": {"ok": False, "error": "connection refused"}}
+        prev_sig = supervisor._hop_status_signature(hops, previous)
+        curr_sig = supervisor._hop_status_signature(hops, current)
+        should_emit = supervisor._should_emit_chain_visual(
+            first_run=False,
+            emit_mode="overall",
+            last_overall_ok=False,
+            current_overall_ok=False,
+            last_signature=prev_sig,
+            current_signature=curr_sig,
+        )
+        self.assertFalse(should_emit)
+
 
 if __name__ == "__main__":
     unittest.main()

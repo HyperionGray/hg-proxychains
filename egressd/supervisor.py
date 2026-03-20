@@ -530,6 +530,43 @@ def _all_hops_ok(hops: List[Any], hop_statuses: Dict[str, Any]) -> bool:
     )
 
 
+def _chain_visual_emit_mode(cfg: Dict[str, Any]) -> str:
+    """Return normalized chain-visual emission mode."""
+    raw_mode = str(cfg.get("logging", {}).get("chain_visual_emit", "per-hop")).strip().lower()
+    if raw_mode in {"per-hop", "overall", "always"}:
+        return raw_mode
+    return "per-hop"
+
+
+def _hop_status_signature(hops: List[Any], hop_statuses: Dict[str, Any]) -> Tuple[Tuple[bool, str], ...]:
+    """Build a stable signature used to decide whether visual output changed."""
+    signature: List[Tuple[bool, str]] = []
+    for idx, _ in enumerate(hops):
+        status = hop_statuses.get(f"hop_{idx}", {})
+        ok = bool(status.get("ok", False))
+        detail = str(status.get("error") or status.get("status_line") or "")
+        signature.append((ok, detail))
+    return tuple(signature)
+
+
+def _should_emit_chain_visual(
+    first_run: bool,
+    emit_mode: str,
+    last_overall_ok: Optional[bool],
+    current_overall_ok: bool,
+    last_signature: Optional[Tuple[Tuple[bool, str], ...]],
+    current_signature: Tuple[Tuple[bool, str], ...],
+) -> bool:
+    """Decide whether to emit chain visual output for this probe cycle."""
+    if first_run:
+        return True
+    if emit_mode == "always":
+        return True
+    if emit_mode == "overall":
+        return current_overall_ok != last_overall_ok
+    return current_signature != last_signature
+
+
 def format_chain_visual(cfg: Dict[str, Any], hop_statuses: Optional[Dict[str, Any]] = None) -> str:
     """Return a terminal-friendly proxychains-style ASCII chain visualization.
 
@@ -592,7 +629,9 @@ def print_chain_visual(cfg: Dict[str, Any], hop_statuses: Optional[Dict[str, Any
 def hop_health_loop(cfg: Dict[str, Any]) -> None:
     interval_s = int(cfg.get("supervisor", {}).get("hop_check_interval_s", 5))
     target = str(cfg.get("chain", {}).get("canary_target", ""))
+    emit_mode = _chain_visual_emit_mode(cfg)
     last_overall_ok: Optional[bool] = None
+    last_signature: Optional[Tuple[Tuple[bool, str], ...]] = None
     first_run = True
     while not STOP_EVENT.is_set():
         checked_at = int(time.time())
@@ -601,10 +640,19 @@ def hop_health_loop(cfg: Dict[str, Any]) -> None:
         refresh_ready_state(cfg, now=checked_at)
         hops = cfg.get("chain", {}).get("hops", [])
         current_ok = _all_hops_ok(hops, statuses)
-        if first_run or current_ok != last_overall_ok:
+        current_signature = _hop_status_signature(hops, statuses)
+        if _should_emit_chain_visual(
+            first_run,
+            emit_mode,
+            last_overall_ok,
+            current_ok,
+            last_signature,
+            current_signature,
+        ):
             print_chain_visual(cfg, statuses)
-            last_overall_ok = current_ok
-            first_run = False
+        last_overall_ok = current_ok
+        last_signature = current_signature
+        first_run = False
         STOP_EVENT.wait(interval_s)
 
 
