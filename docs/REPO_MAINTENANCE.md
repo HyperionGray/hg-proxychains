@@ -1,6 +1,7 @@
 # Repository maintenance workflow (legacy note)
 
-`scripts/repo_maintenance.py` is now a compatibility wrapper.
+`scripts/repo_maintenance.py` is now a compatibility wrapper over
+`scripts/repo_hygiene.py`.
 
 Use `scripts/repo_hygiene.py` directly for all maintenance checks and cleanup.
 Primary documentation has moved to:
@@ -29,6 +30,9 @@ python3 scripts/repo_maintenance.py --include-third-party
 
 # Remove backup files + stray cache dirs + stale artifacts while scanning
 python3 scripts/repo_maintenance.py --fix
+
+# Wrapper also forwards JSON output
+python3 scripts/repo_maintenance.py --no-include-third-party --json
 ```
 
 Makefile wrappers:
