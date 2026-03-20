@@ -219,7 +219,7 @@ with `FAIL`:
 [egressd]   hop_1: proxy2:3128                 FAIL Connection refused
 ```
 
-The visual is disabled by default (`chain_visual: false`) so it does not
+The visual is disabled by default (`logging.chain_visual: false`) so it does not
 interfere with JSON log pipelines.
 
 ## Maintenance and cleanup
