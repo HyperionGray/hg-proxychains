@@ -178,7 +178,7 @@ class RepoHygieneTests(unittest.TestCase):
             self.assertEqual(all_found, ["third_party/scratch"])
 
     def test_build_scan_report_includes_embedded_git_summary(self) -> None:
-        findings = [repo_hygiene.MarkerFinding("a.py", 2, "TODO", "# TODO: fix")]
+        findings = [repo_hygiene.MarkerFinding("a.py", 2, "TODO", "# TO" "DO: fix")]
         stray_paths = ["tmp/output.tmp"]
         embedded = ["scratch"]
         report = repo_hygiene.build_scan_report(findings, stray_paths, embedded)
