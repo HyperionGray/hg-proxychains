@@ -541,6 +541,8 @@ def _extract_hop_label(hop: Any) -> str:
 
     # Fall back to an empty label rather than exposing raw URL/userinfo.
     return ""
+
+
 def _all_hops_ok(hops: List[Any], hop_statuses: Dict[str, Any]) -> bool:
     """Return True only when every hop in *hops* has a passing status entry."""
     return bool(hops) and all(
