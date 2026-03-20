@@ -14,6 +14,8 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
+import repo_hygiene
+
 
 # ---------------------------------------------------------------------------
 # Constants shared with repo_hygiene
@@ -37,27 +39,7 @@ def discover_embedded_git_repos(root: Path, include_third_party: bool = True) ->
     *include_third_party* is ``False``, anything under the ``third_party/``
     directory is skipped entirely.
     """
-    root_git = root / ".git"
-    stray: list[Path] = []
-    for git_path in sorted(root.rglob(".git")):
-        if git_path == root_git:
-            continue
-        try:
-            rel = str(git_path.parent.relative_to(root))
-        except ValueError:
-            continue
-        if not include_third_party and rel.startswith(_THIRD_PARTY_PREFIX):
-            continue
-        # Gitlink files mark legitimate submodule checkouts; skip them.
-        if git_path.is_file():
-            try:
-                first_line = git_path.read_text(encoding="utf-8", errors="ignore").split("\n", 1)[0]
-                if first_line.startswith("gitdir:"):
-                    continue
-            except OSError:
-                pass
-        stray.append(git_path.parent)
-    return stray
+    return [root / rel for rel in repo_hygiene.discover_embedded_git_repos(root, include_third_party)]
 
 
 def discover_untracked_stray_dirs(root: Path, include_third_party: bool = True) -> list[Path]:

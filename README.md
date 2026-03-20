@@ -256,6 +256,9 @@ make repo-clean
 make repo-scan-json
 ```
 
+`repo-scan-json` now includes `embedded_git_repositories` plus
+`summary.embedded_git_repositories` so CI can fail fast on accidental nested repos.
+
 ## Notes on FunkyDNS review
 
 I added a short review in `docs/FUNKYDNS-REVIEW.md` with the concrete issues worth fixing before you rely on it in a production-ish setup.
