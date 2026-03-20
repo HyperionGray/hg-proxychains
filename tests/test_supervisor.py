@@ -4,6 +4,7 @@ import sys
 import types
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 if "pyjson5" not in sys.modules:
     sys.modules["pyjson5"] = types.SimpleNamespace(decode=lambda text: {})
@@ -169,6 +170,70 @@ class ChainVisualTests(unittest.TestCase):
         output = self._capture_stderr(supervisor.print_chain_visual, cfg)
         self.assertIn("[egressd]", output)
         self.assertIn("|S-chain|", output)
+
+
+class HopHealthLoopVisualTransitionTests(unittest.TestCase):
+    def _cfg(self):
+        return {
+            "chain": {
+                "hops": [{"url": "http://proxy1:3128"}, {"url": "http://proxy2:3128"}],
+                "canary_target": "exitserver:9999",
+            },
+            "supervisor": {
+                "hop_check_interval_s": 0,
+            },
+        }
+
+    def test_hop_health_signature_uses_per_hop_tri_state(self):
+        hops = self._cfg()["chain"]["hops"]
+        self.assertEqual(
+            supervisor._hop_health_signature(hops, {}),
+            ("missing", "missing"),
+        )
+        self.assertEqual(
+            supervisor._hop_health_signature(
+                hops,
+                {"hop_0": {"ok": True}, "hop_1": {"ok": False}},
+            ),
+            ("ok", "fail"),
+        )
+
+    def test_hop_health_loop_prints_when_per_hop_state_changes(self):
+        """Visual should reprint when hop states change, even if overall remains failed."""
+
+        class _LoopController:
+            def __init__(self, max_wait_calls: int):
+                self.max_wait_calls = max_wait_calls
+                self.wait_calls = 0
+
+            def is_set(self):
+                return self.wait_calls >= self.max_wait_calls
+
+            def wait(self, _timeout):
+                self.wait_calls += 1
+                return self.is_set()
+
+        cfg = self._cfg()
+        statuses_a = {
+            "hop_0": {"ok": False, "error": "timeout"},
+            "hop_1": {"ok": True, "elapsed_ms": 12},
+        }
+        statuses_b = {
+            "hop_0": {"ok": True, "elapsed_ms": 11},
+            "hop_1": {"ok": False, "error": "refused"},
+        }
+
+        loop_controller = _LoopController(max_wait_calls=2)
+        with (
+            patch.object(supervisor, "STOP_EVENT", loop_controller),
+            patch.object(supervisor, "collect_hop_statuses", side_effect=[statuses_a, statuses_b]),
+            patch.object(supervisor, "set_hop_statuses"),
+            patch.object(supervisor, "refresh_ready_state"),
+            patch.object(supervisor, "print_chain_visual") as print_chain_visual,
+        ):
+            supervisor.hop_health_loop(cfg)
+
+        self.assertEqual(print_chain_visual.call_count, 2)
 
 
 if __name__ == "__main__":

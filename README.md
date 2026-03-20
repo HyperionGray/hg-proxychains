@@ -204,6 +204,9 @@ Set `logging.chain_visual: true` in your config to get a terminal-friendly
 proxychains-style display on stderr.  It prints on startup (topology only)
 and again whenever the per-hop health state changes:
 
+- The refresh trigger is per-hop (`missing`/`ok`/`fail`) so it reprints even
+  when the overall chain remains degraded but failure moves between hops.
+
 ```
 [egressd] |S-chain|-<>-proxy1:3128-<>-proxy2:3128-<>-OK
 [egressd]   hop_0: proxy1:3128                 OK   42ms
