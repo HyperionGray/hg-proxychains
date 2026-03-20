@@ -24,6 +24,7 @@ class RepoHygieneTests(unittest.TestCase):
             "notes.txt~",
             "tmp/output.tmp",
             "pkg/__pycache__/module.cpython-312.pyc",
+            "third_party/FunkyDNS/archive/funkydns.py~",
             "keep/readme.md",
             "docs/.DS_Store",
             "build/result.txt",
@@ -34,7 +35,6 @@ class RepoHygieneTests(unittest.TestCase):
             stray,
             [
                 "docs/.DS_Store",
-                "egressd-starter.tar.gz",
                 "notes.txt~",
                 "pkg/__pycache__/module.cpython-312.pyc",
                 "tmp/output.tmp",
@@ -147,6 +147,26 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_find_embedded_git_repositories_ignores_root_and_allowed_dependency(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            (root / "tools" / ".git").mkdir(parents=True, exist_ok=True)
+            dep_git = root / "third_party" / "FunkyDNS" / ".git"
+            dep_git.parent.mkdir(parents=True, exist_ok=True)
+            dep_git.write_text("gitdir: ../../.git/modules/third_party/FunkyDNS\n", encoding="utf-8")
+
+            findings = repo_hygiene.find_embedded_git_repositories(root)
+
+        self.assertEqual(findings, ["tools/.git"])
+
+    def test_find_stale_artifacts_distinguishes_tracked_and_untracked(self) -> None:
+        tracked = ["README.md", "egressd-starter.tar.gz"]
+        untracked = ["tmp/file.tmp", "egressd-starter.tar.gz"]
+        stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(tracked, untracked)
+        self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
+        self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
 
 
 if __name__ == "__main__":
