@@ -61,6 +61,45 @@ class RepoHygieneTests(unittest.TestCase):
             ],
         )
 
+    def test_discover_embedded_git_repos_detects_nested_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            nested = root / "scratch" / ".git"
+            nested.mkdir(parents=True, exist_ok=True)
+
+            found = repo_hygiene.discover_embedded_git_repos(root)
+
+        self.assertEqual(found, ["scratch"])
+
+    def test_discover_embedded_git_repos_skips_gitlink_file(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            gitlink = root / "third_party" / "FunkyDNS" / ".git"
+            gitlink.parent.mkdir(parents=True, exist_ok=True)
+            gitlink.write_text("gitdir: ../../.git/modules/third_party/FunkyDNS\n", encoding="utf-8")
+            suspicious = root / "vendor" / ".git"
+            suspicious.parent.mkdir(parents=True, exist_ok=True)
+            suspicious.write_text("plain text\n", encoding="utf-8")
+
+            found = repo_hygiene.discover_embedded_git_repos(root, include_third_party=True)
+
+        self.assertEqual(found, ["vendor"])
+
+    def test_discover_embedded_git_repos_skips_third_party_unless_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            nested = root / "third_party" / "vendor" / ".git"
+            nested.mkdir(parents=True, exist_ok=True)
+
+            default_scan = repo_hygiene.discover_embedded_git_repos(root)
+            include_scan = repo_hygiene.discover_embedded_git_repos(root, include_third_party=True)
+
+        self.assertEqual(default_scan, [])
+        self.assertEqual(include_scan, ["third_party/vendor"])
+
     def test_find_unfinished_markers_ignores_skipped_paths(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
