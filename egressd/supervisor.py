@@ -549,6 +549,28 @@ def _all_hops_ok(hops: List[Any], hop_statuses: Dict[str, Any]) -> bool:
     )
 
 
+def _chain_visual_interval_s(cfg: Dict[str, Any]) -> int:
+    raw = cfg.get("logging", {}).get("chain_visual_interval_s", 0)
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _chain_visual_fingerprint(hops: List[Any], hop_statuses: Dict[str, Any]) -> Tuple[Tuple[bool, str], ...]:
+    fingerprint: List[Tuple[bool, str]] = []
+    for idx in range(len(hops)):
+        status = hop_statuses.get(f"hop_{idx}", {})
+        ok = bool(status.get("ok", False))
+        if ok:
+            detail = "ok"
+        else:
+            raw = status.get("error") or status.get("status_line") or "unreachable"
+            detail = str(raw).splitlines()[0]
+        fingerprint.append((ok, detail))
+    return tuple(fingerprint)
+
+
 def format_chain_visual(cfg: Dict[str, Any], hop_statuses: Optional[Dict[str, Any]] = None) -> str:
     """Return a terminal-friendly proxychains-style ASCII chain visualization.
 
@@ -610,19 +632,28 @@ def print_chain_visual(cfg: Dict[str, Any], hop_statuses: Optional[Dict[str, Any
 
 def hop_health_loop(cfg: Dict[str, Any]) -> None:
     interval_s = int(cfg.get("supervisor", {}).get("hop_check_interval_s", 5))
+    visual_interval_s = _chain_visual_interval_s(cfg)
     target = str(cfg.get("chain", {}).get("canary_target", ""))
-    last_overall_ok: Optional[bool] = None
+    hops = cfg.get("chain", {}).get("hops", [])
+    last_visual_fingerprint: Optional[Tuple[Tuple[bool, str], ...]] = None
+    last_visual_print_at: Optional[int] = None
     first_run = True
     while not STOP_EVENT.is_set():
         checked_at = int(time.time())
         statuses = collect_hop_statuses(cfg, target)
         set_hop_statuses(statuses, checked_at=checked_at)
         refresh_ready_state(cfg, now=checked_at)
-        hops = cfg.get("chain", {}).get("hops", [])
-        current_ok = _all_hops_ok(hops, statuses)
-        if first_run or current_ok != last_overall_ok:
+        fingerprint = _chain_visual_fingerprint(hops, statuses)
+        status_changed = first_run or fingerprint != last_visual_fingerprint
+        interval_elapsed = (
+            visual_interval_s > 0
+            and last_visual_print_at is not None
+            and (checked_at - last_visual_print_at) >= visual_interval_s
+        )
+        if status_changed or interval_elapsed:
             print_chain_visual(cfg, statuses)
-            last_overall_ok = current_ok
+            last_visual_fingerprint = fingerprint
+            last_visual_print_at = checked_at
             first_run = False
         STOP_EVENT.wait(interval_s)
 

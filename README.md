@@ -202,7 +202,8 @@ make validate-config
 
 Set `logging.chain_visual: true` in your config to get a terminal-friendly
 proxychains-style display on stderr.  It prints on startup (topology only)
-and again whenever the per-hop health state changes:
+and again whenever a hop health outcome changes (for example, `OK` to `FAIL`,
+or a different failure reason):
 
 ```
 [egressd] |S-chain|-<>-proxy1:3128-<>-proxy2:3128-<>-OK
@@ -221,6 +222,10 @@ with `FAIL`:
 
 The visual is disabled by default (`logging.chain_visual: false`) so it does not
 interfere with JSON log pipelines.
+
+If you want steady snapshots even when the chain is stable, set
+`logging.chain_visual_interval_s` to a positive value. A value of `0`
+(default) keeps change-only behavior.
 
 ## Maintenance and cleanup
 

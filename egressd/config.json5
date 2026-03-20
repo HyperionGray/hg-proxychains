@@ -34,6 +34,9 @@
     // Set chain_visual to true for a terminal-friendly proxychains-style
     // display showing each hop and its health status.
     chain_visual: false,
+    // Optional: emit a periodic snapshot even when hop health does not change.
+    // Set to 0 to print only when hop status changes.
+    chain_visual_interval_s: 0,
   },
 
   supervisor: {

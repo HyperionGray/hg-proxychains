@@ -144,6 +144,37 @@ class ChainVisualTests(unittest.TestCase):
         self.assertIn("-<>-OK", visual)
         self.assertNotIn("-XX-", visual)
 
+    def test_chain_visual_fingerprint_ignores_latency_jitter(self):
+        """Visual change detection should not fire on elapsed_ms-only updates."""
+        hops = [{"url": "http://proxy1:3128"}, {"url": "http://proxy2:3128"}]
+        baseline = {
+            "hop_0": {"ok": True, "elapsed_ms": 10},
+            "hop_1": {"ok": False, "error": "Connection refused", "elapsed_ms": 20},
+        }
+        jittered = {
+            "hop_0": {"ok": True, "elapsed_ms": 99},
+            "hop_1": {"ok": False, "error": "Connection refused", "elapsed_ms": 77},
+        }
+        self.assertEqual(
+            supervisor._chain_visual_fingerprint(hops, baseline),
+            supervisor._chain_visual_fingerprint(hops, jittered),
+        )
+
+    def test_chain_visual_fingerprint_detects_health_transition(self):
+        hops = [{"url": "http://proxy1:3128"}]
+        failing = {"hop_0": {"ok": False, "error": "timeout"}}
+        healthy = {"hop_0": {"ok": True, "elapsed_ms": 12}}
+        self.assertNotEqual(
+            supervisor._chain_visual_fingerprint(hops, failing),
+            supervisor._chain_visual_fingerprint(hops, healthy),
+        )
+
+    def test_chain_visual_interval_parsing_handles_invalid_values(self):
+        self.assertEqual(supervisor._chain_visual_interval_s({"logging": {}}), 0)
+        self.assertEqual(supervisor._chain_visual_interval_s({"logging": {"chain_visual_interval_s": 9}}), 9)
+        self.assertEqual(supervisor._chain_visual_interval_s({"logging": {"chain_visual_interval_s": -2}}), 0)
+        self.assertEqual(supervisor._chain_visual_interval_s({"logging": {"chain_visual_interval_s": "oops"}}), 0)
+
     def _capture_stderr(self, fn, *args, **kwargs) -> str:
         """Call *fn* with redirected stderr and return whatever was written."""
         buf = io.StringIO()
