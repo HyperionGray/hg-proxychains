@@ -44,6 +44,7 @@ STRAY_DIR_NAMES = {
 STALE_ARTIFACT_PATHS = {
     "egressd-starter.tar.gz",
 }
+STALE_UNTRACKED_NAMES = {Path(path).name for path in STALE_ARTIFACT_PATHS}
 UNFINISHED_SCAN_SUFFIXES = {
     ".py",
     ".sh",
@@ -89,6 +90,12 @@ class ScanResult:
         )
 
     def to_report(self) -> dict[str, object]:
+        path_issue_count = len(
+            set(self.stray_untracked_paths)
+            | set(self.stale_tracked_artifacts)
+            | set(self.stale_untracked_artifacts)
+            | set(self.embedded_git_repos)
+        )
         return {
             "unfinished_markers": [
                 {
@@ -111,11 +118,7 @@ class ScanResult:
                 "stale_tracked_artifacts": len(self.stale_tracked_artifacts),
                 "stale_untracked_artifacts": len(self.stale_untracked_artifacts),
                 "embedded_git_repositories": len(self.embedded_git_repos),
-                "total_issues": len(self.findings)
-                + len(self.stray_untracked_paths)
-                + len(self.stale_tracked_artifacts)
-                + len(self.stale_untracked_artifacts)
-                + len(self.embedded_git_repos),
+                "total_issues": len(self.findings) + path_issue_count,
             },
         }
 
@@ -261,6 +264,9 @@ def classify_stray_paths(untracked_paths: Iterable[str], include_third_party: bo
             stray.append(rel_path)
             continue
         if any(fnmatch.fnmatch(basename, pattern) for pattern in STRAY_FILE_PATTERNS):
+            stray.append(rel_path)
+            continue
+        if basename in STALE_UNTRACKED_NAMES:
             stray.append(rel_path)
             continue
     return sorted(set(stray))
