@@ -67,12 +67,15 @@ class SupervisorValidationTests(unittest.TestCase):
 
 
 class ChainVisualTests(unittest.TestCase):
-    def _cfg(self, hops=None, canary="exitserver:9999"):
+    def _cfg(self, hops=None, canary="exitserver:9999", require_all_hops_healthy=True):
         return {
             "chain": {
                 "hops": hops or [{"url": "http://proxy1:3128"}, {"url": "http://proxy2:3128"}],
                 "canary_target": canary,
             },
+            "supervisor": {
+                "require_all_hops_healthy": require_all_hops_healthy,
+            }
         }
 
     def test_topology_only_uses_pending_suffix(self):
@@ -105,6 +108,25 @@ class ChainVisualTests(unittest.TestCase):
         self.assertIn("-XX-", visual)
         self.assertIn("FAIL", visual)
         self.assertNotIn("-<>-OK", visual)
+
+    def test_relaxed_mode_partial_health_produces_degraded_suffix(self):
+        """When any-hop policy is active, partial health should be DEGRADED."""
+        statuses = {
+            "hop_0": {"ok": True, "elapsed_ms": 42},
+            "hop_1": {"ok": False, "error": "Connection refused"},
+        }
+        visual = supervisor.format_chain_visual(
+            self._cfg(require_all_hops_healthy=False),
+            statuses,
+        )
+        self.assertIn("-<>-DEGRADED", visual)
+        self.assertNotIn("-<>-FAIL", visual)
+
+    def test_incomplete_hop_statuses_show_pending_suffix(self):
+        """If probing hasn't populated every hop yet, the chain is PENDING."""
+        statuses = {"hop_0": {"ok": True, "elapsed_ms": 42}}
+        visual = supervisor.format_chain_visual(self._cfg(), statuses)
+        self.assertIn("-<>-PENDING", visual)
 
     def test_hop_labels_appear_in_chain_line(self):
         """Each hop hostname:port must appear in the main chain line."""

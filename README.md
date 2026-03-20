@@ -202,7 +202,8 @@ make validate-config
 
 Set `logging.chain_visual: true` in your config to get a terminal-friendly
 proxychains-style display on stderr.  It prints on startup (topology only)
-and again whenever the per-hop health state changes:
+and again whenever the chain summary state changes (`PENDING`, `OK`,
+`DEGRADED`, or `FAIL`):
 
 ```
 [egressd] |S-chain|-<>-proxy1:3128-<>-proxy2:3128-<>-OK
@@ -217,6 +218,13 @@ with `FAIL`:
 [egressd] |S-chain|-<>-proxy1:3128-XX-proxy2:3128-<>-FAIL
 [egressd]   hop_0: proxy1:3128                 OK   42ms
 [egressd]   hop_1: proxy2:3128                 FAIL Connection refused
+```
+
+If you relax readiness policy with `supervisor.require_all_hops_healthy: false`,
+partial hop health is surfaced as `DEGRADED` instead of `FAIL`:
+
+```text
+[egressd] |S-chain|-<>-proxy1:3128-XX-proxy2:3128-<>-DEGRADED
 ```
 
 The visual is disabled by default (`logging.chain_visual: false`) so it does not
