@@ -1,9 +1,7 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
-
-This repository includes a small maintenance utility at
-`scripts/repo_hygiene.py` for scheduled cleanups and local checks.
+`scripts/repo_hygiene.py` is the primary scanner/cleaner used by maintenance
+automation and local cleanup checks.
 
 ## What it checks
 
@@ -48,7 +46,9 @@ python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
 # Remove untracked stray files/directories
 python3 scripts/repo_hygiene.py clean --repo-root .
-python3 scripts/repo_hygiene.py scan --repo-root . --json
+
+# Write/update baseline from currently known markers
+python3 scripts/repo_hygiene.py baseline --repo-root . --include-third-party
 ```
 
 JSON output for automation:
@@ -69,12 +69,13 @@ Or through Make targets:
 ```bash
 make maintenance
 make maintenance-fix
+make maintenance-baseline
 make repo-scan
 make repo-clean
 make repo-scan-json
 ```
 
-`scripts/repo_maintenance.py` is retained as a compatibility wrapper and now
+`scripts/repo_maintenance.py` is retained as a compatibility wrapper and
 delegates to `scripts/repo_hygiene.py`.
 
 ## Exit codes
@@ -95,7 +96,7 @@ Override with `--baseline-file <path>`.
 
 The baseline currently suppresses marker findings only (not stray files).
 
-## Legacy script
+## Legacy wrapper
 
-`scripts/repo_maintenance.py` remains as a compatibility wrapper and delegates
-to `repo_hygiene.py`.
+`scripts/repo_maintenance.py` only forwards legacy arguments to
+`repo_hygiene.py` and is not the recommended primary entry point.

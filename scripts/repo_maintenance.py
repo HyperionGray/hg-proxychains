@@ -28,7 +28,7 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument(
         "--json",
         action="store_true",
-        help="Accepted for compatibility; output remains the repo_hygiene text format.",
+        help="Forward JSON output mode to repo_hygiene.py.",
     )
     parser.add_argument(
         "--baseline-file",
@@ -56,7 +56,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.include_third_party:
         cmd.append("--include-third-party")
     if args.json:
-        print("warn: --json is deprecated in repo_maintenance.py compatibility mode", file=sys.stderr)
+        cmd.append("--json")
 
     proc = subprocess.run(cmd, check=False)
     return proc.returncode
