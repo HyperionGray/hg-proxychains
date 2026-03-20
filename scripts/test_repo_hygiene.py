@@ -1,6 +1,7 @@
 import sys
 import tempfile
 import unittest
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -148,6 +149,33 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_command_scan_applies_baseline_and_excludes_baseline_file(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src_file = root / "src.py"
+            baseline_file = root / ".repo-hygiene-baseline.json"
+            todo_line = "# TO" "DO: source marker"
+            src_file.write_text(f"{todo_line}\n", encoding="utf-8")
+            baseline_payload = {
+                "unfinished_markers": [
+                    {"path": "src.py", "marker": "TODO", "line": todo_line}
+                ]
+            }
+            baseline_file.write_text(json.dumps(baseline_payload) + "\n", encoding="utf-8")
+
+            with patch.object(
+                repo_hygiene,
+                "list_git_paths",
+                side_effect=[["src.py", ".repo-hygiene-baseline.json"], []],
+            ):
+                exit_code = repo_hygiene.command_scan(
+                    root,
+                    include_third_party=False,
+                    baseline_path=".repo-hygiene-baseline.json",
+                )
+
+        self.assertEqual(exit_code, 0)
 
 
 if __name__ == "__main__":
