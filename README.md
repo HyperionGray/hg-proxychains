@@ -231,7 +231,8 @@ make maintenance
 # equivalent: python3 scripts/repo_hygiene.py scan --repo-root .
 ```
 
-For automatic cleanup of removable clutter (backup files, stray `__pycache__/` dirs, and known stale artifacts):
+For automatic cleanup of removable clutter (backup files, stray `__pycache__/`
+dirs, and untracked known stale artifacts):
 
 ```bash
 make maintenance-fix
@@ -245,6 +246,9 @@ also includes `third_party/FunkyDNS`, use:
 make maintenance-all
 make maintenance-all-json
 ```
+
+The scan also reports unexpected embedded git repositories. Those are never
+auto-removed by `maintenance-fix`; clean them manually after review.
 
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
 
