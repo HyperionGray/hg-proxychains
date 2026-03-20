@@ -1,7 +1,5 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
-
 This repository includes a small maintenance utility at
 `scripts/repo_hygiene.py` for scheduled cleanups and local checks.
 
@@ -48,7 +46,12 @@ python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
 # Remove untracked stray files/directories
 python3 scripts/repo_hygiene.py clean --repo-root .
-python3 scripts/repo_hygiene.py scan --repo-root . --json
+
+# JSON output while cleaning
+python3 scripts/repo_hygiene.py clean --repo-root . --json
+
+# Build/update marker baseline entries
+python3 scripts/repo_hygiene.py baseline --repo-root . --include-third-party
 ```
 
 JSON output for automation:
@@ -69,6 +72,10 @@ Or through Make targets:
 ```bash
 make maintenance
 make maintenance-fix
+make maintenance-json
+make maintenance-all
+make maintenance-all-json
+make maintenance-baseline
 make repo-scan
 make repo-clean
 make repo-scan-json

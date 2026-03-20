@@ -1,6 +1,9 @@
+import io
+import json
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -9,6 +12,28 @@ import repo_hygiene
 
 
 class RepoHygieneTests(unittest.TestCase):
+    def test_parse_args_supports_baseline_and_third_party_flags(self) -> None:
+        args = repo_hygiene.parse_args(
+            [
+                "scan",
+                "--repo-root",
+                "/tmp/repo",
+                "--include-third-party",
+                "--baseline-file",
+                "custom-baseline.json",
+                "--json",
+            ]
+        )
+        self.assertEqual(args.command, "scan")
+        self.assertEqual(args.repo_root, "/tmp/repo")
+        self.assertTrue(args.include_third_party)
+        self.assertEqual(args.baseline_file, "custom-baseline.json")
+        self.assertTrue(args.json)
+
+        default_args = repo_hygiene.parse_args(["scan"])
+        self.assertFalse(default_args.include_third_party)
+        self.assertEqual(default_args.baseline_file, repo_hygiene.BASELINE_DEFAULT_PATH)
+
     def test_should_skip_for_unfinished(self) -> None:
         self.assertTrue(repo_hygiene.should_skip_for_unfinished("third_party/FunkyDNS/dns_server/doh.py"))
         self.assertFalse(
@@ -148,6 +173,65 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_command_scan_applies_baseline_and_ignores_baseline_file(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src_file = root / "src.py"
+            baseline_file = root / ".repo-hygiene-baseline.json"
+            src_line = "# TO" "DO: source marker"
+            src_file.write_text(src_line + "\n", encoding="utf-8")
+            baseline_file.write_text(
+                json.dumps(
+                    {
+                        "unfinished_markers": [
+                            {
+                                "path": "src.py",
+                                "marker": "TODO",
+                                "line": src_line,
+                            }
+                        ]
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            def fake_git_paths(_repo_root: Path, args: tuple[str, ...]) -> list[str]:
+                if args == ("ls-files",):
+                    return ["src.py", ".repo-hygiene-baseline.json"]
+                if args == ("ls-files", "--others", "--exclude-standard"):
+                    return []
+                raise AssertionError(f"unexpected git list args: {args}")
+
+            with patch.object(repo_hygiene, "list_git_paths", side_effect=fake_git_paths):
+                stream = io.StringIO()
+                with redirect_stdout(stream):
+                    rc = repo_hygiene.command_scan(root, json_output=True)
+
+        self.assertEqual(rc, 0)
+        report = json.loads(stream.getvalue())
+        self.assertEqual(report["summary"]["unfinished_markers"], 0)
+        self.assertEqual(report["summary"]["suppressed_unfinished_markers"], 1)
+
+    def test_main_dispatches_baseline_command(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_baseline", return_value=7) as baseline_cmd:
+                rc = repo_hygiene.main(
+                    [
+                        "baseline",
+                        "--repo-root",
+                        str(root),
+                        "--include-third-party",
+                        "--baseline-file",
+                        "markers.json",
+                    ]
+                )
+
+        self.assertEqual(rc, 7)
+        baseline_cmd.assert_called_once_with(root, True, "markers.json")
 
 
 if __name__ == "__main__":
