@@ -577,7 +577,7 @@ def format_chain_visual(cfg: Dict[str, Any], hop_statuses: Optional[Dict[str, An
                 lines.append(f"[egressd]   hop_{idx}: {label:<30} OK   {timing}")
             else:
                 err_msg = status.get("error") or status.get("status_line") or "unreachable"
-                lines.append(f"[egressd]   hop_{idx}: {label:<30} FAIL {err_msg}")
+                lines.append(f"[egressd]   hop_{idx}: {label:<30} FAIL {str(err_msg).splitlines()[0]}")
 
     return "\n".join(lines)
 
