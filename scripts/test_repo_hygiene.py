@@ -1,14 +1,35 @@
+import contextlib
+import io
+import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import repo_hygiene
 
 
 class RepoHygieneTests(unittest.TestCase):
+    def test_parse_args_supports_include_and_baseline(self) -> None:
+        args = repo_hygiene.parse_args(
+            [
+                "scan",
+                "--repo-root",
+                ".",
+                "--include-third-party",
+                "--baseline-file",
+                "tmp/baseline.json",
+            ]
+        )
+        self.assertEqual(args.command, "scan")
+        self.assertTrue(args.include_third_party)
+        self.assertEqual(args.baseline_file, "tmp/baseline.json")
+
+    def test_parse_args_supports_no_include_third_party(self) -> None:
+        args = repo_hygiene.parse_args(["scan", "--no-include-third-party"])
+        self.assertFalse(args.include_third_party)
+
     def test_should_skip_for_unfinished(self) -> None:
         self.assertTrue(repo_hygiene.should_skip_for_unfinished("third_party/FunkyDNS/dns_server/doh.py"))
         self.assertFalse(
@@ -148,6 +169,53 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_find_embedded_git_repositories_reports_unexpected_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir(parents=True, exist_ok=True)
+            (root / "nested-repo" / ".git").mkdir(parents=True, exist_ok=True)
+            (root / "third_party" / "FunkyDNS").mkdir(parents=True, exist_ok=True)
+            (root / "third_party" / "FunkyDNS" / ".git").write_text(
+                "gitdir: ../../.git/modules/third_party/FunkyDNS\n",
+                encoding="utf-8",
+            )
+
+            embedded = repo_hygiene.find_embedded_git_repositories(root)
+
+        self.assertEqual(embedded, ["nested-repo"])
+
+    def test_command_scan_applies_baseline_and_excludes_baseline_file(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src_file = root / "src.py"
+            baseline_file = root / ".repo-hygiene-baseline.json"
+            marker_line = "# TO" "DO: source marker"
+            src_file.write_text(f"{marker_line}\n", encoding="utf-8")
+            baseline_file.write_text(
+                (
+                    "{\n"
+                    '  "unfinished_markers": [\n'
+                    "    {\n"
+                    '      "path": "src.py",\n'
+                    '      "marker": "TODO",\n'
+                    f'      "line": "{marker_line}"\n'
+                    "    }\n"
+                    "  ]\n"
+                    "}\n"
+                ),
+                encoding="utf-8",
+            )
+            subprocess.run(["git", "init"], cwd=root, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "add", "src.py", ".repo-hygiene-baseline.json"], cwd=root, check=True)
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                exit_code = repo_hygiene.command_scan(root, json_output=True)
+            payload = output.getvalue()
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn('"suppressed_by_baseline": 1', payload)
+        self.assertIn('"unfinished_markers": []', payload)
 
 
 if __name__ == "__main__":

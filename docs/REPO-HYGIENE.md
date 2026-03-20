@@ -21,6 +21,8 @@ This repository includes a small maintenance utility at
   - Python cache outputs (`__pycache__/`, `*.pyc`, `*.pyo`)
   - common metadata noise (`.DS_Store`, `Thumbs.db`)
   - known generated bundles (`egressd-starter.tar.gz`)
+- Unexpected embedded git repositories outside the allowed
+  `third_party/FunkyDNS` submodule path.
 
 The scanner intentionally skips `third_party/FunkyDNS/` when checking
 unfinished markers by default, because that path is managed as an external
@@ -48,7 +50,7 @@ python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
 # Remove untracked stray files/directories
 python3 scripts/repo_hygiene.py clean --repo-root .
-python3 scripts/repo_hygiene.py scan --repo-root . --json
+python3 scripts/repo_hygiene.py clean --repo-root . --json
 ```
 
 JSON output for automation:
@@ -62,6 +64,12 @@ Optional deep scan including `third_party/FunkyDNS` unfinished markers:
 
 ```bash
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
+```
+
+Generate/update a baseline file for known unfinished markers:
+
+```bash
+python3 scripts/repo_hygiene.py baseline --repo-root . --include-third-party
 ```
 
 Or through Make targets:
@@ -82,7 +90,8 @@ delegates to `scripts/repo_hygiene.py`.
 - `0`: no issues remain after the command completes
 - `1`: blocking issues found
   - `scan`: unfinished markers, stray untracked files, or stale artifacts
-  - `clean`: unfinished markers or tracked stale artifacts (removable clutter is deleted)
+  - `clean`: unfinished markers, tracked stale artifacts, or embedded git repos
+    (removable clutter is deleted)
 - `2`: invalid invocation (for example, non-git directory)
 
 ## Baseline file
