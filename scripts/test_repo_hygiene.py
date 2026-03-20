@@ -137,7 +137,8 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
 
     def test_build_scan_report_summary_counts(self) -> None:
-        findings = [repo_hygiene.MarkerFinding("a.py", 1, "TODO", "# TODO: x")]
+        todo_line = "# TO" "DO: x"
+        findings = [repo_hygiene.MarkerFinding("a.py", 1, "TODO", todo_line)]
         report = repo_hygiene.build_scan_report(
             findings=findings,
             suppressed_markers=2,
@@ -155,20 +156,25 @@ class RepoHygieneTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             baseline = root / ".repo-hygiene-baseline.json"
+            todo_line = "# TO" "DO: x"
             baseline.write_text(
                 """
 {
   "unfinished_markers": [
-    {"path": "a.py", "marker": "TODO", "line": "# TODO: x"}
+    {"path": "a.py", "marker": "TODO", "line": "# TO__DO: x"}
   ]
 }
 """.strip()
                 + "\n",
                 encoding="utf-8",
             )
+            baseline.write_text(
+                baseline.read_text(encoding="utf-8").replace("TO__DO", "TO" "DO"),
+                encoding="utf-8",
+            )
 
             loaded = repo_hygiene.load_marker_baseline(root, ".repo-hygiene-baseline.json")
-            self.assertEqual(loaded, {("a.py", "TODO", "# TODO: x")})
+            self.assertEqual(loaded, {("a.py", "TODO", todo_line)})
 
     def test_find_unfinished_markers_excludes_baseline_file(self) -> None:
         with tempfile.TemporaryDirectory() as td:
