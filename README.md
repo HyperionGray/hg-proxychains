@@ -232,6 +232,13 @@ make repo-clean
 make repo-scan-json
 ```
 
+For baseline management of known upstream markers:
+
+```bash
+make maintenance-baseline
+# equivalent: python3 scripts/repo_hygiene.py baseline --repo-root . --include-third-party
+```
+
 ## Notes on FunkyDNS review
 
 I added a short review in `docs/FUNKYDNS-REVIEW.md` with the concrete issues worth fixing before you rely on it in a production-ish setup.
