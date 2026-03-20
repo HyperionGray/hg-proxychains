@@ -1,3 +1,4 @@
+import json
 import sys
 import tempfile
 import unittest
@@ -9,6 +10,20 @@ import repo_hygiene
 
 
 class RepoHygieneTests(unittest.TestCase):
+    def test_parse_args_supports_baseline_and_third_party_flags(self) -> None:
+        args = repo_hygiene.parse_args(
+            [
+                "scan",
+                "--repo-root",
+                ".",
+                "--include-third-party",
+                "--baseline-file",
+                "custom-baseline.json",
+            ]
+        )
+        self.assertTrue(args.include_third_party)
+        self.assertEqual(args.baseline_file, "custom-baseline.json")
+
     def test_should_skip_for_unfinished(self) -> None:
         self.assertTrue(repo_hygiene.should_skip_for_unfinished("third_party/FunkyDNS/dns_server/doh.py"))
         self.assertFalse(
@@ -148,6 +163,64 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_find_stale_artifacts_detects_tracked_and_untracked(self) -> None:
+        stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(
+            ["egressd-starter.tar.gz", "src.py"],
+            ["egressd-starter.tar.gz", "tmp/output.tmp"],
+        )
+        self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
+        self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
+
+    def test_command_scan_applies_baseline_suppressions(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            todo_line = "# TO" "DO: source marker"
+            (root / "src.py").write_text(todo_line + "\n", encoding="utf-8")
+            baseline_payload = {
+                "unfinished_markers": [
+                    {
+                        "path": "src.py",
+                        "marker": "TODO",
+                        "line": todo_line,
+                    }
+                ]
+            }
+            (root / ".repo-hygiene-baseline.json").write_text(
+                json.dumps(baseline_payload),
+                encoding="utf-8",
+            )
+            with patch.object(
+                repo_hygiene,
+                "collect_git_paths",
+                side_effect=[
+                    ["src.py", ".repo-hygiene-baseline.json"],
+                    [],
+                ],
+            ):
+                exit_code = repo_hygiene.command_scan(
+                    root,
+                    json_output=True,
+                    baseline_path=".repo-hygiene-baseline.json",
+                )
+        self.assertEqual(exit_code, 0)
+
+    def test_main_dispatches_baseline_command(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_baseline", return_value=7) as mocked:
+                code = repo_hygiene.main(
+                    [
+                        "baseline",
+                        "--repo-root",
+                        str(root),
+                        "--baseline-file",
+                        "x.json",
+                    ]
+                )
+        self.assertEqual(code, 7)
+        mocked.assert_called_once()
 
 
 if __name__ == "__main__":

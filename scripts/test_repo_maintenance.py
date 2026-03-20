@@ -1,71 +1,62 @@
+import io
+import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import repo_maintenance
 
 
 class RepoMaintenanceTests(unittest.TestCase):
-    def test_discover_embedded_git_repos_skips_allowed_submodule(self) -> None:
+    def test_main_builds_scan_command_with_defaults(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            (root / ".git").mkdir()
-            allowed = root / "third_party" / "FunkyDNS" / ".git"
-            allowed.parent.mkdir(parents=True, exist_ok=True)
-            allowed.write_text("gitdir: ../../.git/modules/third_party/FunkyDNS\n", encoding="utf-8")
-            nested = root / "scratch" / ".git"
-            nested.mkdir(parents=True, exist_ok=True)
+            with patch.object(repo_maintenance.subprocess, "run") as mocked_run:
+                mocked_run.return_value = subprocess.CompletedProcess(args=[], returncode=0)
+                exit_code = repo_maintenance.main(["--root", str(root)])
 
-            found = repo_maintenance.discover_embedded_git_repos(root, include_third_party=True)
+        self.assertEqual(exit_code, 0)
+        invoked = mocked_run.call_args[0][0]
+        self.assertIn("scan", invoked)
+        self.assertIn("--include-third-party", invoked)
+        self.assertIn("--baseline-file", invoked)
+        self.assertIn(".repo-hygiene-baseline.json", invoked)
 
-            self.assertEqual([str(path.relative_to(root)) for path in found], ["scratch"])
-
-    def test_discover_untracked_stray_dirs_detects_pycache(self) -> None:
+    def test_main_builds_clean_command_without_third_party_flag(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            cache_file = root / "pkg" / "__pycache__" / "mod.cpython-312.pyc"
-            cache_file.parent.mkdir(parents=True, exist_ok=True)
-            cache_file.write_bytes(b"x")
-            found = repo_maintenance.discover_untracked_stray_dirs(root, include_third_party=True)
+            with patch.object(repo_maintenance.subprocess, "run") as mocked_run:
+                mocked_run.return_value = subprocess.CompletedProcess(args=[], returncode=0)
+                exit_code = repo_maintenance.main(
+                    [
+                        "--root",
+                        str(root),
+                        "--fix",
+                        "--no-include-third-party",
+                        "--baseline-file",
+                        "custom-baseline.json",
+                    ]
+                )
 
-            self.assertEqual([str(path.relative_to(root)) for path in found], ["pkg/__pycache__"])
+        self.assertEqual(exit_code, 0)
+        invoked = mocked_run.call_args[0][0]
+        self.assertIn("clean", invoked)
+        self.assertNotIn("--include-third-party", invoked)
+        self.assertIn("custom-baseline.json", invoked)
 
-    def test_apply_fixes_removes_files_and_dirs(self) -> None:
+    def test_main_warns_when_json_flag_is_used(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            backup_file = root / "notes.tmp"
-            backup_file.write_text("temp\n", encoding="utf-8")
-            cache_dir = root / "build" / "__pycache__"
-            cache_dir.mkdir(parents=True, exist_ok=True)
-            (cache_dir / "a.pyc").write_bytes(b"x")
-            stale = root / "egressd-starter.tar.gz"
-            stale.write_text("bundle\n", encoding="utf-8")
+            stderr = io.StringIO()
+            with patch.object(repo_maintenance.subprocess, "run") as mocked_run:
+                mocked_run.return_value = subprocess.CompletedProcess(args=[], returncode=0)
+                with patch("sys.stderr", stderr):
+                    repo_maintenance.main(["--root", str(root), "--json"])
 
-            report = {
-                "backup_files": ["notes.tmp"],
-                "stray_dirs": ["build/__pycache__"],
-                "stale_artifacts": ["egressd-starter.tar.gz"],
-            }
-            removed, failed = repo_maintenance.apply_fixes(root, report)
-
-            self.assertEqual(sorted(removed), sorted(["notes.tmp", "build/__pycache__", "egressd-starter.tar.gz"]))
-            self.assertEqual(failed, [])
-            self.assertFalse(backup_file.exists())
-            self.assertFalse(cache_dir.exists())
-            self.assertFalse(stale.exists())
-
-    def test_embedded_git_scan_can_skip_third_party(self) -> None:
-        with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
-            (root / ".git").mkdir()
-            third_party = root / "third_party" / "FunkyDNS" / "scratch" / ".git"
-            third_party.mkdir(parents=True, exist_ok=True)
-
-            found = repo_maintenance.discover_embedded_git_repos(root, include_third_party=False)
-
-            self.assertEqual(found, [])
+        self.assertIn("warn: --json is deprecated", stderr.getvalue())
 
 
 if __name__ == "__main__":
