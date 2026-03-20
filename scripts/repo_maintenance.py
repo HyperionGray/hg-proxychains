@@ -21,14 +21,14 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument(
         "--include-third-party",
         action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Include third_party/FunkyDNS in marker/stray scanning (default: true).",
+        default=False,
+        help="Include third_party/FunkyDNS in marker/stray scanning (default: false).",
     )
     parser.add_argument("--fix", action="store_true", help="Remove untracked stray artifacts.")
     parser.add_argument(
         "--json",
         action="store_true",
-        help="Accepted for compatibility; output remains the repo_hygiene text format.",
+        help="Emit machine-readable JSON output from repo_hygiene.py.",
     )
     parser.add_argument(
         "--baseline-file",
@@ -55,8 +55,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     ]
     if args.include_third_party:
         cmd.append("--include-third-party")
+    else:
+        cmd.append("--no-include-third-party")
     if args.json:
-        print("warn: --json is deprecated in repo_maintenance.py compatibility mode", file=sys.stderr)
+        cmd.append("--json")
 
     proc = subprocess.run(cmd, check=False)
     return proc.returncode
