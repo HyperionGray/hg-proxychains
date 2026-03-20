@@ -8,8 +8,8 @@ A fail-closed container egress proxy chain with DNS-over-HTTPS. No direct DNS fr
 
 ## Prerequisites
 
-- `podman` or `docker`
-- `podman-compose` or `docker-compose`
+- `podman`
+- `podman-compose`
 - GitHub access (for FunkyDNS submodule)
 
 ## Get Started
@@ -27,8 +27,8 @@ make smoke
 **3. Watch for success:**
 
 The `client` container will print:
-- ✅ `DNS OK` and `DoH OK` for test domains
-- ✅ `OK from exit-server` (proves end-to-end CONNECT chain works)
+- `DNS OK` and `DoH OK` for test domains
+- `OK from exit-server` (proves end-to-end CONNECT chain works)
 
 **4. Check health endpoints:**
 ```bash
