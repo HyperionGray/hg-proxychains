@@ -456,7 +456,11 @@ def command_baseline(repo_root: Path, include_third_party: bool, baseline_path: 
     }
     target = repo_root / baseline_path
     target.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(f"wrote baseline entries: {len(findings)} -> {target.relative_to(repo_root)}")
+    try:
+        display_path = str(target.relative_to(repo_root))
+    except ValueError:
+        display_path = str(target)
+    print(f"wrote baseline entries: {len(findings)} -> {display_path}")
     return 0
 
 

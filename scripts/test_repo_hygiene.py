@@ -233,6 +233,23 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(rc, 7)
         baseline_cmd.assert_called_once_with(root, True, "markers.json")
 
+    def test_command_baseline_allows_absolute_output_path(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            output = Path(td) / "nested" / "baseline.json"
+            output.parent.mkdir(parents=True, exist_ok=True)
+            with patch.object(repo_hygiene, "collect_git_paths", return_value=[]):
+                stream = io.StringIO()
+                with redirect_stdout(stream):
+                    rc = repo_hygiene.command_baseline(
+                        root,
+                        include_third_party=False,
+                        baseline_path=str(output),
+                    )
+            self.assertEqual(rc, 0)
+            self.assertTrue(output.exists())
+            self.assertIn(str(output), stream.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()
