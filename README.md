@@ -200,7 +200,7 @@ make validate-config
 
 ## Maintenance and cleanup
 
-Run repository maintenance checks (unfinished markers, backup files, stale artifacts, stray cache dirs, and unexpected embedded git repos) for first-party code:
+Run repository maintenance checks (unfinished markers, backup files, stale artifacts, and stray cache dirs) for first-party code:
 
 ```bash
 make maintenance
@@ -220,6 +220,7 @@ also includes `third_party/FunkyDNS`, use:
 ```bash
 make maintenance-all
 make maintenance-all-json
+make maintenance-baseline
 ```
 
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.

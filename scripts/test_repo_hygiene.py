@@ -1,6 +1,9 @@
+import io
+import json
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -148,6 +151,74 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_parse_args_supports_include_and_baseline_file(self) -> None:
+        args = repo_hygiene.parse_args(
+            ["scan", "--include-third-party", "--baseline-file", "tmp/baseline.json"]
+        )
+        self.assertEqual(args.command, "scan")
+        self.assertTrue(args.include_third_party)
+        self.assertEqual(args.baseline_file, "tmp/baseline.json")
+
+    def test_command_scan_applies_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src_file = root / "src.py"
+            src_line = "# TO" "DO: source marker"
+            src_file.write_text(f"{src_line}\n", encoding="utf-8")
+            baseline_file = root / ".repo-hygiene-baseline.json"
+            baseline_payload = {
+                "unfinished_markers": [
+                    {
+                        "path": "src.py",
+                        "marker": "TODO",
+                        "line": src_line,
+                    }
+                ]
+            }
+            baseline_file.write_text(json.dumps(baseline_payload) + "\n", encoding="utf-8")
+
+            def fake_collect_git_paths(
+                _repo_root: Path,
+                list_args: tuple[str, ...],
+                include_third_party: bool = False,
+            ) -> list[str]:
+                if list_args == ("ls-files",):
+                    return ["src.py", ".repo-hygiene-baseline.json"]
+                if list_args == ("ls-files", "--others", "--exclude-standard"):
+                    return []
+                raise AssertionError(f"unexpected list args: {list_args!r} include={include_third_party}")
+
+            with patch.object(repo_hygiene, "collect_git_paths", side_effect=fake_collect_git_paths):
+                buffer = io.StringIO()
+                with redirect_stdout(buffer):
+                    result = repo_hygiene.command_scan(
+                        root,
+                        baseline_path=".repo-hygiene-baseline.json",
+                        json_output=True,
+                    )
+
+        report = json.loads(buffer.getvalue())
+        self.assertEqual(result, 0)
+        self.assertEqual(report["summary"]["unfinished_markers"], 0)
+        self.assertEqual(report["summary"]["suppressed_markers"], 1)
+
+    def test_command_scan_forwards_include_third_party(self) -> None:
+        seen_flags: list[bool] = []
+
+        def fake_collect_git_paths(
+            _repo_root: Path,
+            _list_args: tuple[str, ...],
+            include_third_party: bool = False,
+        ) -> list[str]:
+            seen_flags.append(include_third_party)
+            return []
+
+        with patch.object(repo_hygiene, "collect_git_paths", side_effect=fake_collect_git_paths):
+            result = repo_hygiene.command_scan(Path("."), include_third_party=True, json_output=True)
+
+        self.assertEqual(result, 0)
+        self.assertEqual(seen_flags, [True, True])
 
 
 if __name__ == "__main__":
