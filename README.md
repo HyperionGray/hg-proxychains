@@ -201,8 +201,16 @@ make validate-config
 ## Chain visual
 
 Set `logging.chain_visual: true` in your config to get a terminal-friendly
-proxychains-style display on stderr.  It prints on startup (topology only)
-and again whenever the per-hop health state changes:
+proxychains-style display on stderr.
+
+Emission cadence is controlled by `logging.chain_visual_emit`:
+
+- `per-hop` (default): print whenever any hop health detail changes
+- `overall`: print only when overall chain state changes
+- `always`: print on every probe loop
+
+The visual always prints once on startup (topology-only), then follows the
+selected cadence:
 
 ```
 [egressd] |S-chain|-<>-proxy1:3128-<>-proxy2:3128-<>-OK
@@ -228,14 +236,14 @@ Run repository maintenance checks (unfinished markers, backup files, stale artif
 
 ```bash
 make maintenance
-# equivalent: python3 scripts/repo_hygiene.py scan --repo-root .
+# equivalent: python3 scripts/repo_maintenance.py --no-include-third-party
 ```
 
 For automatic cleanup of removable clutter (backup files, stray `__pycache__/` dirs, and known stale artifacts):
 
 ```bash
 make maintenance-fix
-# equivalent: python3 scripts/repo_hygiene.py clean --repo-root .
+# equivalent: python3 scripts/repo_maintenance.py --no-include-third-party --fix
 ```
 
 `maintenance*` targets focus on first-party code by default. For a full scan that
