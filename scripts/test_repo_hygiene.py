@@ -217,6 +217,24 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertIn('"suppressed_by_baseline": 1', payload)
         self.assertIn('"unfinished_markers": []', payload)
 
+    def test_command_baseline_accepts_absolute_output_path(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"
+            root.mkdir(parents=True, exist_ok=True)
+            src_file = root / "src.py"
+            src_file.write_text("# TO" "DO: baseline candidate\n", encoding="utf-8")
+            subprocess.run(["git", "init"], cwd=root, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "add", "src.py"], cwd=root, check=True)
+            output_path = Path(td) / "external-baseline.json"
+
+            exit_code = repo_hygiene.command_baseline(
+                root,
+                include_third_party=False,
+                baseline_path=str(output_path),
+            )
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(output_path.is_file())
+
 
 if __name__ == "__main__":
     unittest.main()

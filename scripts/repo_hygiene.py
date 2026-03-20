@@ -165,8 +165,22 @@ def marker_baseline_key(finding: MarkerFinding) -> tuple[str, str, str]:
     return finding.path, finding.marker, finding.line
 
 
+def resolve_baseline_path(repo_root: Path, baseline_path: str) -> Path:
+    candidate = Path(baseline_path)
+    if candidate.is_absolute():
+        return candidate
+    return repo_root / candidate
+
+
+def baseline_relpath_within_repo(repo_root: Path, baseline_file: Path) -> str | None:
+    try:
+        return baseline_file.resolve().relative_to(repo_root.resolve()).as_posix()
+    except ValueError:
+        return None
+
+
 def load_marker_baseline(repo_root: Path, baseline_path: str) -> set[tuple[str, str, str]]:
-    candidate = repo_root / baseline_path
+    candidate = resolve_baseline_path(repo_root, baseline_path)
     if not candidate.is_file():
         return set()
     try:
@@ -381,12 +395,13 @@ def command_scan(
         ("ls-files", "--others", "--exclude-standard"),
         include_third_party=include_third_party,
     )
-    baseline_rel_path = Path(baseline_path).as_posix()
+    baseline_file = resolve_baseline_path(repo_root, baseline_path)
+    baseline_rel_path = baseline_relpath_within_repo(repo_root, baseline_file)
     findings = find_unfinished_markers(
         repo_root,
         tracked,
         include_third_party=include_third_party,
-        excluded_paths={baseline_rel_path},
+        excluded_paths={baseline_rel_path} if baseline_rel_path else set(),
     )
     baseline = load_marker_baseline(repo_root, baseline_path)
     filtered_findings, suppressed = apply_marker_baseline(findings, baseline)
@@ -427,12 +442,13 @@ def command_clean(
         ("ls-files", "--others", "--exclude-standard"),
         include_third_party=include_third_party,
     )
-    baseline_rel_path = Path(baseline_path).as_posix()
+    baseline_file = resolve_baseline_path(repo_root, baseline_path)
+    baseline_rel_path = baseline_relpath_within_repo(repo_root, baseline_file)
     findings = find_unfinished_markers(
         repo_root,
         tracked,
         include_third_party=include_third_party,
-        excluded_paths={baseline_rel_path},
+        excluded_paths={baseline_rel_path} if baseline_rel_path else set(),
     )
     baseline = load_marker_baseline(repo_root, baseline_path)
     filtered_findings, suppressed = apply_marker_baseline(findings, baseline)
@@ -495,12 +511,13 @@ def command_clean(
 
 def command_baseline(repo_root: Path, include_third_party: bool, baseline_path: str) -> int:
     tracked = collect_git_paths(repo_root, ("ls-files",), include_third_party=include_third_party)
-    baseline_rel_path = Path(baseline_path).as_posix()
+    target = resolve_baseline_path(repo_root, baseline_path)
+    baseline_rel_path = baseline_relpath_within_repo(repo_root, target)
     findings = find_unfinished_markers(
         repo_root,
         tracked,
         include_third_party=include_third_party,
-        excluded_paths={baseline_rel_path},
+        excluded_paths={baseline_rel_path} if baseline_rel_path else set(),
     )
     payload = {
         "unfinished_markers": [
@@ -512,10 +529,10 @@ def command_baseline(repo_root: Path, include_third_party: bool, baseline_path: 
             for finding in findings
         ]
     }
-    target = repo_root / baseline_path
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(f"wrote baseline entries: {len(findings)} -> {target.relative_to(repo_root)}")
+    display_path = baseline_rel_path or target.as_posix()
+    print(f"wrote baseline entries: {len(findings)} -> {display_path}")
     return 0
 
 
