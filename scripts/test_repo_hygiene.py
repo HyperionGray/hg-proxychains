@@ -9,6 +9,35 @@ import repo_hygiene
 
 
 class RepoHygieneTests(unittest.TestCase):
+    def test_discover_embedded_git_repos_skips_root_git_and_gitlinks(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+
+            submodule_git = root / "third_party" / "FunkyDNS" / ".git"
+            submodule_git.parent.mkdir(parents=True, exist_ok=True)
+            submodule_git.write_text("gitdir: ../../.git/modules/third_party/FunkyDNS\n", encoding="utf-8")
+
+            nested_git = root / "scratch" / ".git"
+            nested_git.mkdir(parents=True, exist_ok=True)
+
+            findings = repo_hygiene.discover_embedded_git_repos(root)
+
+        self.assertEqual(findings, ["scratch"])
+
+    def test_discover_embedded_git_repos_respects_third_party_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            nested_third_party_git = root / "third_party" / "local-tooling" / ".git"
+            nested_third_party_git.mkdir(parents=True, exist_ok=True)
+
+            default_findings = repo_hygiene.discover_embedded_git_repos(root)
+            include_findings = repo_hygiene.discover_embedded_git_repos(root, include_third_party=True)
+
+        self.assertEqual(default_findings, [])
+        self.assertEqual(include_findings, ["third_party/local-tooling"])
+
     def test_should_skip_for_unfinished(self) -> None:
         self.assertTrue(repo_hygiene.should_skip_for_unfinished("third_party/FunkyDNS/dns_server/doh.py"))
         self.assertFalse(
@@ -148,6 +177,12 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_build_scan_report_includes_embedded_git_summary(self) -> None:
+        report = repo_hygiene.build_scan_report([], ["tmp/output.tmp"], ["scratch"])
+        self.assertEqual(report["summary"]["embedded_git_repos"], 1)
+        self.assertEqual(report["summary"]["total_issues"], 2)
+        self.assertEqual(report["embedded_git_repos"], ["scratch"])
 
 
 if __name__ == "__main__":

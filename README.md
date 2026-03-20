@@ -238,6 +238,9 @@ make maintenance-fix
 # equivalent: python3 scripts/repo_hygiene.py clean --repo-root .
 ```
 
+`maintenance-fix` reports embedded git repositories but does not auto-delete
+them.
+
 `maintenance*` targets focus on first-party code by default. For a full scan that
 also includes `third_party/FunkyDNS`, use:
 
