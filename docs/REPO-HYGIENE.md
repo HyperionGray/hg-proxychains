@@ -1,6 +1,8 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
+`scripts/repo_hygiene.py` is the canonical scanner/cleaner.
+`scripts/repo_maintenance.py` remains a compatibility wrapper around it and powers
+the `make maintenance*` targets.
 
 This repository includes a small maintenance utility at
 `scripts/repo_hygiene.py` for scheduled cleanups and local checks.
@@ -69,6 +71,9 @@ Or through Make targets:
 ```bash
 make maintenance
 make maintenance-fix
+make maintenance-json
+make maintenance-all
+make maintenance-all-json
 make repo-scan
 make repo-clean
 make repo-scan-json
