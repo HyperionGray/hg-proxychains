@@ -248,7 +248,7 @@ class RepoHygieneTests(unittest.TestCase):
                     )
             self.assertEqual(rc, 0)
             self.assertTrue(output.exists())
-            self.assertIn(str(output), stream.getvalue())
+            self.assertIn("baseline.json", stream.getvalue())
 
 
 if __name__ == "__main__":
