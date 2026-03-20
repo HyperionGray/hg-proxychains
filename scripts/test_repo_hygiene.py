@@ -27,20 +27,21 @@ class RepoHygieneTests(unittest.TestCase):
             "keep/readme.md",
             "docs/.DS_Store",
             "build/result.txt",
-            "egressd-starter.tar.gz",
         ]
         stray = repo_hygiene.classify_stray_paths(untracked)
         self.assertEqual(
             stray,
             [
                 "docs/.DS_Store",
-                "egressd-starter.tar.gz",
                 "notes.txt~",
-                "pkg/__pycache__/module.cpython-312.pyc",
+                "pkg/__pycache__",
                 "tmp/output.tmp",
             ],
         )
-        stray_with_third_party = repo_hygiene.classify_stray_paths(untracked, include_third_party=True)
+        stray_with_third_party = repo_hygiene.classify_stray_paths(
+            untracked + ["third_party/FunkyDNS/archive/funkydns.py~"],
+            include_third_party=True,
+        )
         self.assertIn("third_party/FunkyDNS/archive/funkydns.py~", stray_with_third_party)
 
     def test_classify_stray_paths_skips_third_party_unless_enabled(self) -> None:
@@ -59,6 +60,14 @@ class RepoHygieneTests(unittest.TestCase):
                 "tmp/output.tmp",
             ],
         )
+
+    def test_find_stale_artifacts_tracks_known_generated_bundle(self) -> None:
+        stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(
+            tracked_paths=["README.md", "egressd-starter.tar.gz"],
+            untracked_paths=["tmp/output.tmp", "egressd-starter.tar.gz"],
+        )
+        self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
+        self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
 
     def test_find_unfinished_markers_ignores_skipped_paths(self) -> None:
         with tempfile.TemporaryDirectory() as td:

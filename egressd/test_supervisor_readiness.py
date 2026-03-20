@@ -40,13 +40,29 @@ class ReadinessTests(unittest.TestCase):
             "funkydns": "disabled",
             "hops": {
                 "hop_0": {"ok": True, "status_line": "HTTP/1.1 200 Connection Established"},
-                "hop_1": {"ok": True, "status_line": "HTTP/1.1 407 Proxy Authentication Required"},
+                "hop_1": {"ok": True, "status_line": "HTTP/1.1 200 Connection Established"},
             },
             "hops_last_update": now - 3,
         }
         readiness = supervisor.compute_readiness(state, cfg, now=now)
         self.assertTrue(readiness["ready"])
         self.assertEqual([], readiness["reasons"])
+
+    def test_not_ready_when_proxy_demands_auth(self) -> None:
+        cfg = sample_cfg()
+        now = 1_500
+        state = {
+            "pproxy": "running",
+            "funkydns": "disabled",
+            "hops": {
+                "hop_0": {"ok": True, "status_line": "HTTP/1.1 200 Connection Established"},
+                "hop_1": {"ok": False, "status_line": "HTTP/1.1 407 Proxy Authentication Required"},
+            },
+            "hops_last_update": now - 1,
+        }
+        readiness = supervisor.compute_readiness(state, cfg, now=now)
+        self.assertFalse(readiness["ready"])
+        self.assertIn("hop_1_down", readiness["reasons"])
 
     def test_not_ready_when_hop_checks_are_stale(self) -> None:
         cfg = sample_cfg()

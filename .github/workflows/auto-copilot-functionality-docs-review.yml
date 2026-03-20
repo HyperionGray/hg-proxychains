@@ -89,19 +89,12 @@ jobs:
 
       - name: Run Basic Functionality Tests
         run: |
-          # Try to run tests if they exist
-          if [ -f "package.json" ] && grep -q '"test"' package.json; then
-            npm test || echo "Tests failed or not configured"
+          if [ -f "Makefile" ]; then
+            make pycheck
+            make unittest
+          elif [ -d "tests" ]; then
+            python3 -m unittest discover -s tests
           fi
-          
-          if [ -f "pytest.ini" ] || [ -d "tests" ]; then
-            pytest || echo "Pytest tests failed or not configured"
-          fi
-          
-          if [ -f "go.mod" ]; then
-            go test ./... || echo "Go tests failed or not configured"
-          fi
-        continue-on-error: true
 
   documentation-review:
     runs-on: [self-hosted, linux, x64, big]

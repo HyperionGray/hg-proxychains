@@ -26,7 +26,7 @@ This repo's compose stack is only a smoke harness. Real enforcement happens on a
 
 - `GET /live` on the configured health bind/port for liveness.
 - `GET /health` for full state (process state + hop status details).
-- `GET /ready` for gating dependent services and automation. This returns non-200 when `pproxy` is down, FunkyDNS is required but not running, or hop checks fail (by default).
+- `GET /ready` for gating dependent services and automation. This returns non-200 when `pproxy` is down, FunkyDNS is required but not running, or hop checks fail (by default). CONNECT denials such as `403` and `407` stay visible in `/health`, but do not count as ready.
 
 ## Expected traffic model
 
