@@ -4,6 +4,46 @@
       "line": "# TODO: Restore shadow_local_page functionality",
       "marker": "TODO",
       "path": "third_party/FunkyDNS/archive/funkydns_notfixed.py"
+    },
+    {
+      "line": "# TODO: Implement LLM analysis",
+      "marker": "TODO",
+      "path": "third_party/FunkyDNS/dns_server/doh.py"
+    },
+    {
+      "line": "# TODO: Implement Redis storage",
+      "marker": "TODO",
+      "path": "third_party/FunkyDNS/dns_server/social_engineering/sessions.py"
+    },
+    {
+      "line": "# TODO: Implement Redis retrieval",
+      "marker": "TODO",
+      "path": "third_party/FunkyDNS/dns_server/social_engineering/sessions.py"
+    },
+    {
+      "line": "# TODO: Implement Redis update",
+      "marker": "TODO",
+      "path": "third_party/FunkyDNS/dns_server/social_engineering/sessions.py"
+    },
+    {
+      "line": "# TODO: Implement Redis deletion",
+      "marker": "TODO",
+      "path": "third_party/FunkyDNS/dns_server/social_engineering/sessions.py"
+    },
+    {
+      "line": "# TODO: Implement Redis listing",
+      "marker": "TODO",
+      "path": "third_party/FunkyDNS/dns_server/social_engineering/sessions.py"
+    },
+    {
+      "line": "# TODO: Implement Redis cleanup",
+      "marker": "TODO",
+      "path": "third_party/FunkyDNS/dns_server/social_engineering/sessions.py"
+    },
+    {
+      "line": "# TODO: Implement Redis backend",
+      "marker": "TODO",
+      "path": "third_party/FunkyDNS/dns_server/social_engineering/sessions.py"
     }
   ]
 }
