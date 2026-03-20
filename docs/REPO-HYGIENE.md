@@ -1,9 +1,8 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
-
-This repository includes a small maintenance utility at
-`scripts/repo_hygiene.py` for scheduled cleanups and local checks.
+Use `scripts/repo_hygiene.py` as the canonical maintenance tool for this repo.
+It scans for unfinished markers and removable clutter, and can optionally clean
+the removable items.
 
 ## What it checks
 
@@ -22,80 +21,51 @@ This repository includes a small maintenance utility at
   - common metadata noise (`.DS_Store`, `Thumbs.db`)
   - known generated bundles (`egressd-starter.tar.gz`)
 
-The scanner intentionally skips `third_party/FunkyDNS/` when checking
-unfinished markers by default, because that path is managed as an external
-dependency.
+By default, scans are first-party only. `third_party/FunkyDNS` is excluded
+unless you pass `--include-third-party`.
 
-When you do want full-repo scanning (including nested third-party git state),
-use `--include-third-party`.
-
-Known upstream unfinished markers can be recorded in a baseline file so
-scheduled jobs can fail only on new findings.
-
-## Usage
+## Commands
 
 From repo root:
 
 ```bash
-# Text report
+# first-party scan (text)
 python3 scripts/repo_hygiene.py scan --repo-root .
 
-# JSON report for automation
+# first-party scan (JSON)
 python3 scripts/repo_hygiene.py scan --repo-root . --json
 
-# Include third-party dependency tree explicitly
-python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
-
-# Remove untracked stray files/directories
+# remove first-party removable clutter
 python3 scripts/repo_hygiene.py clean --repo-root .
-python3 scripts/repo_hygiene.py scan --repo-root . --json
-```
 
-JSON output for automation:
-
-```bash
-python3 scripts/repo_hygiene.py scan --repo-root . --json
-python3 scripts/repo_hygiene.py clean --repo-root . --json
-```
-
-Optional deep scan including `third_party/FunkyDNS` unfinished markers:
-
-```bash
+# full scan, including third_party/FunkyDNS
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
+
+# generate/update baseline entries for current unfinished markers
+python3 scripts/repo_hygiene.py baseline --repo-root . --include-third-party
 ```
 
-Or through Make targets:
+## Baseline behavior
+
+`scan` and `clean` load marker suppressions from `.repo-hygiene-baseline.json`
+by default.
+
+- Override with `--baseline-file <path>`.
+- Baseline suppressions apply to unfinished-marker findings only.
+- Stray file findings are never baseline-suppressed.
+
+## Makefile targets
 
 ```bash
-make maintenance
-make maintenance-fix
-make repo-scan
-make repo-clean
-make repo-scan-json
+make maintenance          # first-party scan
+make maintenance-fix      # first-party cleanup
+make maintenance-json     # first-party scan (JSON)
+make maintenance-all      # include third_party/FunkyDNS
+make maintenance-all-json # include third_party/FunkyDNS (JSON)
+make maintenance-baseline # write baseline (include third_party/FunkyDNS)
 ```
 
-`scripts/repo_maintenance.py` is retained as a compatibility wrapper and now
-delegates to `scripts/repo_hygiene.py`.
+## Legacy wrapper
 
-## Exit codes
-
-- `0`: no issues remain after the command completes
-- `1`: blocking issues found
-  - `scan`: unfinished markers, stray untracked files, or stale artifacts
-  - `clean`: unfinished markers or tracked stale artifacts (removable clutter is deleted)
-- `2`: invalid invocation (for example, non-git directory)
-
-## Baseline file
-
-By default, `scan`/`clean` load marker suppressions from:
-
-- `.repo-hygiene-baseline.json`
-
-Override with `--baseline-file <path>`.
-
-The baseline currently suppresses marker findings only (not stray files).
-
-## Legacy script
-
-`scripts/repo_maintenance.py` remains as a compatibility wrapper and delegates
-to `repo_hygiene.py`.
+`scripts/repo_maintenance.py` remains for compatibility and delegates to
+`repo_hygiene.py`.

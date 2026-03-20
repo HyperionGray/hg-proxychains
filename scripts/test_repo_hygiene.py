@@ -1,6 +1,7 @@
 import sys
 import tempfile
 import unittest
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -148,6 +149,71 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_command_scan_applies_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src_file = root / "src.py"
+            baseline_file = root / ".repo-hygiene-baseline.json"
+            marker_line = "# TO" "DO: keep for now"
+            src_file.write_text(f"{marker_line}\n", encoding="utf-8")
+            baseline_file.write_text(
+                '{"unfinished_markers":[{"path":"src.py","marker":"TODO","line":"# TODO: keep for now"}]}\n',
+                encoding="utf-8",
+            )
+
+            with patch.object(
+                repo_hygiene,
+                "collect_git_paths",
+                side_effect=[[".repo-hygiene-baseline.json", "src.py"], []],
+            ):
+                with patch("sys.stdout", new_callable=StringIO) as stdout:
+                    rc = repo_hygiene.command_scan(
+                        root,
+                        json_output=True,
+                        baseline_path=".repo-hygiene-baseline.json",
+                    )
+
+        self.assertEqual(rc, 0)
+        output = stdout.getvalue()
+        self.assertIn('"suppressed_baseline_markers": 1', output)
+        self.assertIn('"unfinished_markers": 0', output)
+
+    def test_parse_args_supports_baseline_and_third_party_flags(self) -> None:
+        args = repo_hygiene.parse_args(
+            [
+                "scan",
+                "--include-third-party",
+                "--baseline-file",
+                "custom-baseline.json",
+            ]
+        )
+        self.assertEqual(args.command, "scan")
+        self.assertTrue(args.include_third_party)
+        self.assertEqual(args.baseline_file, "custom-baseline.json")
+
+    def test_main_dispatches_baseline_command(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_baseline", return_value=7) as cmd:
+                rc = repo_hygiene.main(
+                    [
+                        "baseline",
+                        "--repo-root",
+                        str(root),
+                        "--include-third-party",
+                        "--baseline-file",
+                        "custom.json",
+                    ]
+                )
+
+        self.assertEqual(rc, 7)
+        cmd.assert_called_once_with(
+            root.resolve(),
+            include_third_party=True,
+            baseline_path="custom.json",
+        )
 
 
 if __name__ == "__main__":
