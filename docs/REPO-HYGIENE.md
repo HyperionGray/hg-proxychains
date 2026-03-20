@@ -1,9 +1,7 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
-
-This repository includes a small maintenance utility at
-`scripts/repo_hygiene.py` for scheduled cleanups and local checks.
+`scripts/repo_hygiene.py` is the primary maintenance utility for scheduled
+automation and local checks.
 
 ## What it checks
 
@@ -21,10 +19,12 @@ This repository includes a small maintenance utility at
   - Python cache outputs (`__pycache__/`, `*.pyc`, `*.pyo`)
   - common metadata noise (`.DS_Store`, `Thumbs.db`)
   - known generated bundles (`egressd-starter.tar.gz`)
+- Unexpected embedded git repositories (nested `.git` directories/files)
+  outside the repository root.
 
 The scanner intentionally skips `third_party/FunkyDNS/` when checking
-unfinished markers by default, because that path is managed as an external
-dependency.
+unfinished markers and stray paths by default, because that path is managed
+as an external dependency.
 
 When you do want full-repo scanning (including nested third-party git state),
 use `--include-third-party`.
@@ -48,7 +48,6 @@ python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
 # Remove untracked stray files/directories
 python3 scripts/repo_hygiene.py clean --repo-root .
-python3 scripts/repo_hygiene.py scan --repo-root . --json
 ```
 
 JSON output for automation:
@@ -74,15 +73,12 @@ make repo-clean
 make repo-scan-json
 ```
 
-`scripts/repo_maintenance.py` is retained as a compatibility wrapper and now
-delegates to `scripts/repo_hygiene.py`.
-
 ## Exit codes
 
 - `0`: no issues remain after the command completes
 - `1`: blocking issues found
-  - `scan`: unfinished markers, stray untracked files, or stale artifacts
-  - `clean`: unfinished markers or tracked stale artifacts (removable clutter is deleted)
+  - `scan`: unfinished markers, stray untracked files, or embedded git repos
+  - `clean`: unfinished markers or embedded git repos (removable clutter is deleted)
 - `2`: invalid invocation (for example, non-git directory)
 
 ## Baseline file

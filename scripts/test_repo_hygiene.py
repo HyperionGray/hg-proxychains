@@ -149,6 +149,49 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
 
+    def test_discover_embedded_git_repos_handles_gitdirs_and_third_party(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            legit_submodule = root / "third_party" / "FunkyDNS" / ".git"
+            legit_submodule.parent.mkdir(parents=True, exist_ok=True)
+            legit_submodule.write_text(
+                "gitdir: ../../.git/modules/third_party/FunkyDNS\n",
+                encoding="utf-8",
+            )
+            first_party_nested = root / "scratch" / ".git"
+            first_party_nested.mkdir(parents=True, exist_ok=True)
+            third_party_nested = root / "third_party" / "FunkyDNS" / "tmp" / ".git"
+            third_party_nested.mkdir(parents=True, exist_ok=True)
+
+            default_scan = repo_hygiene.discover_embedded_git_repos(root, include_third_party=False)
+            full_scan = repo_hygiene.discover_embedded_git_repos(root, include_third_party=True)
+
+        self.assertEqual(default_scan, ["scratch"])
+        self.assertEqual(full_scan, ["scratch", "third_party/FunkyDNS/tmp"])
+
+    def test_build_scan_report_includes_embedded_git_summary(self) -> None:
+        report = repo_hygiene.build_scan_report([], ["tmp/output.tmp"], ["scratch"])
+        self.assertEqual(report["summary"]["embedded_git_repos"], 1)
+        self.assertEqual(report["summary"]["total_issues"], 2)
+        self.assertEqual(report["embedded_git_repos"], ["scratch"])
+
+    def test_command_clean_returns_nonzero_for_embedded_git_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with (
+                patch.object(repo_hygiene, "collect_git_paths", return_value=[]),
+                patch.object(repo_hygiene, "list_git_paths", return_value=[]),
+                patch.object(repo_hygiene, "find_unfinished_markers", return_value=[]),
+                patch.object(repo_hygiene, "load_marker_baseline", return_value=set()),
+                patch.object(repo_hygiene, "classify_stray_paths", return_value=[]),
+                patch.object(repo_hygiene, "discover_embedded_git_repos", return_value=["scratch"]),
+            ):
+                rc = repo_hygiene.command_clean(root, json_output=True)
+
+        self.assertEqual(rc, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -231,12 +231,16 @@ make maintenance
 # equivalent: python3 scripts/repo_hygiene.py scan --repo-root .
 ```
 
-For automatic cleanup of removable clutter (backup files, stray `__pycache__/` dirs, and known stale artifacts):
+For automatic cleanup of removable clutter (backup files, stray `__pycache__/`
+dirs, and known stale artifacts):
 
 ```bash
 make maintenance-fix
 # equivalent: python3 scripts/repo_hygiene.py clean --repo-root .
 ```
+
+Unexpected embedded git repositories are reported as blocking findings but are
+never auto-removed by cleanup commands.
 
 `maintenance*` targets focus on first-party code by default. For a full scan that
 also includes `third_party/FunkyDNS`, use:
