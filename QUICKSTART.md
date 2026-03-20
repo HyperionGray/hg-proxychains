@@ -1,43 +1,44 @@
 # Quick Start
 
-Get egressd running in under 2 minutes.
+## 1. Initialize dependencies
 
-## What is this?
-
-A fail-closed container egress proxy chain with DNS-over-HTTPS. No direct DNS from workloads, all traffic forced through supervised HTTP CONNECT proxies.
-
-## Prerequisites
-
-- `podman` or `docker`
-- `podman-compose` or `docker-compose`
-- GitHub access (for FunkyDNS submodule)
-
-## Get Started
-
-**1. Clone dependencies:**
 ```bash
-make deps
+git submodule update --init --recursive third_party/FunkyDNS
 ```
 
-**2. Run the smoke test:**
+## 2. Run the smoke harness
+
 ```bash
 make smoke
+# or: podman-compose up --build
 ```
 
-**3. Watch for success:**
+## 3. Expected output from `client`
 
-The `client` container will print:
-- ✅ `DNS OK` and `DoH OK` for test domains
-- ✅ `OK from exit-server` (proves end-to-end CONNECT chain works)
+```
+DNS OK: smoke.test A -> 203.0.113.10
+DoH OK: smoke.test A -> 203.0.113.10
+DNS OK: hosts.smoke.internal A -> 198.51.100.21
+DoH OK: hosts.smoke.internal A -> 198.51.100.21
+DNS OK: printer A -> 198.51.100.42 (owner printer.corp.test.)
+DoH OK: printer A -> 198.51.100.42 (owner printer.corp.test.)
+HTTP/1.1 200 Connection established
+OK from exit-server
+```
 
-**4. Check health endpoints:**
+## 4. Health checks (while stack is running)
+
 ```bash
-curl http://localhost:9191/health | python3 -m json.tool
-curl http://localhost:9191/ready
+curl -f http://localhost:9191/ready    # 200 = egressd is ready
+curl http://localhost:9191/health      # full JSON status
+curl -sk https://localhost:18443/healthz  # FunkyDNS DoH
 ```
 
-## Next Steps
+## 5. Run unit tests
 
-- Read `README.md` for full details on configuration
-- See `docs/HOST-DEPLOYMENT.md` for production host setup with nftables enforcement
-- Tweak `egressd/config.json5` for your proxy chain and canary targets
+```bash
+make test
+```
+
+For host deployment, see `docs/HOST-DEPLOYMENT.md`.
+For what the harness proves end to end, see `docs/USER-FLOW-REVIEW.md`.

@@ -60,6 +60,9 @@ UNFINISHED_SCAN_FILENAMES = {
     "Makefile",
 }
 BASELINE_DEFAULT_PATH = ".repo-hygiene-baseline.json"
+THIRD_PARTY_PREFIX = "third_party/"
+STALE_ARTIFACT_PATHS: frozenset[str] = frozenset()
+# Add known stale tracked/untracked artifact paths here (e.g. generated bundles) as they arise.
 
 
 @dataclass(frozen=True)
@@ -212,7 +215,7 @@ def apply_marker_baseline(
     return kept, suppressed
 
 
-def classify_stray_paths(untracked_paths: Iterable[str]) -> list[str]:
+def classify_stray_paths(untracked_paths: Iterable[str], include_third_party: bool = False) -> list[str]:
     stray: list[str] = []
     for rel_path in untracked_paths:
         if not include_third_party and rel_path.startswith(THIRD_PARTY_PREFIX):
@@ -292,25 +295,15 @@ def build_scan_report(findings: Sequence[MarkerFinding], stray_paths: Sequence[s
 def print_scan_results(findings: Sequence[MarkerFinding], stray_paths: Sequence[str]) -> None:
     print("== Repo hygiene scan ==")
     print(f"unfinished markers: {len(findings)}")
-    if suppressed_markers:
-        print(f"unfinished markers suppressed by baseline: {suppressed_markers}")
     if findings:
         for finding in findings:
             print(
-                f"  - {finding['path']}:{finding['line_number']}: "
-                f"{finding['marker']} -> {finding['line']}"
+                f"  - {finding.path}:{finding.line_number}: "
+                f"{finding.marker} -> {finding.line}"
             )
-    print(f"stray untracked files: {len(stray_untracked_paths)}")
-    if stray_untracked_paths:
-        for rel_path in stray_untracked_paths:
-            print(f"  - {rel_path}")
-    print(f"stale tracked artifacts: {len(stale_tracked)}")
-    if stale_tracked:
-        for rel_path in stale_tracked:
-            print(f"  - {rel_path}")
-    print(f"stale untracked artifacts: {len(stale_untracked)}")
-    if stale_untracked:
-        for rel_path in stale_untracked:
+    print(f"stray untracked files: {len(stray_paths)}")
+    if stray_paths:
+        for rel_path in stray_paths:
             print(f"  - {rel_path}")
 
 
