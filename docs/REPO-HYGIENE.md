@@ -21,6 +21,9 @@ This repository includes a small maintenance utility at
   - Python cache outputs (`__pycache__/`, `*.pyc`, `*.pyo`)
   - common metadata noise (`.DS_Store`, `Thumbs.db`)
   - known generated bundles (`egressd-starter.tar.gz`)
+- Embedded git repositories (`.git` directories/files) outside expected locations
+  - root `.git` is ignored
+  - submodule gitlink files (`.git` file with `gitdir:`) are ignored
 
 The scanner intentionally skips `third_party/FunkyDNS/` when checking
 unfinished markers by default, because that path is managed as an external
