@@ -64,6 +64,14 @@ Optional deep scan including `third_party/FunkyDNS` unfinished markers:
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 ```
 
+Create or refresh the marker baseline (useful for scheduled automation that
+should fail only on newly introduced markers):
+
+```bash
+python3 scripts/repo_hygiene.py baseline --repo-root . --include-third-party
+python3 scripts/repo_hygiene.py scan --repo-root . --baseline-file .repo-hygiene-baseline.json
+```
+
 Or through Make targets:
 
 ```bash
