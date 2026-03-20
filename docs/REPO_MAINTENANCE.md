@@ -24,11 +24,11 @@ python3 scripts/repo_hygiene.py scan --repo-root .
 # JSON output for automation
 python3 scripts/repo_hygiene.py scan --repo-root . --json
 
-# Include third_party marker scan explicitly
-python3 scripts/repo_maintenance.py --include-third-party
+# Legacy wrapper in first-party mode (matches make maintenance defaults)
+python3 scripts/repo_maintenance.py --no-include-third-party
 
-# Remove backup files + stray cache dirs + stale artifacts while scanning
-python3 scripts/repo_maintenance.py --fix
+# Legacy wrapper cleanup mode (first-party only)
+python3 scripts/repo_maintenance.py --no-include-third-party --fix
 ```
 
 Makefile wrappers:
