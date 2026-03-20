@@ -225,6 +225,25 @@ class RepoHygieneTests(unittest.TestCase):
             baseline_path=repo_hygiene.BASELINE_DEFAULT_PATH,
         )
 
+    def test_command_baseline_supports_absolute_baseline_path(self) -> None:
+        with tempfile.TemporaryDirectory() as td, tempfile.TemporaryDirectory() as out_td:
+            root = Path(td)
+            src_file = root / "src.py"
+            src_file.write_text("# TO" "DO: baseline marker\n", encoding="utf-8")
+            absolute_baseline = (Path(out_td) / "baseline.json").resolve()
+            with patch.object(repo_hygiene, "collect_git_paths", return_value=["src.py"]):
+                captured = StringIO()
+                with patch("sys.stdout", captured):
+                    code = repo_hygiene.command_baseline(
+                        root,
+                        include_third_party=False,
+                        baseline_path=str(absolute_baseline),
+                    )
+            self.assertTrue(absolute_baseline.exists())
+
+        self.assertEqual(code, 0)
+        self.assertIn(str(absolute_baseline), captured.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

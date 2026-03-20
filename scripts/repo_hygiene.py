@@ -420,7 +420,8 @@ def command_baseline(repo_root: Path, include_third_party: bool, baseline_path: 
     }
     target = repo_root / baseline_path
     target.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(f"wrote baseline entries: {len(findings)} -> {target.relative_to(repo_root)}")
+    target_display = normalize_repo_relative_path(repo_root, baseline_path) or str(target)
+    print(f"wrote baseline entries: {len(findings)} -> {target_display}")
     return 0
 
 
