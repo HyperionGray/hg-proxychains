@@ -1,3 +1,4 @@
+import json
 import sys
 import tempfile
 import unittest
@@ -148,6 +149,64 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_discover_embedded_git_repos_skips_root_and_allowed_submodule(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            allowed = root / "third_party" / "FunkyDNS" / ".git"
+            allowed.parent.mkdir(parents=True, exist_ok=True)
+            allowed.write_text("gitdir: ../../.git/modules/third_party/FunkyDNS\n", encoding="utf-8")
+            nested = root / "scratch" / ".git"
+            nested.mkdir(parents=True, exist_ok=True)
+
+            found = repo_hygiene.discover_embedded_git_repos(root, include_third_party=True)
+
+        self.assertEqual(found, ["scratch"])
+
+    def test_discover_embedded_git_repos_can_skip_third_party(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            nested_third_party = root / "third_party" / "otherdep" / ".git"
+            nested_third_party.mkdir(parents=True, exist_ok=True)
+
+            found = repo_hygiene.discover_embedded_git_repos(root, include_third_party=False)
+
+        self.assertEqual(found, [])
+
+    def test_command_scan_applies_baseline_and_ignores_baseline_file(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src_file = root / "src.py"
+            baseline_file = root / ".repo-hygiene-baseline.json"
+            src_line = "# TO" "DO: baseline-managed marker"
+            src_file.write_text(src_line + "\n", encoding="utf-8")
+            baseline_payload = {
+                "unfinished_markers": [
+                    {
+                        "path": "src.py",
+                        "marker": "TODO",
+                        "line": src_line,
+                    }
+                ]
+            }
+            baseline_file.write_text(json.dumps(baseline_payload) + "\n", encoding="utf-8")
+
+            with patch.object(
+                repo_hygiene,
+                "collect_git_paths",
+                side_effect=[["src.py", ".repo-hygiene-baseline.json"], []],
+            ):
+                with patch.object(repo_hygiene, "discover_embedded_git_repos", return_value=[]):
+                    rc = repo_hygiene.command_scan(
+                        root,
+                        json_output=False,
+                        include_third_party=False,
+                        baseline_path=".repo-hygiene-baseline.json",
+                    )
+
+        self.assertEqual(rc, 0)
 
 
 if __name__ == "__main__":
