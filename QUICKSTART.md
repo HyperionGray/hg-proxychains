@@ -36,6 +36,14 @@ curl http://localhost:9191/health | python3 -m json.tool
 curl http://localhost:9191/ready
 ```
 
+**5. Run a local sanity check (fast):**
+```bash
+make quickstart-check
+```
+
+This runs first-party hygiene checks and the repo unit test suite so you can
+confirm your local checkout is clean before making changes.
+
 ## Next Steps
 
 - Read `README.md` for full details on configuration
