@@ -9,7 +9,6 @@ Primary documentation has moved to:
 - Backup files (`*~`, `*.bak`, `*.orig`, `*.old`, `*.tmp`)
 - Stray Python cache directories (`__pycache__/`)
 - Known stale artifacts (currently `egressd-starter.tar.gz`)
-- Embedded git repositories outside the allowed third-party submodule path
 
 By default, marker scanning runs in first-party mode and skips
 `third_party/FunkyDNS` internals. Use `--include-third-party` for full-repo

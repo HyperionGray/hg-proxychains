@@ -200,7 +200,7 @@ make validate-config
 
 ## Maintenance and cleanup
 
-Run repository maintenance checks (unfinished markers, backup files, stale artifacts, stray cache dirs, and unexpected embedded git repos) for first-party code:
+Run repository maintenance checks (unfinished markers, backup files, stale artifacts, and stray cache dirs) for first-party code:
 
 ```bash
 make maintenance
