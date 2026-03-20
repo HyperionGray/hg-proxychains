@@ -26,6 +26,7 @@ The design goal is intentionally boring:
 │   ├── BRINGUP-CHECKLIST.md
 │   ├── FUNKYDNS-REVIEW.md
 │   ├── HOST-DEPLOYMENT.md
+│   ├── REPO-HYGIENE.md
 │   ├── REPO_MAINTENANCE.md
 │   └── USER-FLOW-REVIEW.md
 ├── egressd/
@@ -52,7 +53,8 @@ The design goal is intentionally boring:
 │   ├── repo_hygiene.py
 │   ├── repo_maintenance.py
 │   ├── host-egress-owner.sh
-│   └── test_repo_hygiene.py
+│   ├── test_repo_hygiene.py
+│   └── test_repo_maintenance.py
 ├── tests/
 │   ├── test_readiness.py
 │   └── test_supervisor.py
@@ -231,12 +233,16 @@ make maintenance
 # equivalent: python3 scripts/repo_hygiene.py scan --repo-root .
 ```
 
-For automatic cleanup of removable clutter (backup files, stray `__pycache__/` dirs, and known stale artifacts):
+For automatic cleanup of removable clutter (backup files, stray `__pycache__/`
+dirs, and known stale **untracked** artifacts):
 
 ```bash
 make maintenance-fix
 # equivalent: python3 scripts/repo_hygiene.py clean --repo-root .
 ```
+
+`clean` does not auto-delete embedded git repositories or tracked stale
+artifacts; those are always reported for manual review.
 
 `maintenance*` targets focus on first-party code by default. For a full scan that
 also includes `third_party/FunkyDNS`, use:

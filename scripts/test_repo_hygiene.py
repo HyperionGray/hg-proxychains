@@ -27,7 +27,6 @@ class RepoHygieneTests(unittest.TestCase):
             "keep/readme.md",
             "docs/.DS_Store",
             "build/result.txt",
-            "egressd-starter.tar.gz",
             "third_party/FunkyDNS/archive/funkydns.py~",
         ]
         stray = repo_hygiene.classify_stray_paths(untracked)
@@ -35,7 +34,6 @@ class RepoHygieneTests(unittest.TestCase):
             stray,
             [
                 "docs/.DS_Store",
-                "egressd-starter.tar.gz",
                 "notes.txt~",
                 "pkg/__pycache__/module.cpython-312.pyc",
                 "tmp/output.tmp",
@@ -60,6 +58,43 @@ class RepoHygieneTests(unittest.TestCase):
                 "tmp/output.tmp",
             ],
         )
+
+    def test_find_stale_artifacts_detects_tracked_and_untracked(self) -> None:
+        tracked = [
+            "egressd-starter.tar.gz",
+            "README.md",
+        ]
+        untracked = [
+            "egressd-starter.tar.gz",
+            "tmp/notes.tmp",
+            "third_party/FunkyDNS/egressd-starter.tar.gz",
+        ]
+        stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(tracked, untracked)
+        self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
+        self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
+
+        _, stale_untracked_with_third_party = repo_hygiene.find_stale_artifacts(
+            tracked_paths=[],
+            untracked_paths=untracked,
+            include_third_party=True,
+        )
+        self.assertEqual(stale_untracked_with_third_party, ["egressd-starter.tar.gz"])
+
+    def test_discover_embedded_git_repos_skips_root_and_gitlink_file(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            (root / "scratch" / ".git").mkdir(parents=True, exist_ok=True)
+            gitlink = root / "third_party" / "FunkyDNS" / ".git"
+            gitlink.parent.mkdir(parents=True, exist_ok=True)
+            gitlink.write_text("gitdir: ../../.git/modules/third_party/FunkyDNS\n", encoding="utf-8")
+            (root / "third_party" / "FunkyDNS" / "nested" / ".git").mkdir(parents=True, exist_ok=True)
+
+            default_findings = repo_hygiene.discover_embedded_git_repos(root)
+            all_findings = repo_hygiene.discover_embedded_git_repos(root, include_third_party=True)
+
+        self.assertEqual(default_findings, ["scratch"])
+        self.assertEqual(all_findings, ["scratch", "third_party/FunkyDNS/nested"])
 
     def test_find_unfinished_markers_ignores_skipped_paths(self) -> None:
         with tempfile.TemporaryDirectory() as td:
