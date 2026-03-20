@@ -511,17 +511,36 @@ def wait_for_chain_ready(cfg: Dict[str, Any]) -> None:
 
 
 def _extract_hop_label(hop: Any) -> str:
-    """Return a ``host:port`` label for a hop config entry."""
+    """Return a sanitized ``host[:port]`` label for a hop config entry."""
     raw_url = hop.get("url", "") if isinstance(hop, dict) else ""
+    if not raw_url:
+        return ""
+
     try:
         parsed = urlparse(raw_url)
-        if parsed.hostname and parsed.port:
-            return f"{parsed.hostname}:{parsed.port}"
     except (ValueError, AttributeError):
-        pass
-    return raw_url
+        # Never return the raw URL to avoid leaking credentials.
+        return ""
 
+    host = parsed.hostname or ""
+    port = parsed.port
 
+    # Derive an effective port similar to connectivity probing defaults:
+    # - 80 for HTTP/WS when no explicit port is provided
+    # - 443 for HTTPS/WSS when no explicit port is provided
+    if port is None:
+        if parsed.scheme in ("https", "wss"):
+            port = 443
+        elif parsed.scheme in ("http", "ws"):
+            port = 80
+
+    if host and port:
+        return f"{host}:{port}"
+    if host:
+        return host
+
+    # Fall back to an empty label rather than exposing raw URL/userinfo.
+    return ""
 def _all_hops_ok(hops: List[Any], hop_statuses: Dict[str, Any]) -> bool:
     """Return True only when every hop in *hops* has a passing status entry."""
     return bool(hops) and all(
