@@ -357,6 +357,7 @@ def gather_scan_state(
         repo_root,
         tracked,
         include_third_party=include_third_party,
+        excluded_paths={Path(baseline_path).as_posix()},
     )
     baseline = load_marker_baseline(repo_root, baseline_path)
     findings, suppressed_markers = apply_marker_baseline(findings, baseline)
