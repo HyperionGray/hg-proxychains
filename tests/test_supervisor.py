@@ -67,11 +67,14 @@ class SupervisorValidationTests(unittest.TestCase):
 
 
 class ChainVisualTests(unittest.TestCase):
-    def _cfg(self, hops=None, canary="exitserver:9999"):
+    def _cfg(self, hops=None, canary="exitserver:9999", require_all_hops_healthy=True):
         return {
             "chain": {
                 "hops": hops or [{"url": "http://proxy1:3128"}, {"url": "http://proxy2:3128"}],
                 "canary_target": canary,
+            },
+            "supervisor": {
+                "require_all_hops_healthy": require_all_hops_healthy,
             },
         }
 
@@ -104,6 +107,25 @@ class ChainVisualTests(unittest.TestCase):
         visual = supervisor.format_chain_visual(self._cfg(), statuses)
         self.assertIn("-XX-", visual)
         self.assertIn("FAIL", visual)
+        self.assertNotIn("-<>-OK", visual)
+
+    def test_relaxed_mode_with_partial_hop_health_produces_degraded_suffix(self):
+        """Relaxed mode uses DEGRADED when at least one hop is healthy."""
+        statuses = {
+            "hop_0": {"ok": True, "elapsed_ms": 42},
+            "hop_1": {"ok": False, "error": "Connection refused"},
+        }
+        visual = supervisor.format_chain_visual(self._cfg(require_all_hops_healthy=False), statuses)
+        self.assertIn("-<>-DEGRADED", visual)
+        self.assertNotIn("-<>-FAIL", visual)
+
+    def test_incomplete_hop_statuses_produce_incomplete_suffix(self):
+        """Missing hop status entries are shown as INCOMPLETE."""
+        statuses = {
+            "hop_0": {"ok": True, "elapsed_ms": 42},
+        }
+        visual = supervisor.format_chain_visual(self._cfg(), statuses)
+        self.assertIn("-<>-INCOMPLETE", visual)
         self.assertNotIn("-<>-OK", visual)
 
     def test_hop_labels_appear_in_chain_line(self):

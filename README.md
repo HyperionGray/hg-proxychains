@@ -219,12 +219,26 @@ with `FAIL`:
 [egressd]   hop_1: proxy2:3128                 FAIL Connection refused
 ```
 
+If `supervisor.require_all_hops_healthy` is set to `false`, mixed hop health
+is shown as `DEGRADED` instead of `FAIL`:
+
+```
+[egressd] |S-chain|-<>-proxy1:3128-XX-proxy2:3128-<>-DEGRADED
+```
+
+If probe data has not populated every configured hop yet, the chain ends with
+`INCOMPLETE`:
+
+```
+[egressd] |S-chain|-<>-proxy1:3128-XX-proxy2:3128-<>-INCOMPLETE
+```
+
 The visual is disabled by default (`logging.chain_visual: false`) so it does not
 interfere with JSON log pipelines.
 
 ## Maintenance and cleanup
 
-Run repository maintenance checks (unfinished markers, backup files, stale artifacts, stray cache dirs, and unexpected embedded git repos) for first-party code:
+Run repository maintenance checks (unfinished markers, backup files, stale artifacts, and stray cache dirs) for first-party code:
 
 ```bash
 make maintenance
