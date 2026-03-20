@@ -156,11 +156,13 @@ class RepoHygieneTests(unittest.TestCase):
             src_file = root / "src.py"
             baseline_file = root / ".repo-hygiene-baseline.json"
             marker_line = "# TO" "DO: keep for now"
-            src_file.write_text(f"{marker_line}\n", encoding="utf-8")
-            baseline_file.write_text(
-                '{"unfinished_markers":[{"path":"src.py","marker":"TODO","line":"# TODO: keep for now"}]}\n',
-                encoding="utf-8",
+            baseline_payload = (
+                '{"unfinished_markers":[{"path":"src.py","marker":"TO'
+                'DO","line":"# TO'
+                'DO: keep for now"}]}\n'
             )
+            src_file.write_text(f"{marker_line}\n", encoding="utf-8")
+            baseline_file.write_text(baseline_payload, encoding="utf-8")
 
             with patch.object(
                 repo_hygiene,
