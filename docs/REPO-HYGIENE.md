@@ -1,6 +1,8 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
+`scripts/repo_hygiene.py` is the canonical scanner/cleaner for maintenance checks.
+`scripts/repo_maintenance.py` remains as a compatibility wrapper for older CI and
+automation entry points.
 
 This repository includes a small maintenance utility at
 `scripts/repo_hygiene.py` for scheduled cleanups and local checks.
@@ -48,7 +50,10 @@ python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
 # Remove untracked stray files/directories
 python3 scripts/repo_hygiene.py clean --repo-root .
-python3 scripts/repo_hygiene.py scan --repo-root . --json
+python3 scripts/repo_hygiene.py clean --repo-root . --json
+
+# Build/update a marker baseline
+python3 scripts/repo_hygiene.py baseline --repo-root . --include-third-party
 ```
 
 JSON output for automation:
@@ -62,6 +67,9 @@ Optional deep scan including `third_party/FunkyDNS` unfinished markers:
 
 ```bash
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
+
+# Use a custom baseline location
+python3 scripts/repo_hygiene.py scan --repo-root . --baseline-file .repo-hygiene-baseline.json
 ```
 
 Or through Make targets:
@@ -94,6 +102,7 @@ By default, `scan`/`clean` load marker suppressions from:
 Override with `--baseline-file <path>`.
 
 The baseline currently suppresses marker findings only (not stray files).
+The scan output also reports how many marker findings were suppressed by baseline.
 
 ## Legacy script
 
