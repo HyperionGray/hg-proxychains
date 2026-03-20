@@ -106,6 +106,19 @@ class ChainVisualTests(unittest.TestCase):
         self.assertIn("FAIL", visual)
         self.assertNotIn("-<>-OK", visual)
 
+    def test_relaxed_mode_with_some_healthy_hops_shows_partial(self):
+        """Relaxed mode reports PARTIAL when at least one hop is healthy."""
+        cfg = self._cfg()
+        cfg["supervisor"] = {"require_all_hops_healthy": False}
+        statuses = {
+            "hop_0": {"ok": True, "elapsed_ms": 42},
+            "hop_1": {"ok": False, "error": "Connection refused"},
+        }
+        visual = supervisor.format_chain_visual(cfg, statuses)
+        self.assertIn("-<>-PARTIAL(1/2)", visual)
+        self.assertIn("-XX-", visual)
+        self.assertNotIn("-<>-FAIL", visual)
+
     def test_hop_labels_appear_in_chain_line(self):
         """Each hop hostname:port must appear in the main chain line."""
         visual = supervisor.format_chain_visual(self._cfg())
@@ -143,6 +156,18 @@ class ChainVisualTests(unittest.TestCase):
         self.assertIn("solo:3128", visual)
         self.assertIn("-<>-OK", visual)
         self.assertNotIn("-XX-", visual)
+
+    def test_hop_ok_signature_changes_when_per_hop_state_changes(self):
+        """Signature reflects per-hop transitions even when overall health is unchanged."""
+        cfg = self._cfg()
+        hops = cfg["chain"]["hops"]
+        first = {"hop_0": {"ok": True}, "hop_1": {"ok": False}}
+        second = {"hop_0": {"ok": False}, "hop_1": {"ok": True}}
+        first_sig = supervisor._hop_ok_signature(hops, first)
+        second_sig = supervisor._hop_ok_signature(hops, second)
+        self.assertNotEqual(first_sig, second_sig)
+        self.assertFalse(supervisor._all_hops_ok(hops, first))
+        self.assertFalse(supervisor._all_hops_ok(hops, second))
 
     def _capture_stderr(self, fn, *args, **kwargs) -> str:
         """Call *fn* with redirected stderr and return whatever was written."""

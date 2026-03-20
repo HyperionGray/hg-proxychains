@@ -530,6 +530,45 @@ def _all_hops_ok(hops: List[Any], hop_statuses: Dict[str, Any]) -> bool:
     )
 
 
+def _healthy_hop_count(hops: List[Any], hop_statuses: Dict[str, Any]) -> int:
+    return sum(
+        1
+        for idx in range(len(hops))
+        if bool(hop_statuses.get(f"hop_{idx}", {}).get("ok", False))
+    )
+
+
+def _chain_visual_final_token(
+    cfg: Dict[str, Any], hops: List[Any], hop_statuses: Optional[Dict[str, Any]]
+) -> str:
+    if hop_statuses is None:
+        return "..."
+
+    total = len(hops)
+    healthy = _healthy_hop_count(hops, hop_statuses)
+    if total > 0 and healthy == total:
+        return "OK"
+
+    require_all_hops = _as_bool(
+        cfg.get("supervisor", {}).get("require_all_hops_healthy"),
+        default=True,
+    )
+    if healthy > 0 and not require_all_hops:
+        return f"PARTIAL({healthy}/{total})"
+    return "FAIL"
+
+
+def _hop_ok_signature(hops: List[Any], hop_statuses: Dict[str, Any]) -> Tuple[Optional[bool], ...]:
+    signature: List[Optional[bool]] = []
+    for idx in range(len(hops)):
+        status = hop_statuses.get(f"hop_{idx}")
+        if isinstance(status, dict):
+            signature.append(bool(status.get("ok", False)))
+        else:
+            signature.append(None)
+    return tuple(signature)
+
+
 def format_chain_visual(cfg: Dict[str, Any], hop_statuses: Optional[Dict[str, Any]] = None) -> str:
     """Return a terminal-friendly proxychains-style ASCII chain visualization.
 
@@ -557,10 +596,7 @@ def format_chain_visual(cfg: Dict[str, Any], hop_statuses: Optional[Dict[str, An
 
         segments.append(f"{connector}{label}")
 
-    if hop_statuses is not None:
-        final = "-<>-OK" if _all_hops_ok(hops, hop_statuses) else "-<>-FAIL"
-    else:
-        final = "-<>-..."
+    final = f"-<>-{_chain_visual_final_token(cfg, hops, hop_statuses)}"
 
     lines = [f"[egressd] {''.join(segments)}{final}"]
 
@@ -592,7 +628,7 @@ def print_chain_visual(cfg: Dict[str, Any], hop_statuses: Optional[Dict[str, Any
 def hop_health_loop(cfg: Dict[str, Any]) -> None:
     interval_s = int(cfg.get("supervisor", {}).get("hop_check_interval_s", 5))
     target = str(cfg.get("chain", {}).get("canary_target", ""))
-    last_overall_ok: Optional[bool] = None
+    last_signature: Optional[Tuple[Optional[bool], ...]] = None
     first_run = True
     while not STOP_EVENT.is_set():
         checked_at = int(time.time())
@@ -600,10 +636,10 @@ def hop_health_loop(cfg: Dict[str, Any]) -> None:
         set_hop_statuses(statuses, checked_at=checked_at)
         refresh_ready_state(cfg, now=checked_at)
         hops = cfg.get("chain", {}).get("hops", [])
-        current_ok = _all_hops_ok(hops, statuses)
-        if first_run or current_ok != last_overall_ok:
+        signature = _hop_ok_signature(hops, statuses)
+        if first_run or signature != last_signature:
             print_chain_visual(cfg, statuses)
-            last_overall_ok = current_ok
+            last_signature = signature
             first_run = False
         STOP_EVENT.wait(interval_s)
 

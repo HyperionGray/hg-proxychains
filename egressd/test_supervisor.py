@@ -185,6 +185,25 @@ class SupervisorTests(unittest.TestCase):
         self.assertTrue(readiness["ready"])
         self.assertEqual([], readiness["reasons"])
 
+    def test_format_chain_visual_uses_partial_in_relaxed_mode(self) -> None:
+        cfg = sample_cfg(require_all_hops_healthy=False)
+        statuses = {
+            "hop_0": {"ok": True, "elapsed_ms": 42},
+            "hop_1": {"ok": False, "error": "Connection refused"},
+        }
+        visual = supervisor.format_chain_visual(cfg, statuses)
+        self.assertIn("-<>-PARTIAL(1/2)", visual)
+        self.assertNotIn("-<>-FAIL", visual)
+
+    def test_hop_ok_signature_reflects_per_hop_transitions(self) -> None:
+        hops = sample_cfg()["chain"]["hops"]
+        first = {"hop_0": {"ok": True}, "hop_1": {"ok": False}}
+        second = {"hop_0": {"ok": False}, "hop_1": {"ok": True}}
+        self.assertNotEqual(
+            supervisor._hop_ok_signature(hops, first),
+            supervisor._hop_ok_signature(hops, second),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
