@@ -218,6 +218,17 @@ def start_funkydns(cfg: Dict[str, Any]) -> Optional[subprocess.Popen]:
 
 
 def parse_proxy_url(url: str) -> Tuple[str, int, Optional[str]]:
+    """Parse proxy URL and extract host, port, and optional auth header.
+    
+    Args:
+        url: Proxy URL (http:// or https://)
+        
+    Returns:
+        Tuple of (host, port, optional_auth_header)
+        
+    Raises:
+        ValueError: If URL is malformed or has unsupported scheme
+    """
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"}:
         raise ValueError(f"unsupported proxy scheme: {parsed.scheme}")
@@ -229,6 +240,9 @@ def parse_proxy_url(url: str) -> Tuple[str, int, Optional[str]]:
     if parsed.username is not None:
         raw_user = parsed.username
         raw_pass = parsed.password or ""
+        # Validate credentials don't contain newlines that could break headers
+        if '\n' in raw_user or '\r' in raw_user or '\n' in raw_pass or '\r' in raw_pass:
+            raise ValueError("proxy credentials cannot contain newline characters")
         token = base64.b64encode(f"{raw_user}:{raw_pass}".encode("utf-8")).decode("ascii")
         auth_header = f"Proxy-Authorization: Basic {token}\r\n"
     return host, port, auth_header
@@ -265,7 +279,7 @@ def check_hop_connectivity(hop_url: str, target: str, timeout: float = 3.0) -> D
         if not ok:
             result["error"] = status_line
         return result
-    except Exception as exc:
+    except (socket.error, socket.timeout, OSError) as exc:
         return {
             "ok": False,
             "proxy": proxy_label,
@@ -278,7 +292,8 @@ def check_hop_connectivity(hop_url: str, target: str, timeout: float = 3.0) -> D
             try:
                 sock.close()
             except OSError:
-                pass
+                # Socket may already be closed, ignore
+                logging.debug("Failed to close socket during cleanup")
 
 
 def collect_hop_statuses(cfg: Dict[str, Any], target: str) -> Dict[str, Any]:
@@ -815,13 +830,13 @@ def main(argv: Optional[List[str]] = None) -> int:
             refresh_ready_state(cfg)
             if STOP_EVENT.is_set():
                 break
-            logging.warning("pproxy exited rc=%s", rc)
+        except (OSError, ValueError, RuntimeError) as exc:
         except Exception as exc:
             processes["pproxy"] = None
             set_state({"pproxy": "error"})
             refresh_ready_state(cfg)
             if STOP_EVENT.is_set():
-                break
+            logging.exception("supervisor loop error")
             logging.exception("supervisor loop error: %s", exc)
 
         if STOP_EVENT.is_set():

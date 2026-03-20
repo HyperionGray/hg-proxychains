@@ -399,6 +399,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "clean":
         return command_clean(repo_root, json_output=args.json)
+    elif args.command == "baseline":
+        # baseline command doesn't support --json flag
+        return command_baseline(repo_root, include_third_party=False, baseline_path=BASELINE_DEFAULT_PATH)
+    
     return command_scan(repo_root, json_output=args.json)
 
 
