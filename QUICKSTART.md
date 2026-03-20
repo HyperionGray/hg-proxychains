@@ -40,5 +40,13 @@ curl -sk https://localhost:18443/healthz  # FunkyDNS DoH
 make test
 ```
 
+## 6. Run repo hygiene checks
+
+```bash
+make maintenance          # first-party scan
+make maintenance-fix      # first-party cleanup
+make maintenance-all-json # include third_party + JSON
+```
+
 For host deployment, see `docs/HOST-DEPLOYMENT.md`.
 For what the harness proves end to end, see `docs/USER-FLOW-REVIEW.md`.

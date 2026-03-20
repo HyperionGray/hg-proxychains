@@ -1,52 +1,65 @@
-# Repository maintenance workflow (legacy note)
+# Repository maintenance workflow
 
-`scripts/repo_maintenance.py` is now a compatibility wrapper.
+`scripts/repo_hygiene.py` is the authoritative maintenance scanner/cleaner.
+`scripts/repo_maintenance.py` is a compatibility wrapper that forwards options to
+`repo_hygiene.py`.
 
-Use `scripts/repo_hygiene.py` directly for all maintenance checks and cleanup.
-Primary documentation has moved to:
+## What is checked
 
-- Unfinished markers in tracked files (`TODO`, `FIXME`, `STUB`, `TBD`, `XXX`, `UNFINISHED`)
-- Backup files (`*~`, `*.bak`, `*.orig`, `*.old`, `*.tmp`)
-- Stray Python cache directories (`__pycache__/`)
-- Known stale artifacts (currently `egressd-starter.tar.gz`)
-- Embedded git repositories outside the allowed third-party submodule path
+- unfinished markers in tracked source/config files (`TODO`, `FIXME`, `STUB`, `TBD`, `XXX`, `WIP`, `UNFINISHED`)
+- untracked stray files and cache output (`*~`, `*.bak`, `*.tmp`, `*.orig`, `*.rej`, `.DS_Store`, `Thumbs.db`, `*.pyc`, `*.pyo`, `__pycache__/`, etc.)
+- known stale artifacts (`egressd-starter.tar.gz`)
+- unexpected embedded git repositories (excluding the allowed `third_party/FunkyDNS` submodule root)
 
-By default, marker scanning includes tracked files in `third_party/FunkyDNS` when that repository is present.
-For day-to-day repo automation, prefer the first-party-only mode (`--no-include-third-party`)
-to avoid noise from external dependency internals.
+Default mode is first-party focused and excludes third-party internals.
 
 ## Commands
 
 ```bash
-# Human-readable summary + findings (exits non-zero if issues exist)
+# first-party scan (human readable)
 python3 scripts/repo_hygiene.py scan --repo-root .
 
-# JSON output for automation
+# first-party scan (JSON)
 python3 scripts/repo_hygiene.py scan --repo-root . --json
 
-# Include third_party marker scan explicitly
-python3 scripts/repo_maintenance.py --include-third-party
+# include third_party/FunkyDNS internals
+python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
-# Remove backup files + stray cache dirs + stale artifacts while scanning
-python3 scripts/repo_maintenance.py --fix
+# remove removable clutter (stray files + stale untracked artifacts)
+python3 scripts/repo_hygiene.py clean --repo-root .
+
+# refresh baseline markers file
+python3 scripts/repo_hygiene.py baseline --repo-root . --include-third-party
 ```
 
-Makefile wrappers:
+Compatibility wrapper examples:
 
 ```bash
-make maintenance        # first-party only
-make maintenance-fix    # first-party only + cleanup
-make maintenance-json   # first-party only + JSON
-
-# optional full scan including third_party/FunkyDNS internals
-make maintenance-all
-make maintenance-all-json
+python3 scripts/repo_maintenance.py --no-include-third-party
+python3 scripts/repo_maintenance.py --no-include-third-party --fix
+python3 scripts/repo_maintenance.py --include-third-party --json
 ```
 
-## Notes
+## Makefile targets
 
-- `--fix` removes backup files, stray `__pycache__/` directories, and known stale artifacts.
-- Unfinished markers are reported but not modified automatically.
-- Embedded git repositories are reported but never auto-removed by `--fix`.
-- Without `--fix`, exit code is `1` when any issues are found.
-- With `--fix`, exit code reflects post-fix state (`0` when only removable clutter was found and removed; `1` if issues remain).
+```bash
+make maintenance          # first-party scan
+make maintenance-fix      # first-party clean
+make maintenance-json     # first-party scan in JSON
+make maintenance-all      # include third_party
+make maintenance-all-fix  # include third_party + clean
+make maintenance-all-json # include third_party + JSON
+make maintenance-baseline # write baseline file (include third_party)
+```
+
+## Baseline notes
+
+- baseline file default: `.repo-hygiene-baseline.json`
+- baseline suppresses matching marker findings only
+- use `--baseline-file <path>` to override location
+
+## Exit codes
+
+- `0`: no issues remain
+- `1`: issues found (or cleanup could not remove all removable clutter)
+- `2`: invalid invocation (for example, non-git directory)
