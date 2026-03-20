@@ -40,7 +40,7 @@ def discover_embedded_git_repos(repo_root: Path, include_third_party: bool = Tru
     """
     root = repo_root.resolve()
     found: list[Path] = []
-    for dirpath, dirnames, filenames in os.walk(root):
+    for dirpath, dirnames, _ in os.walk(root):
         current = Path(dirpath)
         if current == root / ".git":
             continue
@@ -52,8 +52,9 @@ def discover_embedded_git_repos(repo_root: Path, include_third_party: bool = Tru
 
         embedded = current / ".git"
         if embedded.exists():
-            if current != root:
-                found.append(current)
+            if current == root:
+                continue
+            found.append(current)
             dirnames[:] = []
     return sorted(set(found))
 
