@@ -307,27 +307,61 @@ def print_scan_results(findings: Sequence[MarkerFinding], stray_paths: Sequence[
             print(f"  - {rel_path}")
 
 
-def command_scan(repo_root: Path, json_output: bool = False) -> int:
-    tracked = list_git_paths(repo_root, ("ls-files",))
+def command_scan(
+    repo_root: Path,
+    json_output: bool = False,
+    include_third_party: bool = False,
+    baseline_path: str = BASELINE_DEFAULT_PATH,
+) -> int:
+    tracked = collect_git_paths(repo_root, ("ls-files",), include_third_party=include_third_party)
     untracked = list_git_paths(repo_root, ("ls-files", "--others", "--exclude-standard"))
-    findings = find_unfinished_markers(repo_root, tracked)
-    stray = classify_stray_paths(untracked)
+    baseline_rel = Path(baseline_path).as_posix()
+    findings = find_unfinished_markers(
+        repo_root,
+        tracked,
+        include_third_party=include_third_party,
+        excluded_paths={baseline_rel},
+    )
+    baseline = load_marker_baseline(repo_root, baseline_path)
+    findings, suppressed = apply_marker_baseline(findings, baseline)
+    stray = classify_stray_paths(untracked, include_third_party=include_third_party)
     report = build_scan_report(findings, stray)
+    if suppressed:
+        report["suppressed_by_baseline"] = suppressed
     if json_output:
         print(json.dumps(report, indent=2, sort_keys=True))
     else:
+        if suppressed:
+            print(f"suppressed by baseline: {suppressed}")
         print_scan_results(findings, stray)
     return 1 if findings or stray else 0
 
 
-def command_clean(repo_root: Path, json_output: bool = False) -> int:
-    tracked = list_git_paths(repo_root, ("ls-files",))
+def command_clean(
+    repo_root: Path,
+    json_output: bool = False,
+    include_third_party: bool = False,
+    baseline_path: str = BASELINE_DEFAULT_PATH,
+) -> int:
+    tracked = collect_git_paths(repo_root, ("ls-files",), include_third_party=include_third_party)
     untracked = list_git_paths(repo_root, ("ls-files", "--others", "--exclude-standard"))
-    findings = find_unfinished_markers(repo_root, tracked)
-    stray = classify_stray_paths(untracked)
+    baseline_rel = Path(baseline_path).as_posix()
+    findings = find_unfinished_markers(
+        repo_root,
+        tracked,
+        include_third_party=include_third_party,
+        excluded_paths={baseline_rel},
+    )
+    baseline = load_marker_baseline(repo_root, baseline_path)
+    findings, suppressed = apply_marker_baseline(findings, baseline)
+    stray = classify_stray_paths(untracked, include_third_party=include_third_party)
     report = build_scan_report(findings, stray)
+    if suppressed:
+        report["suppressed_by_baseline"] = suppressed
 
     if not json_output:
+        if suppressed:
+            print(f"suppressed by baseline: {suppressed}")
         print_scan_results(findings, stray)
     if stray:
         deleted = delete_paths(repo_root, stray)
@@ -387,6 +421,17 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         action="store_true",
         help="emit machine-readable JSON output",
     )
+    parser.add_argument(
+        "--include-third-party",
+        action="store_true",
+        default=False,
+        help="include all of third_party/ (e.g. third_party/FunkyDNS) in marker and stray-file scanning (default: false)",
+    )
+    parser.add_argument(
+        "--baseline-file",
+        default=BASELINE_DEFAULT_PATH,
+        help=f"marker baseline path relative to --repo-root (default: {BASELINE_DEFAULT_PATH})",
+    )
     return parser.parse_args(argv)
 
 
@@ -397,9 +442,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"error: {repo_root} is not a git repository", file=sys.stderr)
         return 2
 
+    if args.command == "baseline":
+        return command_baseline(repo_root, args.include_third_party, args.baseline_file)
     if args.command == "clean":
-        return command_clean(repo_root, json_output=args.json)
-    return command_scan(repo_root, json_output=args.json)
+        return command_clean(
+            repo_root,
+            json_output=args.json,
+            include_third_party=args.include_third_party,
+            baseline_path=args.baseline_file,
+        )
+    return command_scan(
+        repo_root,
+        json_output=args.json,
+        include_third_party=args.include_third_party,
+        baseline_path=args.baseline_file,
+    )
 
 
 if __name__ == "__main__":
