@@ -110,6 +110,8 @@ curl -sk https://localhost:18443/healthz
 curl http://localhost:9191/health
 curl -f http://localhost:9191/ready
 curl http://localhost:9191/live
+curl http://localhost:9191/chain | python3 -m json.tool
+curl "http://localhost:9191/chain?format=text"
 ```
 
 ## What the smoke harness proves
@@ -134,6 +136,7 @@ It does **not** prove host enforcement. For that, use the scripts in `scripts/` 
 - `GET /live`: process is up (simple liveness check)
 - `GET /health`: detailed state (`pproxy`, `funkydns`, per-hop probe details, and readiness block)
 - `GET /ready`: returns `200` only when `egressd` is usable for forwarding
+- `GET /chain`: chain visual snapshot as JSON (`?format=text` for plain ASCII)
   - `pproxy` must be running
   - if `dns.launch_funkydns=true`, FunkyDNS must also be running
   - hop checks must be complete and successful by default
@@ -221,6 +224,12 @@ with `FAIL`:
 
 The visual is disabled by default (`chain_visual: false`) so it does not
 interfere with JSON log pipelines.
+
+The same chain status is now exposed over HTTP for automation and dashboards:
+
+- `/chain` returns JSON with `status`, `chain_line`, full `visual`, and per-hop details.
+- `/chain?format=text` returns the raw ASCII visual.
+- `/health` includes the same payload under `chain`.
 
 ## Maintenance and cleanup
 

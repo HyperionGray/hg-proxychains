@@ -16,7 +16,7 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse, urlsplit
 
 import pyjson5
 
@@ -589,6 +589,50 @@ def print_chain_visual(cfg: Dict[str, Any], hop_statuses: Optional[Dict[str, Any
     print(format_chain_visual(cfg, hop_statuses), file=sys.stderr, flush=True)
 
 
+def build_chain_visual_snapshot(cfg: Dict[str, Any], state: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Build a machine-readable snapshot of the current chain visual state."""
+    snapshot = get_state_snapshot() if state is None else state
+    hops = cfg.get("chain", {}).get("hops", [])
+    hop_statuses = snapshot.get("hops", {}) if isinstance(snapshot.get("hops"), dict) else {}
+    has_probe_data = bool(hop_statuses) and snapshot.get("hops_last_update") is not None
+    visual_text = format_chain_visual(cfg, hop_statuses if has_probe_data else None)
+
+    if not hops:
+        status = "empty"
+    elif not has_probe_data:
+        status = "pending"
+    elif _all_hops_ok(hops, hop_statuses):
+        status = "ok"
+    else:
+        status = "fail"
+
+    hop_details: List[Dict[str, Any]] = []
+    for idx, hop in enumerate(hops):
+        hop_key = f"hop_{idx}"
+        status_payload = hop_statuses.get(hop_key, {})
+        hop_details.append(
+            {
+                "name": hop_key,
+                "label": _extract_hop_label(hop),
+                "ok": bool(status_payload.get("ok", False)) if has_probe_data else None,
+                "elapsed_ms": status_payload.get("elapsed_ms") if has_probe_data else None,
+                "error": status_payload.get("error") if has_probe_data else None,
+                "status_line": status_payload.get("status_line") if has_probe_data else None,
+                "checked_at": status_payload.get("checked_at") if has_probe_data else None,
+            }
+        )
+
+    return {
+        "status": status,
+        "checked_at": snapshot.get("hops_last_update"),
+        "chain_line": visual_text.splitlines()[0] if visual_text else "",
+        "visual": visual_text,
+        "hop_count": len(hops),
+        "canary_target": cfg.get("chain", {}).get("canary_target"),
+        "hops": hop_details,
+    }
+
+
 def hop_health_loop(cfg: Dict[str, Any]) -> None:
     interval_s = int(cfg.get("supervisor", {}).get("hop_check_interval_s", 5))
     target = str(cfg.get("chain", {}).get("canary_target", ""))
@@ -619,20 +663,33 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_text(self, body: str, status: int = 200) -> None:
+        payload = body.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
     def do_GET(self) -> None:
-        if self.path not in {"/live", "/health", "/ready"}:
+        request = urlsplit(self.path)
+        path = request.path
+        query = parse_qs(request.query)
+
+        if path not in {"/live", "/health", "/ready", "/chain"}:
             self.send_response(404)
             self.end_headers()
             return
 
-        if self.path == "/live":
+        if path == "/live":
             self._send_json({"ok": True, "checked_at": int(time.time())}, status=200)
             return
 
         snapshot = get_state_snapshot()
         readiness = compute_readiness(snapshot, self.cfg)
+        chain_snapshot = build_chain_visual_snapshot(self.cfg, snapshot)
 
-        if self.path == "/ready":
+        if path == "/ready":
             payload = {
                 "ready": readiness["ready"],
                 "checked_at": readiness["checked_at"],
@@ -645,8 +702,16 @@ class HealthHandler(BaseHTTPRequestHandler):
             self._send_json(payload, status=200 if readiness["ready"] else 503)
             return
 
+        if path == "/chain":
+            if query.get("format", ["json"])[0].lower() == "text":
+                self._send_text(chain_snapshot["visual"], status=200)
+            else:
+                self._send_json(chain_snapshot, status=200)
+            return
+
         payload = copy.deepcopy(snapshot)
         payload["ready"] = readiness
+        payload["chain"] = chain_snapshot
         self._send_json(payload, status=200)
 
     def log_message(self, fmt: str, *args: Any) -> None:

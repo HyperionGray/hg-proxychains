@@ -170,6 +170,45 @@ class ChainVisualTests(unittest.TestCase):
         self.assertIn("[egressd]", output)
         self.assertIn("|S-chain|", output)
 
+    def test_build_chain_visual_snapshot_reports_pending_before_probes(self):
+        cfg = self._cfg()
+        state = {"hops": {}, "hops_last_update": None}
+        snapshot = supervisor.build_chain_visual_snapshot(cfg, state)
+        self.assertEqual(snapshot["status"], "pending")
+        self.assertEqual(snapshot["hop_count"], 2)
+        self.assertIn("...", snapshot["visual"])
+        self.assertIsNone(snapshot["hops"][0]["ok"])
+
+    def test_build_chain_visual_snapshot_reports_ok_when_all_hops_healthy(self):
+        cfg = self._cfg()
+        state = {
+            "hops_last_update": 123,
+            "hops": {
+                "hop_0": {"ok": True, "elapsed_ms": 42, "checked_at": 123},
+                "hop_1": {"ok": True, "elapsed_ms": 38, "checked_at": 123},
+            },
+        }
+        snapshot = supervisor.build_chain_visual_snapshot(cfg, state)
+        self.assertEqual(snapshot["status"], "ok")
+        self.assertIn("-<>-OK", snapshot["chain_line"])
+        self.assertTrue(snapshot["hops"][0]["ok"])
+        self.assertEqual(snapshot["hops"][0]["elapsed_ms"], 42)
+
+    def test_build_chain_visual_snapshot_reports_fail_when_hop_unhealthy(self):
+        cfg = self._cfg()
+        state = {
+            "hops_last_update": 123,
+            "hops": {
+                "hop_0": {"ok": True, "elapsed_ms": 42, "checked_at": 123},
+                "hop_1": {"ok": False, "error": "timeout", "checked_at": 123},
+            },
+        }
+        snapshot = supervisor.build_chain_visual_snapshot(cfg, state)
+        self.assertEqual(snapshot["status"], "fail")
+        self.assertIn("FAIL", snapshot["visual"])
+        self.assertFalse(snapshot["hops"][1]["ok"])
+        self.assertEqual(snapshot["hops"][1]["error"], "timeout")
+
 
 if __name__ == "__main__":
     unittest.main()

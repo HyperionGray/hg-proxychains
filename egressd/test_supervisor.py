@@ -185,6 +185,29 @@ class SupervisorTests(unittest.TestCase):
         self.assertTrue(readiness["ready"])
         self.assertEqual([], readiness["reasons"])
 
+    def test_build_chain_visual_snapshot_pending_before_probes(self) -> None:
+        cfg = sample_cfg()
+        state = {"hops": {}, "hops_last_update": None}
+        snapshot = supervisor.build_chain_visual_snapshot(cfg, state)
+        self.assertEqual(snapshot["status"], "pending")
+        self.assertEqual(snapshot["hop_count"], 2)
+        self.assertIn("...", snapshot["visual"])
+        self.assertIsNone(snapshot["hops"][0]["ok"])
+
+    def test_build_chain_visual_snapshot_includes_hop_errors_on_failure(self) -> None:
+        cfg = sample_cfg()
+        state = {
+            "hops_last_update": 123,
+            "hops": {
+                "hop_0": {"ok": True, "elapsed_ms": 10},
+                "hop_1": {"ok": False, "error": "timeout"},
+            },
+        }
+        snapshot = supervisor.build_chain_visual_snapshot(cfg, state)
+        self.assertEqual(snapshot["status"], "fail")
+        self.assertFalse(snapshot["hops"][1]["ok"])
+        self.assertEqual(snapshot["hops"][1]["error"], "timeout")
+
 
 if __name__ == "__main__":
     unittest.main()
