@@ -149,6 +149,39 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
 
+    def test_discover_embedded_git_repos_skips_root_and_gitlink_file(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            gitlink = root / "third_party" / "FunkyDNS" / ".git"
+            gitlink.parent.mkdir(parents=True, exist_ok=True)
+            gitlink.write_text("gitdir: ../../.git/modules/third_party/FunkyDNS\n", encoding="utf-8")
+            nested = root / "scratch" / ".git"
+            nested.mkdir(parents=True, exist_ok=True)
+
+            findings = repo_hygiene.discover_embedded_git_repos(root, include_third_party=True)
+
+        self.assertEqual(findings, ["scratch"])
+
+    def test_discover_embedded_git_repos_skips_third_party_unless_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            dep_nested = root / "third_party" / "FunkyDNS" / "scratch" / ".git"
+            dep_nested.mkdir(parents=True, exist_ok=True)
+
+            first_party_only = repo_hygiene.discover_embedded_git_repos(root, include_third_party=False)
+            including_third_party = repo_hygiene.discover_embedded_git_repos(root, include_third_party=True)
+
+        self.assertEqual(first_party_only, [])
+        self.assertEqual(including_third_party, ["third_party/FunkyDNS/scratch"])
+
+    def test_build_scan_report_includes_embedded_repo_count(self) -> None:
+        report = repo_hygiene.build_scan_report([], ["tmp/output.tmp"], ["scratch"])
+        self.assertEqual(report["summary"]["total_issues"], 2)
+        self.assertEqual(report["summary"]["embedded_git_repos"], 1)
+        self.assertEqual(report["embedded_git_repos"], ["scratch"])
+
 
 if __name__ == "__main__":
     unittest.main()
