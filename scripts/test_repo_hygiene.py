@@ -35,7 +35,6 @@ class RepoHygieneTests(unittest.TestCase):
             stray,
             [
                 "docs/.DS_Store",
-                "egressd-starter.tar.gz",
                 "notes.txt~",
                 "pkg/__pycache__/module.cpython-312.pyc",
                 "tmp/output.tmp",
@@ -43,6 +42,48 @@ class RepoHygieneTests(unittest.TestCase):
         )
         stray_with_third_party = repo_hygiene.classify_stray_paths(untracked, include_third_party=True)
         self.assertIn("third_party/FunkyDNS/archive/funkydns.py~", stray_with_third_party)
+
+    def test_find_stale_artifacts_detects_tracked_and_untracked(self) -> None:
+        tracked = ["README.md", "egressd-starter.tar.gz"]
+        untracked = ["scratch.txt", "egressd-starter.tar.gz"]
+        stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(tracked, untracked)
+        self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
+        self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
+
+    def test_find_embedded_git_repos_detects_nested_repos(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            nested = root / "scratch" / ".git"
+            nested.mkdir(parents=True, exist_ok=True)
+            submodule_git = root / "third_party" / "FunkyDNS" / ".git"
+            submodule_git.parent.mkdir(parents=True, exist_ok=True)
+            submodule_git.write_text("gitdir: ../../.git/modules/third_party/FunkyDNS\n", encoding="utf-8")
+
+            findings = repo_hygiene.find_embedded_git_repos(root)
+            findings_with_third_party = repo_hygiene.find_embedded_git_repos(
+                root,
+                include_third_party=True,
+            )
+
+        self.assertEqual(findings, ["scratch"])
+        self.assertEqual(findings_with_third_party, ["scratch"])
+
+    def test_find_embedded_git_repos_can_include_third_party(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            dep_nested = root / "third_party" / "FunkyDNS" / "scratch" / ".git"
+            dep_nested.mkdir(parents=True, exist_ok=True)
+
+            findings = repo_hygiene.find_embedded_git_repos(root)
+            findings_with_third_party = repo_hygiene.find_embedded_git_repos(
+                root,
+                include_third_party=True,
+            )
+
+        self.assertEqual(findings, [])
+        self.assertEqual(findings_with_third_party, ["third_party/FunkyDNS/scratch"])
 
     def test_classify_stray_paths_skips_third_party_unless_enabled(self) -> None:
         paths = [

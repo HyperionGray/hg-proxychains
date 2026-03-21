@@ -224,14 +224,16 @@ interfere with JSON log pipelines.
 
 ## Maintenance and cleanup
 
-Run repository maintenance checks (unfinished markers, backup files, stale artifacts, stray cache dirs, and unexpected embedded git repos) for first-party code:
+Run repository maintenance checks (unfinished markers, backup/temp/cache clutter,
+known stale artifacts, and unexpected embedded git repos) for first-party code:
 
 ```bash
 make maintenance
 # equivalent: python3 scripts/repo_hygiene.py scan --repo-root .
 ```
 
-For automatic cleanup of removable clutter (backup files, stray `__pycache__/` dirs, and known stale artifacts):
+For automatic cleanup of removable clutter (backup files, stray cache/metadata
+noise, and stale untracked artifacts such as `egressd-starter.tar.gz`):
 
 ```bash
 make maintenance-fix
@@ -247,6 +249,9 @@ make maintenance-all-json
 ```
 
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
+
+`scripts/repo_hygiene.py clean` does not remove tracked files or embedded git
+repositories automatically; those are reported for manual review.
 
 For focused first-party hygiene scans and stray cleanup:
 
