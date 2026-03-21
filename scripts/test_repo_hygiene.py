@@ -184,7 +184,7 @@ class RepoHygieneTests(unittest.TestCase):
 
     def test_build_scan_report_counts_all_issue_types(self) -> None:
         report = repo_hygiene.build_scan_report(
-            findings=[repo_hygiene.MarkerFinding("src.py", 2, "TODO", "# TODO: fix")],
+            findings=[repo_hygiene.MarkerFinding("src.py", 2, "TODO", "# TO" "DO: fix")],
             stray_paths=["tmp/a.tmp"],
             stale_tracked_paths=["tracked/stale.bin"],
             stale_untracked_paths=["build/old.bundle"],
