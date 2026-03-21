@@ -3,17 +3,20 @@
 `scripts/repo_maintenance.py` is now a compatibility wrapper.
 
 Use `scripts/repo_hygiene.py` directly for all maintenance checks and cleanup.
-Primary documentation has moved to:
+Primary documentation has moved to `docs/REPO-HYGIENE.md`.
+
+Current hygiene checks include:
 
 - Unfinished markers in tracked files (`TODO`, `FIXME`, `STUB`, `TBD`, `XXX`, `UNFINISHED`)
-- Backup files (`*~`, `*.bak`, `*.orig`, `*.old`, `*.tmp`)
-- Stray Python cache directories (`__pycache__/`)
+- Backup files (`*~`, `*.bak`, `*.orig`, `*.rej`, `*.tmp`)
+- Stray Python cache outputs (`__pycache__/`, `*.pyc`, `*.pyo`)
+- Common metadata clutter (`.DS_Store`, `Thumbs.db`)
 - Known stale artifacts (currently `egressd-starter.tar.gz`)
 - Embedded git repositories outside the allowed third-party submodule path
 
-By default, marker scanning includes tracked files in `third_party/FunkyDNS` when that repository is present.
-For day-to-day repo automation, prefer the first-party-only mode (`--no-include-third-party`)
-to avoid noise from external dependency internals.
+By default, scans are first-party-focused and skip `third_party/FunkyDNS`.
+Use `--include-third-party` (or `make maintenance-all`) when you want
+full-repository checks.
 
 ## Commands
 
