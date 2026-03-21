@@ -27,7 +27,6 @@ class RepoHygieneTests(unittest.TestCase):
             "keep/readme.md",
             "docs/.DS_Store",
             "build/result.txt",
-            "egressd-starter.tar.gz",
             "third_party/FunkyDNS/archive/funkydns.py~",
         ]
         stray = repo_hygiene.classify_stray_paths(untracked)
@@ -35,7 +34,6 @@ class RepoHygieneTests(unittest.TestCase):
             stray,
             [
                 "docs/.DS_Store",
-                "egressd-starter.tar.gz",
                 "notes.txt~",
                 "pkg/__pycache__/module.cpython-312.pyc",
                 "tmp/output.tmp",
@@ -88,6 +86,71 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(findings[0].marker, "TODO")
         self.assertEqual(len(findings_with_dep), 2)
         self.assertEqual(findings_with_dep[1].path, "third_party/FunkyDNS/dep.py")
+
+    def test_find_stale_artifacts_tracks_tracked_and_untracked(self) -> None:
+        tracked = ["README.md", "egressd-starter.tar.gz"]
+        untracked = ["tmp.tmp", "egressd-starter.tar.gz"]
+
+        stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(tracked, untracked)
+
+        self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
+        self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
+
+    def test_find_stale_artifacts_can_skip_third_party(self) -> None:
+        with patch.object(
+            repo_hygiene,
+            "STALE_ARTIFACT_PATHS",
+            frozenset({"egressd-starter.tar.gz", "third_party/FunkyDNS/tmp.tar.gz"}),
+        ):
+            tracked = ["egressd-starter.tar.gz", "third_party/FunkyDNS/tmp.tar.gz"]
+            untracked = ["third_party/FunkyDNS/tmp.tar.gz"]
+
+            stale_tracked_default, stale_untracked_default = repo_hygiene.find_stale_artifacts(
+                tracked,
+                untracked,
+            )
+            stale_tracked_all, stale_untracked_all = repo_hygiene.find_stale_artifacts(
+                tracked,
+                untracked,
+                include_third_party=True,
+            )
+
+        self.assertEqual(stale_tracked_default, ["egressd-starter.tar.gz"])
+        self.assertEqual(stale_untracked_default, [])
+        self.assertEqual(
+            stale_tracked_all,
+            ["egressd-starter.tar.gz", "third_party/FunkyDNS/tmp.tar.gz"],
+        )
+        self.assertEqual(stale_untracked_all, ["third_party/FunkyDNS/tmp.tar.gz"])
+
+    def test_discover_embedded_git_repos_skips_root_and_gitlinks(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            expected_submodule = root / "third_party" / "FunkyDNS" / ".git"
+            expected_submodule.parent.mkdir(parents=True, exist_ok=True)
+            expected_submodule.write_text("gitdir: ../../.git/modules/third_party/FunkyDNS\n", encoding="utf-8")
+            nested = root / "scratch" / ".git"
+            nested.mkdir(parents=True, exist_ok=True)
+
+            found = repo_hygiene.discover_embedded_git_repos(root)
+
+        self.assertEqual(found, ["scratch"])
+
+    def test_discover_embedded_git_repos_can_include_third_party(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            third_party_nested = root / "third_party" / "vendor" / ".git"
+            third_party_nested.mkdir(parents=True, exist_ok=True)
+            local_nested = root / "scratch" / ".git"
+            local_nested.mkdir(parents=True, exist_ok=True)
+
+            found_default = repo_hygiene.discover_embedded_git_repos(root)
+            found_all = repo_hygiene.discover_embedded_git_repos(root, include_third_party=True)
+
+        self.assertEqual(found_default, ["scratch"])
+        self.assertEqual(found_all, ["scratch", "third_party/vendor"])
 
     def test_find_unfinished_markers_can_include_third_party(self) -> None:
         with tempfile.TemporaryDirectory() as td:
