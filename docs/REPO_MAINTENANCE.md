@@ -5,8 +5,12 @@
 Use `scripts/repo_hygiene.py` directly for all maintenance checks and cleanup.
 Primary documentation has moved to:
 
+- `docs/REPO-HYGIENE.md`
+
+This legacy note keeps a short summary of what the maintenance tooling checks:
+
 - Unfinished markers in tracked files (`TODO`, `FIXME`, `STUB`, `TBD`, `XXX`, `UNFINISHED`)
-- Backup files (`*~`, `*.bak`, `*.orig`, `*.old`, `*.tmp`)
+- Backup files (`*~`, `*.bak`, `*.orig`, `*.tmp`)
 - Stray Python cache directories (`__pycache__/`)
 - Known stale artifacts (currently `egressd-starter.tar.gz`)
 - Unexpected embedded git repositories outside the allowed third-party submodule path
