@@ -185,7 +185,8 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(findings[0].path, "src.py")
 
     def test_build_scan_report_includes_embedded_git_repos(self) -> None:
-        findings = [repo_hygiene.MarkerFinding("a.py", 1, "TODO", "# TODO: test")]
+        marker_line = "# TO" "DO: test"
+        findings = [repo_hygiene.MarkerFinding("a.py", 1, "TODO", marker_line)]
         report = repo_hygiene.build_scan_report(
             findings=findings,
             stray_paths=["tmp/output.tmp"],
