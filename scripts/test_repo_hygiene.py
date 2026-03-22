@@ -27,7 +27,6 @@ class RepoHygieneTests(unittest.TestCase):
             "keep/readme.md",
             "docs/.DS_Store",
             "build/result.txt",
-            "egressd-starter.tar.gz",
             "third_party/FunkyDNS/archive/funkydns.py~",
         ]
         stray = repo_hygiene.classify_stray_paths(untracked)
@@ -35,7 +34,6 @@ class RepoHygieneTests(unittest.TestCase):
             stray,
             [
                 "docs/.DS_Store",
-                "egressd-starter.tar.gz",
                 "notes.txt~",
                 "pkg/__pycache__/module.cpython-312.pyc",
                 "tmp/output.tmp",
@@ -148,6 +146,60 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_find_stale_artifacts_reports_tracked_and_untracked(self) -> None:
+        tracked = ["egressd-starter.tar.gz", "README.md"]
+        untracked = ["tmp/a.tmp", "egressd-starter.tar.gz"]
+        stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(tracked, untracked)
+        self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
+        self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
+
+    def test_find_stale_artifacts_can_scope_third_party(self) -> None:
+        tracked = ["third_party/FunkyDNS/generated.bin"]
+        untracked = ["third_party/FunkyDNS/generated.bin"]
+        with patch.object(repo_hygiene, "STALE_ARTIFACT_PATHS", frozenset({"third_party/FunkyDNS/generated.bin"})):
+            stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(tracked, untracked)
+            self.assertEqual(stale_tracked, [])
+            self.assertEqual(stale_untracked, [])
+
+            stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(
+                tracked,
+                untracked,
+                include_third_party=True,
+            )
+            self.assertEqual(stale_tracked, ["third_party/FunkyDNS/generated.bin"])
+            self.assertEqual(stale_untracked, ["third_party/FunkyDNS/generated.bin"])
+
+    def test_discover_embedded_git_repos_skips_submodule_gitlink(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            allowed = root / "third_party" / "FunkyDNS" / ".git"
+            allowed.parent.mkdir(parents=True, exist_ok=True)
+            allowed.write_text("gitdir: ../../.git/modules/third_party/FunkyDNS\n", encoding="utf-8")
+            nested = root / "scratch" / ".git"
+            nested.mkdir(parents=True, exist_ok=True)
+
+            found = repo_hygiene.discover_embedded_git_repos(root, include_third_party=True)
+
+        self.assertEqual(found, ["scratch"])
+
+    def test_build_scan_report_includes_new_categories(self) -> None:
+        findings = [repo_hygiene.MarkerFinding("a.py", 2, "TODO", "# TODO: a")]
+        report = repo_hygiene.build_scan_report(
+            findings=findings,
+            stray_paths=["tmp/file.tmp"],
+            stale_tracked_paths=["egressd-starter.tar.gz"],
+            stale_untracked_paths=["egressd-starter.tar.gz"],
+            embedded_git_repos=["scratch"],
+        )
+        summary = report["summary"]
+        self.assertEqual(summary["unfinished_markers"], 1)
+        self.assertEqual(summary["stray_untracked_paths"], 1)
+        self.assertEqual(summary["stale_tracked_paths"], 1)
+        self.assertEqual(summary["stale_untracked_paths"], 1)
+        self.assertEqual(summary["embedded_git_repos"], 1)
+        self.assertEqual(summary["total_issues"], 5)
 
 
 if __name__ == "__main__":
