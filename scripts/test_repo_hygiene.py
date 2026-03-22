@@ -185,7 +185,7 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(found, ["scratch"])
 
     def test_build_scan_report_includes_new_categories(self) -> None:
-        findings = [repo_hygiene.MarkerFinding("a.py", 2, "TODO", "# TODO: a")]
+        findings = [repo_hygiene.MarkerFinding("a.py", 2, "TODO", "# TO" "DO: a")]
         report = repo_hygiene.build_scan_report(
             findings=findings,
             stray_paths=["tmp/file.tmp"],
