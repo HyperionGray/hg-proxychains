@@ -61,6 +61,41 @@ class RepoHygieneTests(unittest.TestCase):
             ],
         )
 
+    def test_discover_embedded_git_repos_skips_root_and_gitlinks(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            allowed = root / "third_party" / "FunkyDNS" / ".git"
+            allowed.parent.mkdir(parents=True, exist_ok=True)
+            allowed.write_text("gitdir: ../../.git/modules/third_party/FunkyDNS\n", encoding="utf-8")
+            nested = root / "scratch" / ".git"
+            nested.mkdir(parents=True, exist_ok=True)
+
+            default_findings = repo_hygiene.discover_embedded_git_repos(root)
+            findings_with_third_party = repo_hygiene.discover_embedded_git_repos(
+                root,
+                include_third_party=True,
+            )
+
+        self.assertEqual(default_findings, ["scratch"])
+        self.assertEqual(findings_with_third_party, ["scratch"])
+
+    def test_discover_embedded_git_repos_can_include_third_party(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            third_party_nested = root / "third_party" / "FunkyDNS" / "scratch" / ".git"
+            third_party_nested.mkdir(parents=True, exist_ok=True)
+
+            default_findings = repo_hygiene.discover_embedded_git_repos(root)
+            findings_with_third_party = repo_hygiene.discover_embedded_git_repos(
+                root,
+                include_third_party=True,
+            )
+
+        self.assertEqual(default_findings, [])
+        self.assertEqual(findings_with_third_party, ["third_party/FunkyDNS/scratch"])
+
     def test_find_unfinished_markers_ignores_skipped_paths(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -148,6 +183,25 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_build_scan_report_includes_embedded_git_repos(self) -> None:
+        findings = [repo_hygiene.MarkerFinding("a.py", 1, "TODO", "# TODO: test")]
+        report = repo_hygiene.build_scan_report(
+            findings=findings,
+            stray_paths=["tmp/output.tmp"],
+            embedded_git_repos=["scratch"],
+        )
+
+        self.assertEqual(report["embedded_git_repos"], ["scratch"])
+        self.assertEqual(
+            report["summary"],
+            {
+                "unfinished_markers": 1,
+                "stray_untracked_paths": 1,
+                "embedded_git_repos": 1,
+                "total_issues": 3,
+            },
+        )
 
 
 if __name__ == "__main__":

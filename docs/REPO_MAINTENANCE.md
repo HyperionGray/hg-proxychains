@@ -9,11 +9,12 @@ Primary documentation has moved to:
 - Backup files (`*~`, `*.bak`, `*.orig`, `*.old`, `*.tmp`)
 - Stray Python cache directories (`__pycache__/`)
 - Known stale artifacts (currently `egressd-starter.tar.gz`)
-- Embedded git repositories outside the allowed third-party submodule path
+- Embedded git repositories (nested `.git` directories/files), excluding
+  gitlink-style submodules
 
-By default, marker scanning includes tracked files in `third_party/FunkyDNS` when that repository is present.
-For day-to-day repo automation, prefer the first-party-only mode (`--no-include-third-party`)
-to avoid noise from external dependency internals.
+`repo_hygiene.py` defaults to first-party scanning (skips `third_party/`).
+`repo_maintenance.py` keeps compatibility defaults and supports explicit
+`--include-third-party` / `--no-include-third-party` toggles.
 
 ## Commands
 
@@ -24,7 +25,7 @@ python3 scripts/repo_hygiene.py scan --repo-root .
 # JSON output for automation
 python3 scripts/repo_hygiene.py scan --repo-root . --json
 
-# Include third_party marker scan explicitly
+# Include third_party marker scan explicitly (legacy wrapper)
 python3 scripts/repo_maintenance.py --include-third-party
 
 # Remove backup files + stray cache dirs + stale artifacts while scanning
@@ -49,4 +50,4 @@ make maintenance-all-json
 - Unfinished markers are reported but not modified automatically.
 - Embedded git repositories are reported but never auto-removed by `--fix`.
 - Without `--fix`, exit code is `1` when any issues are found.
-- With `--fix`, exit code reflects post-fix state (`0` when only removable clutter was found and removed; `1` if issues remain).
+- With `--fix`, exit code reflects post-fix state (`0` when only removable clutter was found and removed; `1` if unfinished markers or embedded git repos remain).
