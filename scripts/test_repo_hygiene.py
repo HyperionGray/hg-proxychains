@@ -149,6 +149,40 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
 
+    def test_discover_embedded_git_repos_skips_root_and_allowed_submodule(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            allowed_git = root / "third_party" / "FunkyDNS" / ".git"
+            allowed_git.parent.mkdir(parents=True, exist_ok=True)
+            allowed_git.write_text("gitdir: ../../.git/modules/third_party/FunkyDNS\n", encoding="utf-8")
+            nested = root / "scratch" / ".git"
+            nested.mkdir(parents=True, exist_ok=True)
+
+            found = repo_hygiene.discover_embedded_git_repos(root, include_third_party=True)
+
+        self.assertEqual(found, ["scratch"])
+
+    def test_discover_embedded_git_repos_skips_third_party_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            third_party_nested = root / "third_party" / "other" / ".git"
+            third_party_nested.mkdir(parents=True, exist_ok=True)
+            first_party_nested = root / "tools" / ".git"
+            first_party_nested.mkdir(parents=True, exist_ok=True)
+
+            found = repo_hygiene.discover_embedded_git_repos(root)
+
+        self.assertEqual(found, ["tools"])
+
+    def test_build_scan_report_counts_embedded_repos(self) -> None:
+        report = repo_hygiene.build_scan_report([], ["tmp/x.tmp"], ["scratch"])
+        summary = report["summary"]
+        self.assertEqual(summary["stray_untracked_paths"], 1)
+        self.assertEqual(summary["embedded_git_repos"], 1)
+        self.assertEqual(summary["total_issues"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()
