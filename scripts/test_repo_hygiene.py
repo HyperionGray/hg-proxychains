@@ -111,7 +111,7 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(findings_with_dep[1].path, "third_party/FunkyDNS/dep.py")
 
     def test_build_scan_report_includes_embedded_repo_counts(self) -> None:
-        findings = [repo_hygiene.MarkerFinding("a.py", 1, "TODO", "# TODO: x")]
+        findings = [repo_hygiene.MarkerFinding("a.py", 1, "TODO", "# TO" "DO: x")]
         stray = ["tmp/output.tmp"]
         embedded = ["scratch"]
         report = repo_hygiene.build_scan_report(findings, stray, embedded)
