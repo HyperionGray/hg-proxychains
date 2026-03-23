@@ -5,6 +5,8 @@
 Use `scripts/repo_hygiene.py` directly for all maintenance checks and cleanup.
 Primary documentation has moved to:
 
+- `docs/REPO-HYGIENE.md`
+
 - Unfinished markers in tracked files (`TODO`, `FIXME`, `STUB`, `TBD`, `XXX`, `UNFINISHED`)
 - Backup files (`*~`, `*.bak`, `*.orig`, `*.old`, `*.tmp`)
 - Stray Python cache directories (`__pycache__/`)
