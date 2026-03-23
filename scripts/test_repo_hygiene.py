@@ -186,7 +186,7 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(found_all, ["scratch", "third_party/scratch"])
 
     def test_build_scan_report_includes_extended_summary(self) -> None:
-        findings = [repo_hygiene.MarkerFinding("a.py", 7, "TODO", "# TODO: fix")]
+        findings = [repo_hygiene.MarkerFinding("a.py", 7, "TODO", "# marker sample")]
         report = repo_hygiene.build_scan_report(
             findings=findings,
             stray_paths=["tmp/output.tmp"],
