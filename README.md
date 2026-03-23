@@ -246,6 +246,14 @@ make maintenance-all
 make maintenance-all-json
 ```
 
+If you intentionally keep an additional embedded git checkout under the repo
+root, allowlist it explicitly during scan/clean:
+
+```bash
+python3 scripts/repo_hygiene.py scan --repo-root . --allow-embedded-git-path scratch/worktree
+python3 scripts/repo_hygiene.py clean --repo-root . --allow-embedded-git-path scratch/worktree
+```
+
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
 
 For focused first-party hygiene scans and stray cleanup:

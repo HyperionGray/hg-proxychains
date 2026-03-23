@@ -20,7 +20,10 @@ This repository includes a small maintenance utility at
   - temporary files (`*.tmp`)
   - Python cache outputs (`__pycache__/`, `*.pyc`, `*.pyo`)
   - common metadata noise (`.DS_Store`, `Thumbs.db`)
-  - known generated bundles (`egressd-starter.tar.gz`)
+- Known stale artifact paths (tracked and untracked):
+  - `egressd-starter.tar.gz`
+- Unexpected embedded git repositories (nested `.git` directories/files) outside
+  allowed paths
 
 The scanner intentionally skips `third_party/FunkyDNS/` when checking
 unfinished markers by default, because that path is managed as an external
@@ -45,6 +48,9 @@ python3 scripts/repo_hygiene.py scan --repo-root . --json
 
 # Include third-party dependency tree explicitly
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
+
+# Allow a specific embedded git checkout path
+python3 scripts/repo_hygiene.py scan --repo-root . --allow-embedded-git-path scratch/worktree
 
 # Remove untracked stray files/directories
 python3 scripts/repo_hygiene.py clean --repo-root .
@@ -94,6 +100,10 @@ By default, `scan`/`clean` load marker suppressions from:
 Override with `--baseline-file <path>`.
 
 The baseline currently suppresses marker findings only (not stray files).
+
+`clean` removes removable clutter (stray untracked paths and stale untracked
+artifact paths). It does not remove tracked stale artifacts or embedded git
+repositories.
 
 ## Legacy script
 

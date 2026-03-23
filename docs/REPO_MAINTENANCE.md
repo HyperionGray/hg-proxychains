@@ -6,9 +6,9 @@ Use `scripts/repo_hygiene.py` directly for all maintenance checks and cleanup.
 Primary documentation has moved to:
 
 - Unfinished markers in tracked files (`TODO`, `FIXME`, `STUB`, `TBD`, `XXX`, `UNFINISHED`)
-- Backup files (`*~`, `*.bak`, `*.orig`, `*.old`, `*.tmp`)
+- Backup files (`*~`, `*.bak`, `*.orig`, `*.rej`, `*.tmp`)
 - Stray Python cache directories (`__pycache__/`)
-- Known stale artifacts (currently `egressd-starter.tar.gz`)
+- Known stale artifacts (tracked and untracked; currently `egressd-starter.tar.gz`)
 - Embedded git repositories outside the allowed third-party submodule path
 
 By default, marker scanning includes tracked files in `third_party/FunkyDNS` when that repository is present.
@@ -50,3 +50,4 @@ make maintenance-all-json
 - Embedded git repositories are reported but never auto-removed by `--fix`.
 - Without `--fix`, exit code is `1` when any issues are found.
 - With `--fix`, exit code reflects post-fix state (`0` when only removable clutter was found and removed; `1` if issues remain).
+- For advanced embedded-git allowlisting, use `scripts/repo_hygiene.py --allow-embedded-git-path`.
