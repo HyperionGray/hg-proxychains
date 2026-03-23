@@ -149,6 +149,61 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
 
+    def test_discover_embedded_git_repos_respects_gitlinks_and_scope(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+
+            allowed_gitlink = root / "third_party" / "FunkyDNS" / ".git"
+            allowed_gitlink.parent.mkdir(parents=True, exist_ok=True)
+            allowed_gitlink.write_text(
+                "gitdir: ../../.git/modules/third_party/FunkyDNS\n",
+                encoding="utf-8",
+            )
+
+            nested = root / "scratch" / ".git"
+            nested.mkdir(parents=True, exist_ok=True)
+
+            nested_third_party = root / "third_party" / "FunkyDNS" / "scratch" / ".git"
+            nested_third_party.mkdir(parents=True, exist_ok=True)
+
+            found_default = repo_hygiene.discover_embedded_git_repos(root)
+            found_all = repo_hygiene.discover_embedded_git_repos(root, include_third_party=True)
+
+        self.assertEqual(found_default, ["scratch"])
+        self.assertEqual(found_all, ["scratch", "third_party/FunkyDNS/scratch"])
+
+    def test_build_scan_report_includes_embedded_git_repos(self) -> None:
+        finding = repo_hygiene.MarkerFinding(
+            path="a.py",
+            line_number=3,
+            marker="TODO",
+            line="# TO" "DO: example",
+        )
+        report = repo_hygiene.build_scan_report([finding], ["tmp/a.tmp"], ["scratch"])
+
+        self.assertEqual(report["summary"]["unfinished_markers"], 1)
+        self.assertEqual(report["summary"]["stray_untracked_paths"], 1)
+        self.assertEqual(report["summary"]["embedded_git_repos"], 1)
+        self.assertEqual(report["summary"]["total_issues"], 3)
+        self.assertEqual(report["embedded_git_repos"], ["scratch"])
+
+    def test_command_clean_returns_nonzero_for_embedded_git_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            nested = root / "scratch" / ".git"
+            nested.mkdir(parents=True, exist_ok=True)
+
+            with patch.object(repo_hygiene, "collect_git_paths", return_value=[]), patch.object(
+                repo_hygiene,
+                "list_git_paths",
+                return_value=[],
+            ):
+                rc = repo_hygiene.command_clean(root)
+
+        self.assertEqual(rc, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
