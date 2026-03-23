@@ -35,7 +35,6 @@ class RepoHygieneTests(unittest.TestCase):
             stray,
             [
                 "docs/.DS_Store",
-                "egressd-starter.tar.gz",
                 "notes.txt~",
                 "pkg/__pycache__/module.cpython-312.pyc",
                 "tmp/output.tmp",
@@ -148,6 +147,60 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_find_stale_artifacts_reports_known_tracked_and_untracked(self) -> None:
+        stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(
+            tracked_paths=["src.py", "egressd-starter.tar.gz"],
+            untracked_paths=["tmp/output.tmp", "egressd-starter.tar.gz"],
+        )
+        self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
+        self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
+
+    def test_discover_embedded_git_repos_skips_gitlinks(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            allowed = root / "third_party" / "FunkyDNS" / ".git"
+            allowed.parent.mkdir(parents=True, exist_ok=True)
+            allowed.write_text("gitdir: ../../.git/modules/third_party/FunkyDNS\n", encoding="utf-8")
+            nested = root / "scratch" / ".git"
+            nested.mkdir(parents=True, exist_ok=True)
+
+            found = repo_hygiene.discover_embedded_git_repos(root, include_third_party=True)
+
+        self.assertEqual(found, ["scratch"])
+
+    def test_discover_embedded_git_repos_can_skip_third_party(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            third_party_nested = root / "third_party" / "scratch" / ".git"
+            third_party_nested.mkdir(parents=True, exist_ok=True)
+            root_nested = root / "scratch" / ".git"
+            root_nested.mkdir(parents=True, exist_ok=True)
+
+            found_default = repo_hygiene.discover_embedded_git_repos(root, include_third_party=False)
+            found_all = repo_hygiene.discover_embedded_git_repos(root, include_third_party=True)
+
+        self.assertEqual(found_default, ["scratch"])
+        self.assertEqual(found_all, ["scratch", "third_party/scratch"])
+
+    def test_build_scan_report_includes_extended_summary(self) -> None:
+        findings = [repo_hygiene.MarkerFinding("a.py", 7, "TODO", "# TODO: fix")]
+        report = repo_hygiene.build_scan_report(
+            findings=findings,
+            stray_paths=["tmp/output.tmp"],
+            stale_tracked=["egressd-starter.tar.gz"],
+            stale_untracked=[],
+            embedded_git_repos=["scratch"],
+        )
+
+        self.assertEqual(report["summary"]["unfinished_markers"], 1)
+        self.assertEqual(report["summary"]["stray_untracked_paths"], 1)
+        self.assertEqual(report["summary"]["stale_tracked_artifacts"], 1)
+        self.assertEqual(report["summary"]["stale_untracked_artifacts"], 0)
+        self.assertEqual(report["summary"]["embedded_git_repos"], 1)
+        self.assertEqual(report["summary"]["total_issues"], 4)
 
 
 if __name__ == "__main__":
