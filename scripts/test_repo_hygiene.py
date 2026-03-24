@@ -149,6 +149,50 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
 
+    def test_discover_embedded_git_repos_ignores_root_and_allowed_gitlink(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+
+            allowed_gitlink = root / "third_party" / "FunkyDNS" / ".git"
+            allowed_gitlink.parent.mkdir(parents=True, exist_ok=True)
+            allowed_gitlink.write_text(
+                "gitdir: ../../.git/modules/third_party/FunkyDNS\n",
+                encoding="utf-8",
+            )
+
+            nested = root / "tmp" / "scratch" / ".git"
+            nested.mkdir(parents=True, exist_ok=True)
+
+            findings = repo_hygiene.discover_embedded_git_repos(root, include_third_party=True)
+
+        self.assertEqual(findings, ["tmp/scratch"])
+
+    def test_discover_embedded_git_repos_skips_third_party_unless_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            nested = root / "third_party" / "other_dep" / ".git"
+            nested.mkdir(parents=True, exist_ok=True)
+
+            default_findings = repo_hygiene.discover_embedded_git_repos(root)
+            all_findings = repo_hygiene.discover_embedded_git_repos(root, include_third_party=True)
+
+        self.assertEqual(default_findings, [])
+        self.assertEqual(all_findings, ["third_party/other_dep"])
+
+    def test_build_scan_report_includes_embedded_git_repos(self) -> None:
+        findings = [repo_hygiene.MarkerFinding("a.py", 1, "TODO", "# TODO: fix")]
+        report = repo_hygiene.build_scan_report(
+            findings,
+            ["tmp/file.tmp"],
+            ["tmp/scratch"],
+        )
+
+        self.assertEqual(report["embedded_git_repos"], ["tmp/scratch"])
+        self.assertEqual(report["summary"]["embedded_git_repos"], 1)
+        self.assertEqual(report["summary"]["total_issues"], 3)
+
 
 if __name__ == "__main__":
     unittest.main()
