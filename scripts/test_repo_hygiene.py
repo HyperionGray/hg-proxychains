@@ -27,7 +27,6 @@ class RepoHygieneTests(unittest.TestCase):
             "keep/readme.md",
             "docs/.DS_Store",
             "build/result.txt",
-            "egressd-starter.tar.gz",
             "third_party/FunkyDNS/archive/funkydns.py~",
         ]
         stray = repo_hygiene.classify_stray_paths(untracked)
@@ -35,7 +34,6 @@ class RepoHygieneTests(unittest.TestCase):
             stray,
             [
                 "docs/.DS_Store",
-                "egressd-starter.tar.gz",
                 "notes.txt~",
                 "pkg/__pycache__/module.cpython-312.pyc",
                 "tmp/output.tmp",
@@ -148,6 +146,46 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_find_stale_artifacts_detects_tracked_and_untracked(self) -> None:
+        tracked = [
+            "egressd-starter.tar.gz",
+            "README.md",
+        ]
+        untracked = [
+            "egressd-starter.tar.gz",
+            "tmp/output.tmp",
+        ]
+
+        stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(tracked, untracked)
+
+        self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
+        self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
+
+    def test_find_stale_artifacts_skips_third_party_by_default(self) -> None:
+        tracked = ["third_party/generated.tar.gz"]
+        untracked = ["third_party/generated.tar.gz"]
+
+        with patch.object(
+            repo_hygiene,
+            "STALE_ARTIFACT_PATHS",
+            frozenset({"third_party/generated.tar.gz"}),
+        ):
+            stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(
+                tracked,
+                untracked,
+                include_third_party=False,
+            )
+            self.assertEqual(stale_tracked, [])
+            self.assertEqual(stale_untracked, [])
+
+            stale_tracked_inc, stale_untracked_inc = repo_hygiene.find_stale_artifacts(
+                tracked,
+                untracked,
+                include_third_party=True,
+            )
+            self.assertEqual(stale_tracked_inc, ["third_party/generated.tar.gz"])
+            self.assertEqual(stale_untracked_inc, ["third_party/generated.tar.gz"])
 
 
 if __name__ == "__main__":
