@@ -61,6 +61,33 @@ class RepoHygieneTests(unittest.TestCase):
             ],
         )
 
+    def test_find_embedded_git_repos_skips_root_and_gitlinks(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            gitlink = root / "third_party" / "FunkyDNS" / ".git"
+            gitlink.parent.mkdir(parents=True, exist_ok=True)
+            gitlink.write_text("gitdir: ../../.git/modules/third_party/FunkyDNS\n", encoding="utf-8")
+            embedded = root / "scratch" / ".git"
+            embedded.mkdir(parents=True, exist_ok=True)
+
+            findings = repo_hygiene.find_embedded_git_repos(root)
+
+        self.assertEqual(findings, ["scratch"])
+
+    def test_find_embedded_git_repos_can_include_third_party(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            embedded = root / "third_party" / "FunkyDNS" / "nested" / ".git"
+            embedded.mkdir(parents=True, exist_ok=True)
+
+            default_findings = repo_hygiene.find_embedded_git_repos(root)
+            with_third_party = repo_hygiene.find_embedded_git_repos(root, include_third_party=True)
+
+        self.assertEqual(default_findings, [])
+        self.assertEqual(with_third_party, ["third_party/FunkyDNS/nested"])
+
     def test_find_unfinished_markers_ignores_skipped_paths(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
