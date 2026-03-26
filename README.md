@@ -238,6 +238,9 @@ make maintenance-fix
 # equivalent: python3 scripts/repo_hygiene.py clean --repo-root .
 ```
 
+Embedded git repositories are reported as blocking findings in both `scan` and
+`clean`, but they are never auto-removed.
+
 `maintenance*` targets focus on first-party code by default. For a full scan that
 also includes `third_party/FunkyDNS`, use:
 
