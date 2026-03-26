@@ -10,6 +10,7 @@ Primary documentation has moved to:
 - Stray Python cache directories (`__pycache__/`)
 - Known stale artifacts (currently `egressd-starter.tar.gz`)
 - Embedded git repositories outside the allowed third-party submodule path
+  (`third_party/FunkyDNS/.git` is explicitly allowed as a gitlink file)
 
 By default, marker scanning includes tracked files in `third_party/FunkyDNS` when that repository is present.
 For day-to-day repo automation, prefer the first-party-only mode (`--no-include-third-party`)

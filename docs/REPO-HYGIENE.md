@@ -21,6 +21,8 @@ This repository includes a small maintenance utility at
   - Python cache outputs (`__pycache__/`, `*.pyc`, `*.pyo`)
   - common metadata noise (`.DS_Store`, `Thumbs.db`)
   - known generated bundles (`egressd-starter.tar.gz`)
+- Embedded git repositories nested inside the repo (excluding the root `.git`
+  and allowed gitlink files such as `third_party/FunkyDNS/.git`)
 
 The scanner intentionally skips `third_party/FunkyDNS/` when checking
 unfinished markers by default, because that path is managed as an external
@@ -45,6 +47,9 @@ python3 scripts/repo_hygiene.py scan --repo-root . --json
 
 # Include third-party dependency tree explicitly
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
+
+# Embedded git repo checks are included in normal scans
+python3 scripts/repo_hygiene.py scan --repo-root .
 
 # Remove untracked stray files/directories
 python3 scripts/repo_hygiene.py clean --repo-root .
@@ -94,6 +99,8 @@ By default, `scan`/`clean` load marker suppressions from:
 Override with `--baseline-file <path>`.
 
 The baseline currently suppresses marker findings only (not stray files).
+
+Embedded git repository findings are never baselined and are always reported.
 
 ## Legacy script
 
