@@ -119,6 +119,45 @@ class RepoHygieneTests(unittest.TestCase):
             self.assertEqual(deleted, 1)
             self.assertFalse((root / "tmp").exists())
 
+    def test_discover_embedded_git_repos_finds_nested_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            nested_git = root / "scratch" / ".git"
+            nested_git.mkdir(parents=True, exist_ok=True)
+
+            found = repo_hygiene.discover_embedded_git_repos(root)
+
+            self.assertEqual(found, ["scratch"])
+
+    def test_discover_embedded_git_repos_skips_submodule_gitlink(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            gitlink = root / "third_party" / "FunkyDNS" / ".git"
+            gitlink.parent.mkdir(parents=True, exist_ok=True)
+            gitlink.write_text(
+                "gitdir: ../../.git/modules/third_party/FunkyDNS\n",
+                encoding="utf-8",
+            )
+
+            found = repo_hygiene.discover_embedded_git_repos(
+                root, include_third_party=True
+            )
+
+            self.assertEqual(found, [])
+
+    def test_build_scan_report_includes_embedded_git_repos(self) -> None:
+        findings = [repo_hygiene.MarkerFinding("a.py", 2, "TODO", "# TODO: item")]
+        report = repo_hygiene.build_scan_report(
+            findings,
+            ["tmp/output.tmp"],
+            ["scratch"],
+        )
+        self.assertEqual(report["embedded_git_repos"], ["scratch"])
+        self.assertEqual(report["summary"]["embedded_git_repos"], 1)
+        self.assertEqual(report["summary"]["total_issues"], 3)
+
     def test_apply_marker_baseline_suppresses_known_findings(self) -> None:
         todo_line = "# TO" "DO: first"
         fixme_line = "# FI" "XME: second"
