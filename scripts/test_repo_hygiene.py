@@ -149,6 +149,50 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
 
+    def test_discover_embedded_git_repos_skips_root_and_gitlink(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            nested_git = root / "scratch" / ".git"
+            nested_git.mkdir(parents=True, exist_ok=True)
+            allowed_gitlink = root / "third_party" / "FunkyDNS" / ".git"
+            allowed_gitlink.parent.mkdir(parents=True, exist_ok=True)
+            allowed_gitlink.write_text(
+                "gitdir: ../../.git/modules/third_party/FunkyDNS\n",
+                encoding="utf-8",
+            )
+
+            found = repo_hygiene.discover_embedded_git_repos(root)
+
+        self.assertEqual(found, ["scratch"])
+
+    def test_discover_embedded_git_repos_respects_include_third_party(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            third_party_nested = root / "third_party" / "tmprepo" / ".git"
+            third_party_nested.mkdir(parents=True, exist_ok=True)
+
+            default_found = repo_hygiene.discover_embedded_git_repos(root)
+            all_found = repo_hygiene.discover_embedded_git_repos(
+                root, include_third_party=True
+            )
+
+        self.assertEqual(default_found, [])
+        self.assertEqual(all_found, ["third_party/tmprepo"])
+
+    def test_build_scan_report_includes_embedded_git_summary(self) -> None:
+        findings = [repo_hygiene.MarkerFinding("a.py", 2, "FIXME", "# FI" "XME: issue")]
+        report = repo_hygiene.build_scan_report(
+            findings=findings,
+            stray_paths=["tmp/a.tmp"],
+            embedded_git_repos=["scratch"],
+        )
+        summary = report["summary"]
+        self.assertEqual(report["embedded_git_repos"], ["scratch"])
+        self.assertEqual(summary["embedded_git_repos"], 1)
+        self.assertEqual(summary["total_issues"], 3)
+
 
 if __name__ == "__main__":
     unittest.main()
