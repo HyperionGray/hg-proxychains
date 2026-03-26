@@ -6,14 +6,14 @@ Use `scripts/repo_hygiene.py` directly for all maintenance checks and cleanup.
 Primary documentation has moved to:
 
 - Unfinished markers in tracked files (`TODO`, `FIXME`, `STUB`, `TBD`, `XXX`, `UNFINISHED`)
-- Backup files (`*~`, `*.bak`, `*.orig`, `*.old`, `*.tmp`)
+- Backup files (`*~`, `*.bak`, `*.orig`, `*.tmp`)
 - Stray Python cache directories (`__pycache__/`)
 - Known stale artifacts (currently `egressd-starter.tar.gz`)
 - Embedded git repositories outside the allowed third-party submodule path
 
-By default, marker scanning includes tracked files in `third_party/FunkyDNS` when that repository is present.
-For day-to-day repo automation, prefer the first-party-only mode (`--no-include-third-party`)
-to avoid noise from external dependency internals.
+By default, scans are first-party only and skip third-party paths. Use
+`--include-third-party` for full-tree scans when you intentionally want to
+inspect dependency internals.
 
 ## Commands
 
@@ -24,7 +24,7 @@ python3 scripts/repo_hygiene.py scan --repo-root .
 # JSON output for automation
 python3 scripts/repo_hygiene.py scan --repo-root . --json
 
-# Include third_party marker scan explicitly
+# Include third_party marker/stray/stale/embedded-git scan explicitly
 python3 scripts/repo_maintenance.py --include-third-party
 
 # Remove backup files + stray cache dirs + stale artifacts while scanning
@@ -45,8 +45,11 @@ make maintenance-all-json
 
 ## Notes
 
-- `--fix` removes backup files, stray `__pycache__/` directories, and known stale artifacts.
+- `--fix` removes backup files, stray `__pycache__/` directories, and stale untracked artifacts.
 - Unfinished markers are reported but not modified automatically.
 - Embedded git repositories are reported but never auto-removed by `--fix`.
+- Tracked stale artifacts are reported but never auto-removed by `--fix`.
 - Without `--fix`, exit code is `1` when any issues are found.
-- With `--fix`, exit code reflects post-fix state (`0` when only removable clutter was found and removed; `1` if issues remain).
+- With `--fix`, exit code reflects post-fix state:
+  - `0` when only removable untracked clutter was found and removed
+  - `1` when markers, tracked stale artifacts, embedded repos, or removable clutter remains
