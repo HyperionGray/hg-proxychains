@@ -9,6 +9,53 @@ import repo_hygiene
 
 
 class RepoHygieneTests(unittest.TestCase):
+    def test_path_matches_ignore_pattern_supports_path_basename_and_dir(self) -> None:
+        self.assertTrue(repo_hygiene.path_matches_ignore_pattern("logs/app.log", "*.log"))
+        self.assertTrue(repo_hygiene.path_matches_ignore_pattern("build/output.tmp", "build/"))
+        self.assertTrue(repo_hygiene.path_matches_ignore_pattern("tmp/__pycache__/x.pyc", "__pycache__/"))
+        self.assertTrue(repo_hygiene.path_matches_ignore_pattern("docs/notes.txt", "notes.txt"))
+        self.assertFalse(repo_hygiene.path_matches_ignore_pattern("docs/notes.txt", "*.md"))
+
+    def test_find_unfinished_markers_respects_ignore_patterns(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src_file = root / "src.py"
+            ignored_file = root / "ignoreme.py"
+            src_file.write_text("# TO" "DO: keep\n", encoding="utf-8")
+            ignored_file.write_text("# TO" "DO: hidden\n", encoding="utf-8")
+
+            findings = repo_hygiene.find_unfinished_markers(
+                root,
+                ["src.py", "ignoreme.py"],
+                ignore_patterns=["ignoreme.py"],
+            )
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].path, "src.py")
+
+    def test_classify_stray_paths_respects_ignore_patterns(self) -> None:
+        untracked = [
+            "logs/app.log",
+            "tmp/output.tmp",
+            "pkg/__pycache__/module.cpython-312.pyc",
+        ]
+        stray = repo_hygiene.classify_stray_paths(
+            untracked,
+            ignore_patterns=["*.log", "__pycache__/"],
+        )
+        self.assertEqual(stray, ["tmp/output.tmp"])
+
+    def test_load_ignore_patterns_ignores_comments_and_blank_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            ignore_file = root / ".repo-hygiene-ignore"
+            ignore_file.write_text(
+                "# comment\n\n*.log\nbuild/\n",
+                encoding="utf-8",
+            )
+            patterns = repo_hygiene.load_ignore_patterns(root, ".repo-hygiene-ignore")
+        self.assertEqual(patterns, ["*.log", "build/"])
+
     def test_should_skip_for_unfinished(self) -> None:
         self.assertTrue(repo_hygiene.should_skip_for_unfinished("third_party/FunkyDNS/dns_server/doh.py"))
         self.assertFalse(

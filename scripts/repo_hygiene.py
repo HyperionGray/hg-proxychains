@@ -60,6 +60,7 @@ UNFINISHED_SCAN_FILENAMES = {
     "Makefile",
 }
 BASELINE_DEFAULT_PATH = ".repo-hygiene-baseline.json"
+IGNORE_DEFAULT_PATH = ".repo-hygiene-ignore"
 THIRD_PARTY_PREFIX = "third_party/"
 STALE_ARTIFACT_PATHS: frozenset[str] = frozenset()
 # Add known stale tracked/untracked artifact paths here (e.g. generated bundles) as they arise.
@@ -119,11 +120,15 @@ def find_unfinished_markers(
     tracked_paths: Iterable[str],
     include_third_party: bool = False,
     excluded_paths: set[str] | None = None,
+    ignore_patterns: Sequence[str] | None = None,
 ) -> list[MarkerFinding]:
     excluded = excluded_paths or set()
+    ignored = ignore_patterns or ()
     findings: list[MarkerFinding] = []
     for rel_path in tracked_paths:
         if rel_path in excluded:
+            continue
+        if is_ignored_path(rel_path, ignored):
             continue
         if should_skip_for_unfinished(rel_path, include_third_party=include_third_party):
             continue
@@ -174,6 +179,44 @@ def marker_baseline_key(finding: MarkerFinding) -> tuple[str, str, str]:
     return finding.path, finding.marker, finding.line
 
 
+def load_ignore_patterns(repo_root: Path, ignore_path: str) -> list[str]:
+    candidate = repo_root / ignore_path
+    if not candidate.is_file():
+        return []
+    try:
+        lines = candidate.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        print(f"warn: failed to read ignore file {ignore_path}: {exc}", file=sys.stderr)
+        return []
+    patterns: list[str] = []
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        patterns.append(line)
+    return patterns
+
+
+def path_matches_ignore_pattern(rel_path: str, pattern: str) -> bool:
+    rel = Path(rel_path).as_posix()
+    rule = pattern.strip().lstrip("./")
+    if not rule:
+        return False
+    parts = Path(rel).parts
+    if rule.endswith("/"):
+        dir_rule = rule.rstrip("/")
+        if "/" in dir_rule:
+            return rel == dir_rule or rel.startswith(dir_rule + "/")
+        return any(fnmatch.fnmatch(part, dir_rule) for part in parts)
+    if "/" not in rule:
+        return any(fnmatch.fnmatch(part, rule) for part in parts)
+    return fnmatch.fnmatch(rel, rule)
+
+
+def is_ignored_path(rel_path: str, ignore_patterns: Sequence[str]) -> bool:
+    return any(path_matches_ignore_pattern(rel_path, pattern) for pattern in ignore_patterns)
+
+
 def load_marker_baseline(repo_root: Path, baseline_path: str) -> set[tuple[str, str, str]]:
     candidate = repo_root / baseline_path
     if not candidate.is_file():
@@ -215,9 +258,16 @@ def apply_marker_baseline(
     return kept, suppressed
 
 
-def classify_stray_paths(untracked_paths: Iterable[str], include_third_party: bool = False) -> list[str]:
+def classify_stray_paths(
+    untracked_paths: Iterable[str],
+    include_third_party: bool = False,
+    ignore_patterns: Sequence[str] | None = None,
+) -> list[str]:
+    ignored = ignore_patterns or ()
     stray: list[str] = []
     for rel_path in untracked_paths:
+        if is_ignored_path(rel_path, ignored):
+            continue
         if not include_third_party and rel_path.startswith(THIRD_PARTY_PREFIX):
             continue
         path_obj = Path(rel_path)
@@ -312,22 +362,31 @@ def command_scan(
     json_output: bool = False,
     include_third_party: bool = False,
     baseline_path: str = BASELINE_DEFAULT_PATH,
+    ignore_file_path: str = IGNORE_DEFAULT_PATH,
 ) -> int:
     tracked = collect_git_paths(repo_root, ("ls-files",), include_third_party=include_third_party)
     untracked = list_git_paths(repo_root, ("ls-files", "--others", "--exclude-standard"))
     baseline_rel = Path(baseline_path).as_posix()
+    ignore_patterns = load_ignore_patterns(repo_root, ignore_file_path)
     findings = find_unfinished_markers(
         repo_root,
         tracked,
         include_third_party=include_third_party,
         excluded_paths={baseline_rel},
+        ignore_patterns=ignore_patterns,
     )
     baseline = load_marker_baseline(repo_root, baseline_path)
     findings, suppressed = apply_marker_baseline(findings, baseline)
-    stray = classify_stray_paths(untracked, include_third_party=include_third_party)
+    stray = classify_stray_paths(
+        untracked,
+        include_third_party=include_third_party,
+        ignore_patterns=ignore_patterns,
+    )
     report = build_scan_report(findings, stray)
     if suppressed:
         report["suppressed_by_baseline"] = suppressed
+    if ignore_patterns:
+        report["ignore_patterns"] = len(ignore_patterns)
     if json_output:
         print(json.dumps(report, indent=2, sort_keys=True))
     else:
@@ -342,22 +401,31 @@ def command_clean(
     json_output: bool = False,
     include_third_party: bool = False,
     baseline_path: str = BASELINE_DEFAULT_PATH,
+    ignore_file_path: str = IGNORE_DEFAULT_PATH,
 ) -> int:
     tracked = collect_git_paths(repo_root, ("ls-files",), include_third_party=include_third_party)
     untracked = list_git_paths(repo_root, ("ls-files", "--others", "--exclude-standard"))
     baseline_rel = Path(baseline_path).as_posix()
+    ignore_patterns = load_ignore_patterns(repo_root, ignore_file_path)
     findings = find_unfinished_markers(
         repo_root,
         tracked,
         include_third_party=include_third_party,
         excluded_paths={baseline_rel},
+        ignore_patterns=ignore_patterns,
     )
     baseline = load_marker_baseline(repo_root, baseline_path)
     findings, suppressed = apply_marker_baseline(findings, baseline)
-    stray = classify_stray_paths(untracked, include_third_party=include_third_party)
+    stray = classify_stray_paths(
+        untracked,
+        include_third_party=include_third_party,
+        ignore_patterns=ignore_patterns,
+    )
     report = build_scan_report(findings, stray)
     if suppressed:
         report["suppressed_by_baseline"] = suppressed
+    if ignore_patterns:
+        report["ignore_patterns"] = len(ignore_patterns)
 
     if not json_output:
         if suppressed:
@@ -377,14 +445,21 @@ def command_clean(
     return 1 if findings else 0
 
 
-def command_baseline(repo_root: Path, include_third_party: bool, baseline_path: str) -> int:
+def command_baseline(
+    repo_root: Path,
+    include_third_party: bool,
+    baseline_path: str,
+    ignore_file_path: str = IGNORE_DEFAULT_PATH,
+) -> int:
     tracked = collect_git_paths(repo_root, ("ls-files",), include_third_party=include_third_party)
     baseline_rel_path = Path(baseline_path).as_posix()
+    ignore_patterns = load_ignore_patterns(repo_root, ignore_file_path)
     findings = find_unfinished_markers(
         repo_root,
         tracked,
         include_third_party=include_third_party,
         excluded_paths={baseline_rel_path},
+        ignore_patterns=ignore_patterns,
     )
     payload = {
         "unfinished_markers": [
@@ -432,6 +507,11 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         default=BASELINE_DEFAULT_PATH,
         help=f"marker baseline path relative to --repo-root (default: {BASELINE_DEFAULT_PATH})",
     )
+    parser.add_argument(
+        "--ignore-file",
+        default=IGNORE_DEFAULT_PATH,
+        help=f"ignore pattern file relative to --repo-root (default: {IGNORE_DEFAULT_PATH})",
+    )
     return parser.parse_args(argv)
 
 
@@ -443,19 +523,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     if args.command == "baseline":
-        return command_baseline(repo_root, args.include_third_party, args.baseline_file)
+        return command_baseline(
+            repo_root,
+            args.include_third_party,
+            args.baseline_file,
+            ignore_file_path=args.ignore_file,
+        )
     if args.command == "clean":
         return command_clean(
             repo_root,
             json_output=args.json,
             include_third_party=args.include_third_party,
             baseline_path=args.baseline_file,
+            ignore_file_path=args.ignore_file,
         )
     return command_scan(
         repo_root,
         json_output=args.json,
         include_third_party=args.include_third_party,
         baseline_path=args.baseline_file,
+        ignore_file_path=args.ignore_file,
     )
 
 

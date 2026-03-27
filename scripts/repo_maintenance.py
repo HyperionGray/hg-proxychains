@@ -137,6 +137,11 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         default=".repo-hygiene-baseline.json",
         help="Marker baseline path relative to --root (default: .repo-hygiene-baseline.json).",
     )
+    parser.add_argument(
+        "--ignore-file",
+        default=".repo-hygiene-ignore",
+        help="Ignore pattern file relative to --root (default: .repo-hygiene-ignore).",
+    )
     return parser.parse_args(argv)
 
 
@@ -154,6 +159,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         str(root),
         "--baseline-file",
         args.baseline_file,
+        "--ignore-file",
+        args.ignore_file,
     ]
     if args.include_third_party:
         cmd.append("--include-third-party")
