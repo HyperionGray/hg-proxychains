@@ -17,6 +17,7 @@ Both cases are considered "ok=True" by the hop connectivity check because the
 proxy *responded* — demonstrating that the hop is reachable and speaking the
 HTTP CONNECT protocol.
 """
+import base64
 import json
 import socket
 import socketserver
@@ -73,9 +74,37 @@ class _ConnectRefusedHandler(socketserver.BaseRequestHandler):
         self.request.close()
 
 
+class _RecordingTCPServer(socketserver.TCPServer):
+    allow_reuse_address = True
+
+
+class _RecordingConnectHandler(socketserver.BaseRequestHandler):
+    """Captures the raw CONNECT request before returning a canned response."""
+
+    def handle(self) -> None:
+        try:
+            request = self.request.recv(4096)
+            self.server.requests.append(request.decode("utf-8", errors="ignore"))
+            self.request.sendall(self.server.response_bytes)
+        except OSError:
+            pass
+
+
 def _start_mock_proxy(handler_class) -> tuple[socketserver.TCPServer, int]:
     """Start a mock proxy on an OS-assigned port; return (server, port)."""
     server = socketserver.TCPServer(("127.0.0.1", 0), handler_class)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, port
+
+
+def _start_recording_proxy(
+    response_bytes: bytes = b"HTTP/1.1 200 Connection Established\r\n\r\n",
+) -> tuple[_RecordingTCPServer, int]:
+    server = _RecordingTCPServer(("127.0.0.1", 0), _RecordingConnectHandler)
+    server.requests = []
+    server.response_bytes = response_bytes
     port = server.server_address[1]
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -139,12 +168,17 @@ class CheckHopConnectivityTests(unittest.TestCase):
         cls._accept_server, cls._accept_port = _start_mock_proxy(_ConnectAcceptHandler)
         cls._auth_server, cls._auth_port = _start_mock_proxy(_ConnectAuthRequiredHandler)
         cls._close_server, cls._close_port = _start_mock_proxy(_ConnectRefusedHandler)
+        cls._recording_server, cls._recording_port = _start_recording_proxy()
 
     @classmethod
     def tearDownClass(cls) -> None:
         cls._accept_server.shutdown()
         cls._auth_server.shutdown()
         cls._close_server.shutdown()
+        cls._recording_server.shutdown()
+
+    def setUp(self) -> None:
+        self._recording_server.requests.clear()
 
     def test_proxy_responding_200_is_ok(self) -> None:
         """
@@ -214,6 +248,34 @@ class CheckHopConnectivityTests(unittest.TestCase):
         )
         self.assertIn("proxy", result)
         self.assertIn("127.0.0.1", result["proxy"])
+
+    def test_connect_request_includes_target_and_proxy_headers(self) -> None:
+        result = supervisor.check_hop_connectivity(
+            f"http://127.0.0.1:{self._recording_port}",
+            "example.com:443",
+            timeout=3.0,
+        )
+
+        self.assertTrue(result["ok"], f"Expected ok=True; result: {result}")
+        self.assertEqual(len(self._recording_server.requests), 1)
+        request = self._recording_server.requests[0]
+        self.assertIn("CONNECT example.com:443 HTTP/1.1\r\n", request)
+        self.assertIn("Host: example.com:443\r\n", request)
+        self.assertIn("Proxy-Connection: keep-alive\r\n", request)
+        self.assertTrue(request.endswith("\r\n\r\n"))
+
+    def test_connect_request_includes_proxy_authorization_when_configured(self) -> None:
+        result = supervisor.check_hop_connectivity(
+            f"http://alice:s3cr3t@127.0.0.1:{self._recording_port}",
+            "example.com:443",
+            timeout=3.0,
+        )
+
+        self.assertTrue(result["ok"], f"Expected ok=True; result: {result}")
+        self.assertEqual(len(self._recording_server.requests), 1)
+        request = self._recording_server.requests[0]
+        token = base64.b64encode(b"alice:s3cr3t").decode("ascii")
+        self.assertIn(f"Proxy-Authorization: Basic {token}\r\n", request)
 
     @staticmethod
     def _find_free_port() -> int:
