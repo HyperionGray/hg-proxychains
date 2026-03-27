@@ -37,6 +37,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "egressd"))
 
 import supervisor  # noqa: E402
 
+HEADER_TERMINATOR = b"\r\n\r\n"
+# Keep three bytes of overlap so a four-byte terminator split across recv() calls
+# is still detectable in the rolling scan window.
+HEADER_TERMINATOR_OVERLAP = len(HEADER_TERMINATOR) - 1
+# Cap captured request size to bound helper memory use if a client misbehaves.
+MAX_REQUEST_BYTES = 65536
+RECV_BUFFER_SIZE = 4096
+
 
 # ---------------------------------------------------------------------------
 # Minimal in-process mock HTTP CONNECT proxies
@@ -83,8 +91,28 @@ class _RecordingConnectHandler(socketserver.BaseRequestHandler):
 
     def handle(self) -> None:
         try:
-            request = self.request.recv(4096)
-            self.server.requests.append(request.decode("utf-8", errors="ignore"))
+            self.request.settimeout(self.server.request_timeout_s)
+            request = bytearray()
+            while True:
+                chunk = self.request.recv(RECV_BUFFER_SIZE)
+                if not chunk:
+                    break
+                request.extend(chunk)
+                scan_window_size = len(chunk) + HEADER_TERMINATOR_OVERLAP
+                scan_start_index = max(
+                    0, len(request) - scan_window_size
+                )
+                tail_window = bytes(request[scan_start_index:])
+                if (
+                    HEADER_TERMINATOR in tail_window
+                    or len(request) >= self.server.max_request_bytes
+                ):
+                    break
+            with self.server.requests_lock:
+                # Keep malformed bytes inspectable in assertion output.
+                self.server.requests.append(
+                    request.decode("utf-8", errors="backslashreplace")
+                )
             self.request.sendall(self.server.response_bytes)
         except OSError:
             pass
@@ -104,6 +132,9 @@ def _start_recording_proxy(
 ) -> tuple[_RecordingTCPServer, int]:
     server = _RecordingTCPServer(("127.0.0.1", 0), _RecordingConnectHandler)
     server.requests = []
+    server.requests_lock = threading.Lock()
+    server.request_timeout_s = 1.0
+    server.max_request_bytes = MAX_REQUEST_BYTES
     server.response_bytes = response_bytes
     port = server.server_address[1]
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -178,7 +209,8 @@ class CheckHopConnectivityTests(unittest.TestCase):
         cls._recording_server.shutdown()
 
     def setUp(self) -> None:
-        self._recording_server.requests.clear()
+        with self._recording_server.requests_lock:
+            self._recording_server.requests.clear()
 
     def test_proxy_responding_200_is_ok(self) -> None:
         """
