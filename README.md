@@ -248,6 +248,15 @@ make maintenance-all-json
 
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
 
+To intentionally suppress known-safe paths, add patterns to `.repo-hygiene-ignore`
+in repo root (gitignore-style, one pattern per line):
+
+- blank lines and `#` comments are ignored
+- basename globs like `*.log` match any path component
+- directory names like `__pycache__/` match matching directory segments anywhere
+- path prefixes like `build/` match that subtree
+- path globs like `docs/generated/*.json` match full relative paths
+
 For focused first-party hygiene scans and stray cleanup:
 
 ```bash

@@ -1,9 +1,10 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
+`scripts/repo_hygiene.py` is the primary maintenance scanner/cleaner.
+`scripts/repo_maintenance.py` remains as a compatibility wrapper.
 
-This repository includes a small maintenance utility at
-`scripts/repo_hygiene.py` for scheduled cleanups and local checks.
+This repository includes a maintenance utility at `scripts/repo_hygiene.py`
+for scheduled cleanups and local checks.
 
 ## What it checks
 
@@ -32,6 +33,9 @@ use `--include-third-party`.
 Known upstream unfinished markers can be recorded in a baseline file so
 scheduled jobs can fail only on new findings.
 
+An optional ignore file lets you suppress path patterns for both unfinished
+marker scans and stray-path checks.
+
 ## Usage
 
 From repo root:
@@ -45,6 +49,9 @@ python3 scripts/repo_hygiene.py scan --repo-root . --json
 
 # Include third-party dependency tree explicitly
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
+
+# Use a custom ignore file path
+python3 scripts/repo_hygiene.py scan --repo-root . --ignore-file .repo-hygiene-ignore
 
 # Remove untracked stray files/directories
 python3 scripts/repo_hygiene.py clean --repo-root .
@@ -94,6 +101,21 @@ By default, `scan`/`clean` load marker suppressions from:
 Override with `--baseline-file <path>`.
 
 The baseline currently suppresses marker findings only (not stray files).
+
+## Ignore file
+
+By default, `scan`/`clean`/`baseline` load optional path patterns from:
+
+- `.repo-hygiene-ignore`
+
+Override with `--ignore-file <path>`.
+
+Pattern rules:
+
+- blank lines and `#` comments are ignored
+- `*.log` style globs match path segments
+- `build/` style entries match whole directories recursively
+- `foo/bar.py` style entries match repo-relative paths
 
 ## Legacy script
 
