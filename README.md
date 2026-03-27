@@ -256,6 +256,10 @@ make repo-clean
 make repo-scan-json
 ```
 
+Embedded git repositories are reported under an `embedded_git_repositories`
+section in both text and JSON output. The scanner allows known gitlinks for the
+`third_party/FunkyDNS` submodule and flags any other nested git repositories.
+
 ## Notes on FunkyDNS review
 
 I added a short review in `docs/FUNKYDNS-REVIEW.md` with the concrete issues worth fixing before you rely on it in a production-ish setup.

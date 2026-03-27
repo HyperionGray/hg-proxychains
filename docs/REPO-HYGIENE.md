@@ -21,6 +21,9 @@ This repository includes a small maintenance utility at
   - Python cache outputs (`__pycache__/`, `*.pyc`, `*.pyo`)
   - common metadata noise (`.DS_Store`, `Thumbs.db`)
   - known generated bundles (`egressd-starter.tar.gz`)
+- Embedded git repositories:
+  - reports nested `.git/` directories outside allowed third-party paths
+  - ignores the repository root `.git/` and valid submodule gitlink files
 
 The scanner intentionally skips `third_party/FunkyDNS/` when checking
 unfinished markers by default, because that path is managed as an external
@@ -84,6 +87,22 @@ delegates to `scripts/repo_hygiene.py`.
   - `scan`: unfinished markers, stray untracked files, or stale artifacts
   - `clean`: unfinished markers or tracked stale artifacts (removable clutter is deleted)
 - `2`: invalid invocation (for example, non-git directory)
+
+## Embedded git repository detection
+
+`repo_hygiene.py` now reports embedded git repositories in both `scan` and `clean`
+output under:
+
+- text output section: `embedded git repositories`
+- JSON key: `embedded_git_repositories`
+
+Detection behavior:
+
+- scans for nested `.git` entries below repo root
+- skips root `.git`
+- skips `.git` files that contain `gitdir:` (normal submodule metadata)
+- by default, ignores everything under `third_party/`
+- includes `third_party/` only when `--include-third-party` is set
 
 ## Baseline file
 
