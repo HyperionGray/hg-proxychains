@@ -45,7 +45,7 @@ make maintenance-all-json
 
 ## Notes
 
-- `--fix` removes backup files, stray `__pycache__/` directories, and known stale artifacts.
+- `--fix` removes backup files, stray cache directories, and known stale artifacts.
 - Unfinished markers are reported but not modified automatically.
 - Embedded git repositories are reported but never auto-removed by `--fix`.
 - Without `--fix`, exit code is `1` when any issues are found.

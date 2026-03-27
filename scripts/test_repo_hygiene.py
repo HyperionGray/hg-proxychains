@@ -131,6 +131,43 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(suppressed, 1)
         self.assertEqual([f.path for f in filtered], ["a.py"])
 
+    def test_find_stale_artifacts_detects_known_paths(self) -> None:
+        tracked = ["README.md", "egressd-starter.tar.gz"]
+        untracked = ["tmp/output.tmp", "egressd-starter.tar.gz"]
+
+        stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(tracked, untracked)
+
+        self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
+        self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
+
+    def test_discover_embedded_git_repos_skips_root_and_allowed_submodule(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            (root / ".gitmodules").write_text(
+                '[submodule "third_party/FunkyDNS"]\n'
+                "\tpath = third_party/FunkyDNS\n"
+                "\turl = https://example.invalid/FunkyDNS.git\n",
+                encoding="utf-8",
+            )
+            allowed_gitlink = root / "third_party" / "FunkyDNS" / ".git"
+            allowed_gitlink.parent.mkdir(parents=True, exist_ok=True)
+            allowed_gitlink.write_text("gitdir: ../../.git/modules/third_party/FunkyDNS\n", encoding="utf-8")
+
+            nested_dep = root / "third_party" / "FunkyDNS" / "tmp" / ".git"
+            nested_dep.mkdir(parents=True, exist_ok=True)
+            scratch = root / "scratch" / ".git"
+            scratch.mkdir(parents=True, exist_ok=True)
+
+            found_first_party = repo_hygiene.discover_embedded_git_repos(
+                root,
+                include_third_party=False,
+            )
+            found_all = repo_hygiene.discover_embedded_git_repos(root, include_third_party=True)
+
+        self.assertEqual(found_first_party, ["scratch"])
+        self.assertEqual(found_all, ["scratch", "third_party/FunkyDNS/tmp"])
+
     def test_find_unfinished_markers_excludes_baseline_file(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
