@@ -246,6 +246,10 @@ make maintenance-all
 make maintenance-all-json
 ```
 
+When an unexpected nested `.git` repository is discovered, `repo_hygiene.py`
+reports it under `embedded_git_repositories` and (for text output) prints each
+path so cleanup can be done intentionally.
+
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
 
 For focused first-party hygiene scans and stray cleanup:
