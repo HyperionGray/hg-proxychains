@@ -1,9 +1,8 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
-
-This repository includes a small maintenance utility at
-`scripts/repo_hygiene.py` for scheduled cleanups and local checks.
+`scripts/repo_hygiene.py` is the primary repository hygiene tool used by
+`make maintenance` and related targets. `scripts/repo_maintenance.py` remains
+as a compatibility wrapper for legacy invocations.
 
 ## What it checks
 
@@ -21,13 +20,15 @@ This repository includes a small maintenance utility at
   - Python cache outputs (`__pycache__/`, `*.pyc`, `*.pyo`)
   - common metadata noise (`.DS_Store`, `Thumbs.db`)
   - known generated bundles (`egressd-starter.tar.gz`)
+- Filesystem stray cache directories (including empty cache directories)
+  - `__pycache__/`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`
+- Unexpected embedded git repositories (nested `.git` directories/files that are
+  not gitlink submodule metadata)
 
-The scanner intentionally skips `third_party/FunkyDNS/` when checking
-unfinished markers by default, because that path is managed as an external
-dependency.
+By default, scans are first-party oriented and skip `third_party/` noise,
+including `third_party/FunkyDNS/`.
 
-When you do want full-repo scanning (including nested third-party git state),
-use `--include-third-party`.
+When you do want full-repo scanning, use `--include-third-party`.
 
 Known upstream unfinished markers can be recorded in a baseline file so
 scheduled jobs can fail only on new findings.
@@ -74,15 +75,18 @@ make repo-clean
 make repo-scan-json
 ```
 
-`scripts/repo_maintenance.py` is retained as a compatibility wrapper and now
+`clean` removes removable clutter (stray files, stray directories, and stale
+untracked artifacts), then reports what remains.
+
+`scripts/repo_maintenance.py` is retained as a compatibility wrapper and
 delegates to `scripts/repo_hygiene.py`.
 
 ## Exit codes
 
 - `0`: no issues remain after the command completes
 - `1`: blocking issues found
-  - `scan`: unfinished markers, stray untracked files, or stale artifacts
-  - `clean`: unfinished markers or tracked stale artifacts (removable clutter is deleted)
+  - `scan`: unfinished markers, stray files/dirs, stale artifacts, or embedded repos
+  - `clean`: unfinished markers, tracked stale artifacts, embedded repos, or remaining removable clutter
 - `2`: invalid invocation (for example, non-git directory)
 
 ## Baseline file

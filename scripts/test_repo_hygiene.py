@@ -61,6 +61,42 @@ class RepoHygieneTests(unittest.TestCase):
             ],
         )
 
+    def test_discover_stray_dirs_detects_cache_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "pkg" / "__pycache__").mkdir(parents=True, exist_ok=True)
+            (root / ".pytest_cache").mkdir(parents=True, exist_ok=True)
+            (root / "third_party" / "FunkyDNS" / "__pycache__").mkdir(parents=True, exist_ok=True)
+
+            stray = repo_hygiene.discover_stray_dirs(root)
+            stray_with_third_party = repo_hygiene.discover_stray_dirs(root, include_third_party=True)
+
+        self.assertEqual(stray, [".pytest_cache", "pkg/__pycache__"])
+        self.assertEqual(
+            stray_with_third_party,
+            [
+                ".pytest_cache",
+                "pkg/__pycache__",
+                "third_party/FunkyDNS/__pycache__",
+            ],
+        )
+
+    def test_discover_embedded_git_repos_skips_root_and_gitlink(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            gitlink = root / "third_party" / "FunkyDNS" / ".git"
+            gitlink.parent.mkdir(parents=True, exist_ok=True)
+            gitlink.write_text("gitdir: ../../.git/modules/third_party/FunkyDNS\n", encoding="utf-8")
+            nested = root / "scratch" / ".git"
+            nested.mkdir(parents=True, exist_ok=True)
+
+            repos = repo_hygiene.discover_embedded_git_repos(root)
+            repos_with_third_party = repo_hygiene.discover_embedded_git_repos(root, include_third_party=True)
+
+        self.assertEqual(repos, ["scratch"])
+        self.assertEqual(repos_with_third_party, ["scratch"])
+
     def test_find_unfinished_markers_ignores_skipped_paths(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -148,6 +184,24 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_build_scan_report_includes_extended_summary_fields(self) -> None:
+        findings = [repo_hygiene.MarkerFinding("a.py", 1, "TODO", "# TODO: x")]
+        report = repo_hygiene.build_scan_report_v2(
+            findings=findings,
+            stray_untracked_paths=["tmp/x.tmp"],
+            stray_dirs=["pkg/__pycache__"],
+            embedded_git_repos=["scratch"],
+            stale_tracked_artifacts=[],
+            stale_untracked_artifacts=["egressd-starter.tar.gz"],
+        )
+        summary = report["summary"]
+        self.assertEqual(summary["unfinished_markers"], 1)
+        self.assertEqual(summary["stray_untracked_paths"], 1)
+        self.assertEqual(summary["stray_dirs"], 1)
+        self.assertEqual(summary["embedded_git_repos"], 1)
+        self.assertEqual(summary["stale_untracked_artifacts"], 1)
+        self.assertEqual(summary["total_issues"], 5)
 
 
 if __name__ == "__main__":
