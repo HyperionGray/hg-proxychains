@@ -231,7 +231,7 @@ make maintenance
 # equivalent: python3 scripts/repo_hygiene.py scan --repo-root .
 ```
 
-For automatic cleanup of removable clutter (backup files, stray `__pycache__/` dirs, and known stale artifacts):
+For automatic cleanup of removable clutter (backup files, stray `__pycache__/` dirs, and known stale untracked artifacts):
 
 ```bash
 make maintenance-fix
@@ -255,6 +255,10 @@ make repo-scan
 make repo-clean
 make repo-scan-json
 ```
+
+`repo_hygiene.py clean` removes only untracked clutter and then re-checks
+cleanup candidates, while still returning non-zero if unresolved issues remain
+(for example unfinished markers, tracked stale artifacts, or embedded git repos).
 
 ## Notes on FunkyDNS review
 
