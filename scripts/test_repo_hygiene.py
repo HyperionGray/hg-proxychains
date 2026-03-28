@@ -35,7 +35,6 @@ class RepoHygieneTests(unittest.TestCase):
             stray,
             [
                 "docs/.DS_Store",
-                "egressd-starter.tar.gz",
                 "notes.txt~",
                 "pkg/__pycache__/module.cpython-312.pyc",
                 "tmp/output.tmp",
@@ -88,6 +87,36 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(findings[0].marker, "TODO")
         self.assertEqual(len(findings_with_dep), 2)
         self.assertEqual(findings_with_dep[1].path, "third_party/FunkyDNS/dep.py")
+
+    def test_find_stale_artifacts_detects_tracked_and_untracked(self) -> None:
+        tracked = ["README.md", "egressd-starter.tar.gz"]
+        untracked = ["notes.txt~", "egressd-starter.tar.gz"]
+        stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(tracked, untracked)
+        self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
+        self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
+
+    def test_discover_embedded_git_repos_skips_gitlink_files(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+
+            submodule_git = root / "third_party" / "FunkyDNS" / ".git"
+            submodule_git.parent.mkdir(parents=True, exist_ok=True)
+            submodule_git.write_text(
+                "gitdir: ../../.git/modules/third_party/FunkyDNS\n",
+                encoding="utf-8",
+            )
+
+            stray = root / "tmp" / "nested" / ".git"
+            stray.mkdir(parents=True, exist_ok=True)
+
+            found_default = repo_hygiene.discover_embedded_git_repos(root)
+            found_with_third_party = repo_hygiene.discover_embedded_git_repos(
+                root, include_third_party=True
+            )
+
+        self.assertEqual(found_default, ["tmp/nested"])
+        self.assertEqual(found_with_third_party, ["tmp/nested"])
 
     def test_find_unfinished_markers_can_include_third_party(self) -> None:
         with tempfile.TemporaryDirectory() as td:
