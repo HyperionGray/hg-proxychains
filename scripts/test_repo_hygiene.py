@@ -27,7 +27,6 @@ class RepoHygieneTests(unittest.TestCase):
             "keep/readme.md",
             "docs/.DS_Store",
             "build/result.txt",
-            "egressd-starter.tar.gz",
             "third_party/FunkyDNS/archive/funkydns.py~",
         ]
         stray = repo_hygiene.classify_stray_paths(untracked)
@@ -35,7 +34,6 @@ class RepoHygieneTests(unittest.TestCase):
             stray,
             [
                 "docs/.DS_Store",
-                "egressd-starter.tar.gz",
                 "notes.txt~",
                 "pkg/__pycache__/module.cpython-312.pyc",
                 "tmp/output.tmp",
@@ -60,6 +58,36 @@ class RepoHygieneTests(unittest.TestCase):
                 "tmp/output.tmp",
             ],
         )
+
+    def test_find_stale_artifacts_reports_tracked_and_untracked(self) -> None:
+        tracked = [
+            "README.md",
+            "egressd-starter.tar.gz",
+        ]
+        untracked = [
+            "egressd-starter.tar.gz",
+            "notes.txt~",
+        ]
+        stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(tracked, untracked)
+        self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
+        self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
+
+    def test_build_scan_report_includes_stale_artifact_counts(self) -> None:
+        findings = [
+            repo_hygiene.MarkerFinding("a.py", 1, "TODO", "# TO" "DO: fix"),
+        ]
+        report = repo_hygiene.build_scan_report(
+            findings=findings,
+            stray_paths=["tmp/output.tmp"],
+            stale_tracked=["egressd-starter.tar.gz"],
+            stale_untracked=["egressd-starter.tar.gz"],
+        )
+        summary = report["summary"]
+        self.assertEqual(summary["unfinished_markers"], 1)
+        self.assertEqual(summary["stray_untracked_paths"], 1)
+        self.assertEqual(summary["stale_tracked_artifacts"], 1)
+        self.assertEqual(summary["stale_untracked_artifacts"], 1)
+        self.assertEqual(summary["total_issues"], 4)
 
     def test_find_unfinished_markers_ignores_skipped_paths(self) -> None:
         with tempfile.TemporaryDirectory() as td:
