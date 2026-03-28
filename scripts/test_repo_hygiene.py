@@ -149,6 +149,62 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
 
+    def test_discover_embedded_git_repos_skips_allowed_submodule_gitlink(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            allowed = root / "third_party" / "FunkyDNS" / ".git"
+            allowed.parent.mkdir(parents=True, exist_ok=True)
+            allowed.write_text("gitdir: ../../.git/modules/third_party/FunkyDNS\n", encoding="utf-8")
+            nested = root / "scratch" / ".git"
+            nested.mkdir(parents=True, exist_ok=True)
+
+            found = repo_hygiene.discover_embedded_git_repos(root, include_third_party=True)
+
+        self.assertEqual(found, ["scratch"])
+
+    def test_discover_embedded_git_repos_skips_third_party_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            third_party_nested = root / "third_party" / "FunkyDNS" / "scratch" / ".git"
+            third_party_nested.mkdir(parents=True, exist_ok=True)
+
+            found = repo_hygiene.discover_embedded_git_repos(root)
+
+        self.assertEqual(found, [])
+
+    def test_discover_embedded_git_repos_can_include_third_party(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            third_party_nested = root / "third_party" / "FunkyDNS" / "scratch" / ".git"
+            third_party_nested.mkdir(parents=True, exist_ok=True)
+
+            found = repo_hygiene.discover_embedded_git_repos(root, include_third_party=True)
+
+        self.assertEqual(found, ["third_party/FunkyDNS/scratch"])
+
+    def test_build_scan_report_includes_embedded_git_repos(self) -> None:
+        marker_line = "# TO" "DO: x"
+        findings = [repo_hygiene.MarkerFinding("a.py", 2, "TODO", marker_line)]
+        report = repo_hygiene.build_scan_report(
+            findings,
+            stray_paths=["tmp/file.tmp"],
+            embedded_git_repos=["scratch"],
+        )
+
+        self.assertEqual(report["embedded_git_repos"], ["scratch"])
+        self.assertEqual(
+            report["summary"],
+            {
+                "unfinished_markers": 1,
+                "stray_untracked_paths": 1,
+                "embedded_git_repos": 1,
+                "total_issues": 3,
+            },
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
