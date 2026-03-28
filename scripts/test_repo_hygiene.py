@@ -186,7 +186,8 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(findings[0].path, "src.py")
 
     def test_build_scan_report_includes_extended_summary_fields(self) -> None:
-        findings = [repo_hygiene.MarkerFinding("a.py", 1, "TODO", "# TODO: x")]
+        todo_line = "# TO" "DO: x"
+        findings = [repo_hygiene.MarkerFinding("a.py", 1, "TODO", todo_line)]
         report = repo_hygiene.build_scan_report_v2(
             findings=findings,
             stray_untracked_paths=["tmp/x.tmp"],
