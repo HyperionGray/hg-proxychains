@@ -246,6 +246,12 @@ make maintenance-all
 make maintenance-all-json
 ```
 
+`repo_hygiene.py` scan output now separates:
+
+- stale tracked artifacts (manual action required)
+- stale untracked artifacts (auto-cleanable via `clean`)
+- embedded nested git repositories (reported only; never auto-removed)
+
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
 
 For focused first-party hygiene scans and stray cleanup:
