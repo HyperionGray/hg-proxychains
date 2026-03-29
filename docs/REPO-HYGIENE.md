@@ -1,6 +1,7 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
+`scripts/repo_hygiene.py` is the primary scanner/cleaner used by maintenance
+automation. `scripts/repo_maintenance.py` remains as a compatibility wrapper.
 
 This repository includes a small maintenance utility at
 `scripts/repo_hygiene.py` for scheduled cleanups and local checks.
@@ -21,12 +22,15 @@ This repository includes a small maintenance utility at
   - Python cache outputs (`__pycache__/`, `*.pyc`, `*.pyo`)
   - common metadata noise (`.DS_Store`, `Thumbs.db`)
   - known generated bundles (`egressd-starter.tar.gz`)
+- Embedded git repositories (unexpected nested `.git` directories) outside the
+  allowed `third_party/FunkyDNS` submodule checkout root
 
-The scanner intentionally skips `third_party/FunkyDNS/` when checking
-unfinished markers by default, because that path is managed as an external
+By default, marker scanning and embedded-repo detection skip
+`third_party/FunkyDNS/` internals because that path is managed as an external
 dependency.
 
-When you do want full-repo scanning (including nested third-party git state),
+When you do want full-repo scanning (including nested third-party git state and
+dependency markers),
 use `--include-third-party`.
 
 Known upstream unfinished markers can be recorded in a baseline file so
@@ -64,6 +68,9 @@ Optional deep scan including `third_party/FunkyDNS` unfinished markers:
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 ```
 
+`clean` removes only removable clutter (stray files/directories). Embedded git
+repositories are reported but never auto-deleted.
+
 Or through Make targets:
 
 ```bash
@@ -81,8 +88,8 @@ delegates to `scripts/repo_hygiene.py`.
 
 - `0`: no issues remain after the command completes
 - `1`: blocking issues found
-  - `scan`: unfinished markers, stray untracked files, or stale artifacts
-  - `clean`: unfinished markers or tracked stale artifacts (removable clutter is deleted)
+  - `scan`: unfinished markers, stray untracked files, or embedded git repos
+  - `clean`: unfinished markers or embedded git repos (removable clutter is deleted)
 - `2`: invalid invocation (for example, non-git directory)
 
 ## Baseline file
@@ -93,7 +100,8 @@ By default, `scan`/`clean` load marker suppressions from:
 
 Override with `--baseline-file <path>`.
 
-The baseline currently suppresses marker findings only (not stray files).
+The baseline currently suppresses marker findings only (not stray files or
+embedded repo findings).
 
 ## Legacy script
 

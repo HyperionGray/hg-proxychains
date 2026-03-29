@@ -49,4 +49,4 @@ make maintenance-all-json
 - Unfinished markers are reported but not modified automatically.
 - Embedded git repositories are reported but never auto-removed by `--fix`.
 - Without `--fix`, exit code is `1` when any issues are found.
-- With `--fix`, exit code reflects post-fix state (`0` when only removable clutter was found and removed; `1` if issues remain).
+- With `--fix`, exit code reflects post-fix state (`0` when only removable clutter was found and removed; `1` if unfinished markers or embedded repositories remain).
