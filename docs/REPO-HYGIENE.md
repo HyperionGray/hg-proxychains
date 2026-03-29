@@ -1,6 +1,7 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
+`scripts/repo_hygiene.py` is the primary scanner used by maintenance targets.
+`scripts/repo_maintenance.py` remains only as a compatibility wrapper.
 
 This repository includes a small maintenance utility at
 `scripts/repo_hygiene.py` for scheduled cleanups and local checks.
@@ -20,7 +21,8 @@ This repository includes a small maintenance utility at
   - temporary files (`*.tmp`)
   - Python cache outputs (`__pycache__/`, `*.pyc`, `*.pyo`)
   - common metadata noise (`.DS_Store`, `Thumbs.db`)
-  - known generated bundles (`egressd-starter.tar.gz`)
+- Known stale artifacts (`egressd-starter.tar.gz`) in tracked or untracked paths
+- Embedded git repositories outside valid gitdir-based submodule checkouts
 
 The scanner intentionally skips `third_party/FunkyDNS/` when checking
 unfinished markers by default, because that path is managed as an external
@@ -81,8 +83,8 @@ delegates to `scripts/repo_hygiene.py`.
 
 - `0`: no issues remain after the command completes
 - `1`: blocking issues found
-  - `scan`: unfinished markers, stray untracked files, or stale artifacts
-  - `clean`: unfinished markers or tracked stale artifacts (removable clutter is deleted)
+  - `scan`: unfinished markers, stray untracked files, stale artifacts, or embedded git repos
+  - `clean`: unfinished markers, stale tracked artifacts, embedded git repos, or failed cleanup (removable clutter is deleted when possible)
 - `2`: invalid invocation (for example, non-git directory)
 
 ## Baseline file

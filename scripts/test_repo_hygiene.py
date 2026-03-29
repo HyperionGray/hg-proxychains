@@ -35,7 +35,6 @@ class RepoHygieneTests(unittest.TestCase):
             stray,
             [
                 "docs/.DS_Store",
-                "egressd-starter.tar.gz",
                 "notes.txt~",
                 "pkg/__pycache__/module.cpython-312.pyc",
                 "tmp/output.tmp",
@@ -148,6 +147,54 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_find_stale_artifacts_detects_tracked_and_untracked(self) -> None:
+        tracked = ["egressd-starter.tar.gz", "src/app.py"]
+        untracked = ["egressd-starter.tar.gz", "notes.txt"]
+        stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(tracked, untracked)
+        self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
+        self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
+
+    def test_find_stale_artifacts_respects_third_party_scope(self) -> None:
+        target = "third_party/FunkyDNS/archive/old-bundle.tgz"
+        with patch.object(repo_hygiene, "STALE_ARTIFACT_PATHS", frozenset({target})):
+            tracked = [target]
+            untracked = [target]
+            stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(tracked, untracked)
+            self.assertEqual(stale_tracked, [])
+            self.assertEqual(stale_untracked, [])
+            stale_tracked_all, stale_untracked_all = repo_hygiene.find_stale_artifacts(
+                tracked,
+                untracked,
+                include_third_party=True,
+            )
+            self.assertEqual(stale_tracked_all, [target])
+            self.assertEqual(stale_untracked_all, [target])
+
+    def test_find_embedded_git_repos_skips_submodule_gitdir_file(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            gitdir_file = root / "third_party" / "FunkyDNS" / ".git"
+            gitdir_file.parent.mkdir(parents=True, exist_ok=True)
+            gitdir_file.write_text("gitdir: ../../.git/modules/third_party/FunkyDNS\n", encoding="utf-8")
+            nested = root / "scratch" / ".git"
+            nested.mkdir(parents=True, exist_ok=True)
+
+            repos = repo_hygiene.find_embedded_git_repos(root, include_third_party=True)
+
+        self.assertEqual(repos, ["scratch"])
+
+    def test_find_embedded_git_repos_skips_third_party_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            nested = root / "third_party" / "FunkyDNS" / "bad" / ".git"
+            nested.mkdir(parents=True, exist_ok=True)
+
+            repos = repo_hygiene.find_embedded_git_repos(root)
+
+        self.assertEqual(repos, [])
 
 
 if __name__ == "__main__":
