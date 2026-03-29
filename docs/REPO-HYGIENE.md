@@ -20,7 +20,7 @@ This repository includes a small maintenance utility at
   - temporary files (`*.tmp`)
   - Python cache outputs (`__pycache__/`, `*.pyc`, `*.pyo`)
   - common metadata noise (`.DS_Store`, `Thumbs.db`)
-  - known generated bundles (`egressd-starter.tar.gz`)
+  - known generated bundles (`egressd-starter.tar.gz`) reported under stale artifact categories
 
 The scanner intentionally skips `third_party/FunkyDNS/` when checking
 unfinished markers by default, because that path is managed as an external
@@ -77,11 +77,23 @@ make repo-scan-json
 `scripts/repo_maintenance.py` is retained as a compatibility wrapper and now
 delegates to `scripts/repo_hygiene.py`.
 
+## Report fields
+
+`scan`/`clean` output now splits artifact hygiene into explicit categories:
+
+- `stray_untracked_paths`
+- `stale_tracked_paths`
+- `stale_untracked_paths`
+
+In `clean` mode, only `stray_untracked_paths` and `stale_untracked_paths` are
+auto-removed. Tracked stale artifacts are reported and keep the command in a
+failing state.
+
 ## Exit codes
 
 - `0`: no issues remain after the command completes
 - `1`: blocking issues found
-  - `scan`: unfinished markers, stray untracked files, or stale artifacts
+  - `scan`: unfinished markers, stray untracked files, tracked stale artifacts, or untracked stale artifacts
   - `clean`: unfinished markers or tracked stale artifacts (removable clutter is deleted)
 - `2`: invalid invocation (for example, non-git directory)
 
