@@ -248,6 +248,14 @@ make maintenance-all-json
 
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
 
+The JSON report now includes explicit sections for:
+
+- `stale_artifacts` (`tracked_paths` and `untracked_paths`)
+- `embedded_git_repos`
+
+`repo-clean`/`maintenance-fix` delete removable clutter only (stray paths plus stale
+untracked artifacts). They do not auto-delete tracked stale artifacts or embedded git repos.
+
 For focused first-party hygiene scans and stray cleanup:
 
 ```bash
