@@ -171,6 +171,19 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(default, ["pkg/__pycache__"])
         self.assertEqual(with_third_party, ["pkg/__pycache__", "third_party/FunkyDNS/.pytest_cache"])
 
+    def test_discover_stray_dirs_ignores_virtualenv_trees(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            ignored_cache = root / ".venv" / "lib" / "python3.12" / "__pycache__"
+            ignored_cache.mkdir(parents=True, exist_ok=True)
+            tracked_cache = root / "src" / "__pycache__"
+            tracked_cache.mkdir(parents=True, exist_ok=True)
+
+            found = repo_hygiene.discover_stray_dirs(root)
+
+        self.assertEqual(found, ["src/__pycache__"])
+
     def test_discover_embedded_git_repos_skips_gitlink_and_root_git(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -213,7 +226,7 @@ class RepoHygieneTests(unittest.TestCase):
             cache_dir.mkdir(parents=True, exist_ok=True)
             (cache_dir / "a.pyc").write_bytes(b"x")
 
-            exit_code = repo_hygiene.command_clean(root)
+            exit_code = repo_hygiene.command_clean(root, json_output=True)
 
             self.assertEqual(exit_code, 0)
             self.assertFalse((root / "notes.tmp").exists())
@@ -226,7 +239,7 @@ class RepoHygieneTests(unittest.TestCase):
             embedded = root / "scratch" / ".git"
             embedded.mkdir(parents=True, exist_ok=True)
 
-            exit_code = repo_hygiene.command_clean(root)
+            exit_code = repo_hygiene.command_clean(root, json_output=True)
 
             self.assertEqual(exit_code, 1)
             self.assertTrue(embedded.exists())

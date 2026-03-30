@@ -246,7 +246,7 @@ make maintenance-all
 make maintenance-all-json
 ```
 
-For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
+For scheduled automation, keep this check in the loop to catch new TODO/STUB markers, stale artifacts, embedded git repos, and stray files early.
 
 For focused first-party hygiene scans and stray cleanup:
 

@@ -1,6 +1,9 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
+`scripts/repo_hygiene.py` is the primary scanner/cleaner used by scheduled
+automation and local maintenance (`make maintenance` / `make maintenance-fix`).
+`scripts/repo_maintenance.py` is retained as a compatibility wrapper that
+delegates to `repo_hygiene.py`.
 
 This repository includes a small maintenance utility at
 `scripts/repo_hygiene.py` for scheduled cleanups and local checks.
@@ -20,11 +23,17 @@ This repository includes a small maintenance utility at
   - temporary files (`*.tmp`)
   - Python cache outputs (`__pycache__/`, `*.pyc`, `*.pyo`)
   - common metadata noise (`.DS_Store`, `Thumbs.db`)
-  - known generated bundles (`egressd-starter.tar.gz`)
+- Stray cache directories discovered from the filesystem (for example,
+  nested `__pycache__/`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`)
+- Known stale artifacts (currently `egressd-starter.tar.gz`) reported as:
+  - `stale_tracked_artifacts`
+  - `stale_untracked_artifacts`
+- Embedded git repositories (`.git`) outside expected locations
 
-The scanner intentionally skips `third_party/FunkyDNS/` when checking
-unfinished markers by default, because that path is managed as an external
-dependency.
+The scanner intentionally skips `third_party/FunkyDNS/` unfinished-marker
+checks by default, because that path is managed as an external dependency.
+Filesystem scanning also skips tool/environment roots such as `.venv/`, `venv/`
+and `node_modules/` to avoid noise from local development environments.
 
 When you do want full-repo scanning (including nested third-party git state),
 use `--include-third-party`.
@@ -46,7 +55,7 @@ python3 scripts/repo_hygiene.py scan --repo-root . --json
 # Include third-party dependency tree explicitly
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
-# Remove untracked stray files/directories
+# Remove removable clutter (stray files/dirs and stale untracked artifacts)
 python3 scripts/repo_hygiene.py clean --repo-root .
 python3 scripts/repo_hygiene.py scan --repo-root . --json
 ```
@@ -74,15 +83,14 @@ make repo-clean
 make repo-scan-json
 ```
 
-`scripts/repo_maintenance.py` is retained as a compatibility wrapper and now
-delegates to `scripts/repo_hygiene.py`.
-
 ## Exit codes
 
 - `0`: no issues remain after the command completes
 - `1`: blocking issues found
-  - `scan`: unfinished markers, stray untracked files, or stale artifacts
-  - `clean`: unfinished markers or tracked stale artifacts (removable clutter is deleted)
+  - `scan`: unfinished markers, stray untracked files, stray directories,
+    stale artifacts, or embedded git repositories
+  - `clean`: unfinished markers, tracked stale artifacts, embedded git repos,
+    or failed removals (removable clutter is deleted)
 - `2`: invalid invocation (for example, non-git directory)
 
 ## Baseline file

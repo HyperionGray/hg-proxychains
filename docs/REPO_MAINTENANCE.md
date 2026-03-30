@@ -11,9 +11,10 @@ Primary documentation has moved to:
 - Known stale artifacts (currently `egressd-starter.tar.gz`)
 - Embedded git repositories outside the allowed third-party submodule path
 
-By default, marker scanning includes tracked files in `third_party/FunkyDNS` when that repository is present.
-For day-to-day repo automation, prefer the first-party-only mode (`--no-include-third-party`)
-to avoid noise from external dependency internals.
+By default, marker scanning is first-party focused and excludes
+`third_party/FunkyDNS` internals unless `--include-third-party` is provided.
+Filesystem-based cache/repo detection also skips common dependency roots
+(`.venv/`, `venv/`, and `node_modules/`) to reduce local environment noise.
 
 ## Commands
 
@@ -45,8 +46,9 @@ make maintenance-all-json
 
 ## Notes
 
-- `--fix` removes backup files, stray `__pycache__/` directories, and known stale artifacts.
+- `--fix` removes backup files, stray cache directories (`__pycache__/`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`), and known stale artifacts.
 - Unfinished markers are reported but not modified automatically.
 - Embedded git repositories are reported but never auto-removed by `--fix`.
+- Tracked stale artifacts remain blocking until removed from git.
 - Without `--fix`, exit code is `1` when any issues are found.
 - With `--fix`, exit code reflects post-fix state (`0` when only removable clutter was found and removed; `1` if issues remain).

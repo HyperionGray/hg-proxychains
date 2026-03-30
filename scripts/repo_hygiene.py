@@ -17,7 +17,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Iterable, Sequence
 
 
 UNFINISHED_PATTERN = re.compile(r"\b(TODO|FIXME|STUB|TBD|XXX|WIP|UNFINISHED)\b\s*:")
@@ -40,6 +40,12 @@ STRAY_DIR_NAMES = {
     ".pytest_cache",
     ".mypy_cache",
     ".ruff_cache",
+}
+SCAN_SKIP_DIR_NAMES = {
+    ".git",
+    ".venv",
+    "venv",
+    "node_modules",
 }
 STALE_ARTIFACT_PATHS: frozenset[str] = frozenset({"egressd-starter.tar.gz"})
 UNFINISHED_SCAN_SUFFIXES = {
@@ -244,12 +250,15 @@ def discover_stray_dirs(repo_root: Path, include_third_party: bool = False) -> l
             continue
         if path == root_git:
             continue
-        if path.name not in STRAY_DIR_NAMES:
-            continue
         try:
-            rel = path.relative_to(repo_root).as_posix()
+            rel_parts = path.relative_to(repo_root).parts
         except ValueError:
             continue
+        if any(part in SCAN_SKIP_DIR_NAMES for part in rel_parts):
+            continue
+        if path.name not in STRAY_DIR_NAMES:
+            continue
+        rel = Path(*rel_parts).as_posix()
         if not include_third_party and rel.startswith(THIRD_PARTY_PREFIX):
             continue
         stray_dirs.append(rel)
@@ -263,9 +272,12 @@ def discover_embedded_git_repos(repo_root: Path, include_third_party: bool = Fal
         if git_path == root_git:
             continue
         try:
-            rel_parent = git_path.parent.relative_to(repo_root).as_posix()
+            rel_parent_parts = git_path.parent.relative_to(repo_root).parts
         except ValueError:
             continue
+        if any(part in SCAN_SKIP_DIR_NAMES for part in rel_parent_parts):
+            continue
+        rel_parent = Path(*rel_parent_parts).as_posix()
         if not include_third_party and rel_parent.startswith(THIRD_PARTY_PREFIX):
             continue
         # Submodule/gitlink style .git files are expected and should not be flagged.
