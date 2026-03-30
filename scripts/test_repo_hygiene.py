@@ -1,8 +1,8 @@
+import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import repo_hygiene
@@ -27,7 +27,6 @@ class RepoHygieneTests(unittest.TestCase):
             "keep/readme.md",
             "docs/.DS_Store",
             "build/result.txt",
-            "egressd-starter.tar.gz",
             "third_party/FunkyDNS/archive/funkydns.py~",
         ]
         stray = repo_hygiene.classify_stray_paths(untracked)
@@ -35,7 +34,6 @@ class RepoHygieneTests(unittest.TestCase):
             stray,
             [
                 "docs/.DS_Store",
-                "egressd-starter.tar.gz",
                 "notes.txt~",
                 "pkg/__pycache__/module.cpython-312.pyc",
                 "tmp/output.tmp",
@@ -148,6 +146,90 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_find_stale_artifacts_detects_tracked_and_untracked(self) -> None:
+        tracked = ["egressd-starter.tar.gz", "src.py"]
+        untracked = ["egressd-starter.tar.gz", "scratch.tmp"]
+
+        stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(tracked, untracked)
+
+        self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
+        self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
+
+    def test_discover_stray_dirs_detects_cache_dirs(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            local_cache = root / "pkg" / "__pycache__"
+            local_cache.mkdir(parents=True, exist_ok=True)
+            third_party_cache = root / "third_party" / "FunkyDNS" / ".pytest_cache"
+            third_party_cache.mkdir(parents=True, exist_ok=True)
+
+            default = repo_hygiene.discover_stray_dirs(root)
+            with_third_party = repo_hygiene.discover_stray_dirs(root, include_third_party=True)
+
+        self.assertEqual(default, ["pkg/__pycache__"])
+        self.assertEqual(with_third_party, ["pkg/__pycache__", "third_party/FunkyDNS/.pytest_cache"])
+
+    def test_discover_embedded_git_repos_skips_gitlink_and_root_git(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+
+            gitlink = root / "third_party" / "FunkyDNS" / ".git"
+            gitlink.parent.mkdir(parents=True, exist_ok=True)
+            gitlink.write_text("gitdir: ../../.git/modules/third_party/FunkyDNS\n", encoding="utf-8")
+
+            embedded = root / "scratch" / ".git"
+            embedded.mkdir(parents=True, exist_ok=True)
+
+            default = repo_hygiene.discover_embedded_git_repos(root)
+            with_third_party = repo_hygiene.discover_embedded_git_repos(root, include_third_party=True)
+
+        self.assertEqual(default, ["scratch"])
+        self.assertEqual(with_third_party, ["scratch"])
+
+    def test_discover_embedded_git_repos_can_skip_third_party(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+
+            nested = root / "third_party" / "FunkyDNS" / "scratch" / ".git"
+            nested.mkdir(parents=True, exist_ok=True)
+
+            default = repo_hygiene.discover_embedded_git_repos(root)
+            with_third_party = repo_hygiene.discover_embedded_git_repos(root, include_third_party=True)
+
+        self.assertEqual(default, [])
+        self.assertEqual(with_third_party, ["third_party/FunkyDNS/scratch"])
+
+    def test_command_clean_returns_zero_when_only_removable_issues_exist(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            subprocess.run(["git", "init"], cwd=root, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+            (root / "notes.tmp").write_text("x\n", encoding="utf-8")
+            cache_dir = root / "pkg" / "__pycache__"
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            (cache_dir / "a.pyc").write_bytes(b"x")
+
+            exit_code = repo_hygiene.command_clean(root)
+
+            self.assertEqual(exit_code, 0)
+            self.assertFalse((root / "notes.tmp").exists())
+            self.assertFalse(cache_dir.exists())
+
+    def test_command_clean_returns_one_when_embedded_repo_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            subprocess.run(["git", "init"], cwd=root, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            embedded = root / "scratch" / ".git"
+            embedded.mkdir(parents=True, exist_ok=True)
+
+            exit_code = repo_hygiene.command_clean(root)
+
+            self.assertEqual(exit_code, 1)
+            self.assertTrue(embedded.exists())
 
 
 if __name__ == "__main__":
