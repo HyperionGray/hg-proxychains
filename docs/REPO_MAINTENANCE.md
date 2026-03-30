@@ -1,8 +1,7 @@
-# Repository maintenance workflow (legacy note)
+# Repository maintenance workflow
 
-`scripts/repo_maintenance.py` is now a compatibility wrapper.
-
-Use `scripts/repo_hygiene.py` directly for all maintenance checks and cleanup.
+`scripts/repo_hygiene.py` is the primary maintenance utility.
+`scripts/repo_maintenance.py` remains as a compatibility wrapper.
 Primary documentation has moved to:
 
 - Unfinished markers in tracked files (`TODO`, `FIXME`, `STUB`, `TBD`, `XXX`, `UNFINISHED`)
@@ -25,10 +24,10 @@ python3 scripts/repo_hygiene.py scan --repo-root .
 python3 scripts/repo_hygiene.py scan --repo-root . --json
 
 # Include third_party marker scan explicitly
-python3 scripts/repo_maintenance.py --include-third-party
+python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
 # Remove backup files + stray cache dirs + stale artifacts while scanning
-python3 scripts/repo_maintenance.py --fix
+python3 scripts/repo_hygiene.py clean --repo-root .
 ```
 
 Makefile wrappers:
