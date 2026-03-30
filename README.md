@@ -231,7 +231,7 @@ make maintenance
 # equivalent: python3 scripts/repo_hygiene.py scan --repo-root .
 ```
 
-For automatic cleanup of removable clutter (backup files, stray `__pycache__/` dirs, and known stale artifacts):
+For automatic cleanup of removable clutter (backup files, stray `__pycache__/` dirs, and known stale **untracked** artifacts):
 
 ```bash
 make maintenance-fix
@@ -246,7 +246,7 @@ make maintenance-all
 make maintenance-all-json
 ```
 
-For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
+For scheduled automation, keep this check in the loop to catch new TODO/STUB markers, stale artifacts, embedded git repos, and stray files early.
 
 For focused first-party hygiene scans and stray cleanup:
 
