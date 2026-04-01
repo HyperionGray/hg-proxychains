@@ -1,44 +1,36 @@
-# Quick Start
+# QUICKSTART
 
-## 1. Initialize dependencies
+Fastest path to verify the smoke harness end to end:
 
-```bash
-git submodule update --init --recursive third_party/FunkyDNS
-```
+1. Initialize the private FunkyDNS submodule:
+   ```bash
+   git submodule update --init --recursive third_party/FunkyDNS
+   ```
+   If you prefer the helper script, run `make deps` instead.
 
-## 2. Run the smoke harness
+2. Start the stack:
+   ```bash
+   podman-compose up --build
+   ```
+   Or run `make smoke`.
 
-```bash
-make smoke
-# or: podman-compose up --build
-```
+3. Wait for the one-shot `client` container to finish. A good run prints:
+   - `DNS OK` / `DoH OK` for `smoke.test`
+   - `DNS OK` / `DoH OK` for `hosts.smoke.internal`
+   - `DNS OK` / `DoH OK` for `printer`
+   - `CONNECT` followed by `OK from exit-server`
 
-## 3. Expected output from `client`
+4. Spot-check health endpoints:
+   ```bash
+   curl -sk https://localhost:18443/healthz
+   curl http://localhost:9191/health
+   curl -f http://localhost:9191/ready
+   ```
 
-```
-DNS OK: smoke.test A -> 203.0.113.10
-DoH OK: smoke.test A -> 203.0.113.10
-DNS OK: hosts.smoke.internal A -> 198.51.100.21
-DoH OK: hosts.smoke.internal A -> 198.51.100.21
-DNS OK: printer A -> 198.51.100.42 (owner printer.corp.test.)
-DoH OK: printer A -> 198.51.100.42 (owner printer.corp.test.)
-HTTP/1.1 200 Connection established
-OK from exit-server
-```
+5. Tear it down when finished:
+   ```bash
+   podman-compose down -v
+   ```
+   Or run `make down`.
 
-## 4. Health checks (while stack is running)
-
-```bash
-curl -f http://localhost:9191/ready    # 200 = egressd is ready
-curl http://localhost:9191/health      # full JSON status
-curl -sk https://localhost:18443/healthz  # FunkyDNS DoH
-```
-
-## 5. Run unit tests
-
-```bash
-make test
-```
-
-For host deployment, see `docs/HOST-DEPLOYMENT.md`.
-For what the harness proves end to end, see `docs/USER-FLOW-REVIEW.md`.
+If anything looks off, use `make logs` and then read `README.md` or `docs/USER-FLOW-REVIEW.md` for the deeper walkthrough.

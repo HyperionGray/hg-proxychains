@@ -248,6 +248,16 @@ def parse_proxy_url(url: str) -> Tuple[str, int, Optional[str]]:
     return host, port, auth_header
 
 
+def _parse_http_status_code(status_line: str) -> Optional[int]:
+    parts = status_line.split()
+    if len(parts) < 2:
+        return None
+    try:
+        return int(parts[1])
+    except ValueError:
+        return None
+
+
 def check_hop_connectivity(hop_url: str, target: str, timeout: float = 3.0) -> Dict[str, Any]:
     start = time.time()
     checked_at = int(start)
@@ -268,11 +278,15 @@ def check_hop_connectivity(hop_url: str, target: str, timeout: float = 3.0) -> D
         sock.sendall(request.encode("utf-8"))
         response = sock.recv(4096).decode("utf-8", errors="ignore")
         status_line = response.splitlines()[0] if response else "<no-response>"
-        ok = any(code in status_line for code in (" 200 ", " 403 ", " 407 "))
+        status_code = _parse_http_status_code(status_line)
+        reachable = status_code is not None
+        ok = status_code is not None and 200 <= status_code < 300
         result = {
             "ok": ok,
+            "reachable": reachable,
             "proxy": proxy_label,
             "status_line": status_line,
+            "status_code": status_code,
             "elapsed_ms": int((time.time() - start) * 1000),
             "checked_at": checked_at,
         }
@@ -556,6 +570,8 @@ def _extract_hop_label(hop: Any) -> str:
 
     # Fall back to an empty label rather than exposing raw URL/userinfo.
     return ""
+
+
 def _all_hops_ok(hops: List[Any], hop_statuses: Dict[str, Any]) -> bool:
     """Return True only when every hop in *hops* has a passing status entry."""
     return bool(hops) and all(
