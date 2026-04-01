@@ -36,6 +36,7 @@ The design goal is intentionally boring:
 │   ├── supervisor.py
 │   ├── test_supervisor.py
 │   ├── config.json5
+│   ├── config.simple.example.json5
 │   ├── config.host.example.json5
 │   └── systemd/egressd.service
 ├── proxy/
@@ -65,6 +66,27 @@ The design goal is intentionally boring:
 Start with `QUICKSTART.md` for the shortest smoke-harness path.
 For a reviewed walkthrough of the smoke-harness flow, host flow, and current
 known breakpoints, see `docs/USER-FLOW-REVIEW.md`.
+
+## Minimal config
+
+The only required setting is your list of proxies.  Everything else uses
+safe, sensible defaults (fail-closed, DoH-only DNS, health endpoints on
+port 9191, etc.):
+
+```json5
+// egressd/config.json5
+{
+  proxies: [
+    "http://proxy1:3128",
+    "http://proxy2:3128",
+  ],
+}
+```
+
+Plain URL strings and the canonical `{"url": "..."}` dict form are both
+accepted.  See `egressd/config.simple.example.json5` for this minimal
+format and `egressd/config.host.example.json5` for a fully-annotated host
+deployment example.
 
 ### 1. Initialize FunkyDNS submodule
 
@@ -195,7 +217,8 @@ make validate-config
 
 ## What to tweak first
 
-- `egressd/config.json5`: proxy hop URLs, canary target, health port
+- `egressd/config.json5`: list your proxy hops under `proxies:`; all other fields are optional
+- `egressd/config.simple.example.json5`: the absolute minimum — just a `proxies` list
 - `egressd/config*.json5` DNS section: use `doh_upstreams` (list) or legacy `doh_upstream` (single URL)
 - `scripts/host-egress-owner.sh`: upstream proxy and DoH IPs
 - `scripts/host-nftables.sh`: bridge interface name and infra CIDRs

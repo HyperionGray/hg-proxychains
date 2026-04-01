@@ -1,5 +1,5 @@
 """
-Tests for preflight.py::run_preflight.
+Tests for preflight.py::run_preflight and preflight.py::normalize_cfg.
 
 The preflight check is the first line of defence against misconfigured
 deployments.  These tests exercise each category of error so operators see
@@ -8,7 +8,12 @@ clear, actionable diagnostics before any process is launched.
 Crucially they also cover the fail-closed / leak-prevention logic:
 - when fail_closed=True the canary port **must** appear in allowed_ports,
   otherwise traffic could leak through a misconfigured chain.
+
+normalize_cfg tests verify that the simplified user-facing format (e.g.
+top-level ``proxies`` list, plain URL strings as hops) is expanded to the
+full internal format with all defaults applied.
 """
+import copy
 import json
 import sys
 import types
@@ -240,6 +245,85 @@ class PreflightBinaryCheckTests(unittest.TestCase):
         report = preflight.run_preflight(cfg, skip_binary_checks=False)
         self.assertFalse(report["ok"])
         self.assertTrue(any("pproxy_bin" in e for e in report["errors"]))
+
+
+class NormalizeCfgTests(unittest.TestCase):
+    """Tests for normalize_cfg: simple user-facing format to internal format."""
+
+    def test_top_level_proxies_becomes_chain_hops(self) -> None:
+        """Top-level ``proxies`` list is moved into ``chain.hops``."""
+        raw = {"proxies": ["http://proxy1:3128", "http://proxy2:3128"]}
+        cfg = preflight.normalize_cfg(raw)
+        self.assertNotIn("proxies", cfg)
+        self.assertEqual(
+            cfg["chain"]["hops"],
+            [{"url": "http://proxy1:3128"}, {"url": "http://proxy2:3128"}],
+        )
+
+    def test_string_hops_converted_to_url_dicts(self) -> None:
+        """Plain URL strings in ``chain.hops`` are wrapped in ``{"url": ...}``."""
+        raw = {"chain": {"hops": ["http://proxy1:3128", "http://proxy2:3128"]}}
+        cfg = preflight.normalize_cfg(raw)
+        self.assertEqual(
+            cfg["chain"]["hops"],
+            [{"url": "http://proxy1:3128"}, {"url": "http://proxy2:3128"}],
+        )
+
+    def test_dict_hops_left_unchanged(self) -> None:
+        """Canonical ``{"url": ...}`` hops are not double-wrapped."""
+        raw = {"chain": {"hops": [{"url": "http://proxy1:3128"}]}}
+        cfg = preflight.normalize_cfg(raw)
+        self.assertEqual(cfg["chain"]["hops"], [{"url": "http://proxy1:3128"}])
+
+    def test_listener_defaults_applied(self) -> None:
+        """listener.bind and listener.port defaults are set when absent."""
+        cfg = preflight.normalize_cfg({"proxies": ["http://p:3128"]})
+        self.assertEqual(cfg["listener"]["bind"], "0.0.0.0")
+        self.assertEqual(cfg["listener"]["port"], 15001)
+
+    def test_listener_explicit_values_preserved(self) -> None:
+        """User-supplied listener values are not overwritten by defaults."""
+        raw = {"proxies": ["http://p:3128"], "listener": {"bind": "127.0.0.1", "port": 8080}}
+        cfg = preflight.normalize_cfg(raw)
+        self.assertEqual(cfg["listener"]["bind"], "127.0.0.1")
+        self.assertEqual(cfg["listener"]["port"], 8080)
+
+    def test_chain_defaults_applied(self) -> None:
+        """fail_closed, canary_target, allowed_ports etc. are defaulted."""
+        cfg = preflight.normalize_cfg({"proxies": ["http://p:3128"]})
+        self.assertTrue(cfg["chain"]["fail_closed"])
+        self.assertIn(":", cfg["chain"]["canary_target"])
+        self.assertIsInstance(cfg["chain"]["allowed_ports"], list)
+        self.assertTrue(cfg["chain"]["allowed_ports"])
+
+    def test_supervisor_defaults_applied(self) -> None:
+        """pproxy_bin and other supervisor keys receive defaults."""
+        cfg = preflight.normalize_cfg({"proxies": ["http://p:3128"]})
+        self.assertEqual(cfg["supervisor"]["pproxy_bin"], "pproxy")
+        self.assertEqual(cfg["supervisor"]["health_port"], 9191)
+
+    def test_minimal_config_passes_preflight(self) -> None:
+        """A config with only ``proxies`` normalizes to a valid preflight state."""
+        raw = {"proxies": ["http://proxy1:3128", "http://proxy2:3128"]}
+        cfg = preflight.normalize_cfg(raw)
+        report = preflight.run_preflight(cfg, skip_binary_checks=True)
+        self.assertTrue(report["ok"], f"Expected ok=True; errors: {report['errors']}")
+
+    def test_raw_config_is_not_mutated(self) -> None:
+        """normalize_cfg must not modify the input dict."""
+        raw = {"proxies": ["http://proxy1:3128"]}
+        original = copy.deepcopy(raw)
+        preflight.normalize_cfg(raw)
+        self.assertEqual(raw, original)
+
+    def test_proxies_not_overwritten_when_hops_already_set(self) -> None:
+        """If both ``proxies`` and ``chain.hops`` are present, ``chain.hops`` wins."""
+        raw = {
+            "proxies": ["http://from-proxies:3128"],
+            "chain": {"hops": [{"url": "http://from-hops:3128"}]},
+        }
+        cfg = preflight.normalize_cfg(raw)
+        self.assertEqual(cfg["chain"]["hops"], [{"url": "http://from-hops:3128"}])
 
 
 if __name__ == "__main__":

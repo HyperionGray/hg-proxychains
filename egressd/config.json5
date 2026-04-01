@@ -1,49 +1,15 @@
 {
-  listener: {
-    bind: "0.0.0.0",
-    port: 15001,
-  },
+  // Proxy chain -- add as many hops as you need.
+  // This is the only required field; everything else uses safe defaults.
+  proxies: [
+    "http://proxy1:3128",
+    "http://proxy2:3128",
+  ],
 
-  dns: {
-    launch_funkydns: false,
-    mode: "external",
-    resolver_host: "funky",
-    resolver_port: 53,
-    doh_upstreams: [
-      "https://cloudflare-dns.com/dns-query",
-      "https://dns.google/dns-query",
-    ],
-  },
-
+  // Optional overrides (all of these are already set to their default values).
+  // Remove or leave this section out entirely for the simplest setup.
   chain: {
-    name: "default",
-    hops: [
-      { url: "http://proxy1:3128" },
-      { url: "http://proxy2:3128" },
-    ],
     canary_target: "exitserver:9999",
     allowed_ports: [80, 443, 9999],
-    fail_closed: true,
-    connect_timeout_ms: 5000,
-    idle_timeout_ms: 60000,
-  },
-
-  logging: {
-    level: "INFO",
-    json: true,
-    // Set chain_visual to true for a terminal-friendly proxychains-style
-    // display showing each hop and its health status.
-    chain_visual: false,
-  },
-
-  supervisor: {
-    pproxy_bin: "pproxy",
-    funkydns_bin: "funkydns",
-    health_bind: "0.0.0.0",
-    health_port: 9191,
-    hop_check_interval_s: 5,
-    require_all_hops_healthy: true,
-    ready_grace_period_s: 15,
-    max_hop_status_age_s: 20,
   },
 }
