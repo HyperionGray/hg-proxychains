@@ -29,6 +29,9 @@
   logging: {
     level: "INFO",
     json: true,
+    // Set chain_visual to true for a terminal-friendly proxychains-style
+    // display showing each hop and its health status.
+    chain_visual: false,
   },
 
   supervisor: {

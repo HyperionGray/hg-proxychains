@@ -200,6 +200,30 @@ make validate-config
 - `scripts/host-egress-owner.sh`: upstream proxy and DoH IPs
 - `scripts/host-nftables.sh`: bridge interface name and infra CIDRs
 
+## Chain visual
+
+Set `logging.chain_visual: true` in your config to get a terminal-friendly
+proxychains-style display on stderr.  It prints on startup (topology only)
+and again whenever the per-hop health state changes:
+
+```
+[egressd] |S-chain|-<>-proxy1:3128-<>-proxy2:3128-<>-OK
+[egressd]   hop_0: proxy1:3128                 OK   42ms
+[egressd]   hop_1: proxy2:3128                 OK   38ms
+```
+
+When a hop is unreachable the connector flips to `-XX-` and the line ends
+with `FAIL`:
+
+```
+[egressd] |S-chain|-<>-proxy1:3128-XX-proxy2:3128-<>-FAIL
+[egressd]   hop_0: proxy1:3128                 OK   42ms
+[egressd]   hop_1: proxy2:3128                 FAIL Connection refused
+```
+
+The visual is disabled by default (`logging.chain_visual: false`) so it does not
+interfere with JSON log pipelines.
+
 ## Maintenance and cleanup
 
 Run repository maintenance checks (unfinished markers, backup files, stale artifacts, stray cache dirs, and unexpected embedded git repos) for first-party code:

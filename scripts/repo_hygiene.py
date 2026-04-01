@@ -55,6 +55,9 @@ UNFINISHED_SCAN_FILENAMES = {
     "Makefile",
 }
 BASELINE_DEFAULT_PATH = ".repo-hygiene-baseline.json"
+THIRD_PARTY_PREFIX = "third_party/"
+STALE_ARTIFACT_PATHS: frozenset[str] = frozenset()
+# Add known stale tracked/untracked artifact paths here (e.g. generated bundles) as they arise.
 
 
 @dataclass(frozen=True)
@@ -514,6 +517,17 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         action="store_true",
         help="emit machine-readable JSON output",
     )
+    parser.add_argument(
+        "--include-third-party",
+        action="store_true",
+        default=False,
+        help="include all of third_party/ (e.g. third_party/FunkyDNS) in marker and stray-file scanning (default: false)",
+    )
+    parser.add_argument(
+        "--baseline-file",
+        default=BASELINE_DEFAULT_PATH,
+        help=f"marker baseline path relative to --repo-root (default: {BASELINE_DEFAULT_PATH})",
+    )
     return parser.parse_args(argv)
 
 
@@ -524,6 +538,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"error: {repo_root} is not a git repository", file=sys.stderr)
         return 2
 
+    if args.command == "baseline":
+        return command_baseline(repo_root, args.include_third_party, args.baseline_file)
     if args.command == "clean":
         return command_clean(
             repo_root,
