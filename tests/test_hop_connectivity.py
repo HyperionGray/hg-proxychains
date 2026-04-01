@@ -129,11 +129,12 @@ def _start_mock_proxy(handler_class) -> tuple[socketserver.TCPServer, int]:
 
 def _start_recording_proxy(
     response_bytes: bytes = b"HTTP/1.1 200 Connection Established\r\n\r\n",
+    request_timeout_s: float = 3.0,
 ) -> tuple[_RecordingTCPServer, int]:
     server = _RecordingTCPServer(("127.0.0.1", 0), _RecordingConnectHandler)
     server.requests = []
     server.requests_lock = threading.Lock()
-    server.request_timeout_s = 1.0
+    server.request_timeout_s = request_timeout_s
     server.max_request_bytes = MAX_REQUEST_BYTES
     server.response_bytes = response_bytes
     port = server.server_address[1]
