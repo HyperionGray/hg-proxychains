@@ -205,9 +205,13 @@ class CheckHopConnectivityTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         cls._accept_server.shutdown()
+        cls._accept_server.server_close()
         cls._auth_server.shutdown()
+        cls._auth_server.server_close()
         cls._close_server.shutdown()
+        cls._close_server.server_close()
         cls._recording_server.shutdown()
+        cls._recording_server.server_close()
 
     def setUp(self) -> None:
         with self._recording_server.requests_lock:
