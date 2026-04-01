@@ -8,14 +8,9 @@ These tests exercise the core proxy-chaining path:
   3. collect_hop_statuses  — iterates all configured hops and aggregates results
 
 For check_hop_connectivity, a lightweight in-process mock HTTP proxy is started
-using Python's socketserver so the tests run without any external service.  The
-mock proxy demonstrates two cases:
-  - A proxy that accepts CONNECT and returns "200 Connection Established"
-  - A proxy that requires auth and returns "407 Proxy Authentication Required"
-
-Both cases are considered "ok=True" by the hop connectivity check because the
-proxy *responded* — demonstrating that the hop is reachable and speaking the
-HTTP CONNECT protocol.
+using Python's socketserver so the tests run without any external service. The
+mock proxy demonstrates both usable and denying responses so readiness is tied
+to successful forwarding instead of mere reachability.
 """
 import json
 import socket
@@ -62,6 +57,17 @@ class _ConnectAuthRequiredHandler(socketserver.BaseRequestHandler):
                 b"HTTP/1.1 407 Proxy Authentication Required\r\n"
                 b"Proxy-Authenticate: Basic realm=\"proxy\"\r\n\r\n"
             )
+        except OSError:
+            pass
+
+
+class _ConnectForbiddenHandler(socketserver.BaseRequestHandler):
+    """Returns HTTP/1.1 403 Forbidden for any CONNECT request."""
+
+    def handle(self) -> None:
+        try:
+            self.request.recv(4096)
+            self.request.sendall(b"HTTP/1.1 403 Forbidden\r\n\r\n")
         except OSError:
             pass
 
@@ -138,12 +144,14 @@ class CheckHopConnectivityTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls._accept_server, cls._accept_port = _start_mock_proxy(_ConnectAcceptHandler)
         cls._auth_server, cls._auth_port = _start_mock_proxy(_ConnectAuthRequiredHandler)
+        cls._forbid_server, cls._forbid_port = _start_mock_proxy(_ConnectForbiddenHandler)
         cls._close_server, cls._close_port = _start_mock_proxy(_ConnectRefusedHandler)
 
     @classmethod
     def tearDownClass(cls) -> None:
         cls._accept_server.shutdown()
         cls._auth_server.shutdown()
+        cls._forbid_server.shutdown()
         cls._close_server.shutdown()
 
     def test_proxy_responding_200_is_ok(self) -> None:
@@ -159,19 +167,31 @@ class CheckHopConnectivityTests(unittest.TestCase):
         self.assertTrue(result["ok"], f"Expected ok=True; result: {result}")
         self.assertIn("200", result.get("status_line", ""))
 
-    def test_proxy_responding_407_is_ok(self) -> None:
+    def test_proxy_responding_407_is_not_ok_but_is_reachable(self) -> None:
         """
-        A proxy that returns 407 Auth Required is still considered reachable.
-        The hop is 'ok' because it is accepting connections and speaking HTTP —
-        this mirrors how pproxy treats auth-required upstream proxies.
+        Auth-required proxies should still expose a status line for diagnostics,
+        but they are not usable for readiness gating until CONNECT succeeds.
         """
         result = supervisor.check_hop_connectivity(
             f"http://127.0.0.1:{self._auth_port}",
             "example.com:443",
             timeout=3.0,
         )
-        self.assertTrue(result["ok"], f"Expected ok=True for 407; result: {result}")
+        self.assertFalse(result["ok"], f"Expected ok=False for 407; result: {result}")
+        self.assertTrue(result["reachable"])
         self.assertIn("407", result.get("status_line", ""))
+        self.assertEqual(407, result.get("status_code"))
+
+    def test_proxy_responding_403_is_not_ok_but_is_reachable(self) -> None:
+        result = supervisor.check_hop_connectivity(
+            f"http://127.0.0.1:{self._forbid_port}",
+            "example.com:443",
+            timeout=3.0,
+        )
+        self.assertFalse(result["ok"], f"Expected ok=False for 403; result: {result}")
+        self.assertTrue(result["reachable"])
+        self.assertIn("403", result.get("status_line", ""))
+        self.assertEqual(403, result.get("status_code"))
 
     def test_connection_refused_is_not_ok(self) -> None:
         """A port that refuses connections indicates a down or misconfigured hop."""

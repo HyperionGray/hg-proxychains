@@ -18,7 +18,7 @@
 - [ ] `curl http://localhost:9191/health`
 - [ ] `curl -i http://localhost:9191/ready` returns HTTP 200
 - [ ] Confirm `searchdns` becomes healthy before `funky`
-- [ ] Confirm hop probes are green or at least responding with expected policy/auth status
+- [ ] Confirm hop probes show successful CONNECT responses for ready traffic; `403`/`407` should remain diagnostic-only failures in `/health`
 - [ ] Confirm `client` starts only after `egressd` healthcheck is healthy
 
 ## Host deployment

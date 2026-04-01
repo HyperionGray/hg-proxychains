@@ -62,6 +62,7 @@ The design goal is intentionally boring:
 
 ## Quick start
 
+Start with `QUICKSTART.md` for the shortest smoke-harness path.
 For a reviewed walkthrough of the smoke-harness flow, host flow, and current
 known breakpoints, see `docs/USER-FLOW-REVIEW.md`.
 
@@ -137,6 +138,7 @@ It does **not** prove host enforcement. For that, use the scripts in `scripts/` 
   - `pproxy` must be running
   - if `dns.launch_funkydns=true`, FunkyDNS must also be running
   - hop checks must be complete and successful by default
+  - auth-required or policy-denied CONNECT responses stay visible in `/health`, but keep `/ready` red
 
 Readiness behavior can be tuned via:
 
