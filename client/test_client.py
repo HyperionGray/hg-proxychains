@@ -35,6 +35,11 @@ RESOLUTION_CASES = (
 
 
 def create_unverified_context() -> ssl.SSLContext:
+    """Create SSL context with disabled verification for testing.
+    
+    SECURITY WARNING (CWE-295): Certificate verification is disabled.
+    This is ONLY acceptable in isolated test environments.
+    """
     context = ssl.create_default_context()
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE

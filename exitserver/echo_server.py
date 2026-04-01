@@ -1,3 +1,10 @@
+#!/usr/bin/env python3
+"""Simple HTTP echo server for testing proxy connectivity.
+
+This server responds to all GET requests with a simple OK message.
+It's used as an exit server in integration tests to verify that
+traffic successfully traverses the proxy chain.
+"""
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 
@@ -15,4 +22,12 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    HTTPServer(("0.0.0.0", 9999), Handler).serve_forever()
+    host = "0.0.0.0"
+    port = 9999
+    server = HTTPServer((host, port), Handler)
+    print(f"Echo server listening on {host}:{port}")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nShutting down...")
+        server.server_close()

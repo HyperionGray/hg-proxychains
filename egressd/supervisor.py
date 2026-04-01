@@ -218,6 +218,17 @@ def start_funkydns(cfg: Dict[str, Any]) -> Optional[subprocess.Popen]:
 
 
 def parse_proxy_url(url: str) -> Tuple[str, int, Optional[str]]:
+    """Parse proxy URL and extract host, port, and optional auth header.
+    
+    Args:
+        url: Proxy URL (http:// or https://)
+        
+    Returns:
+        Tuple of (host, port, optional_auth_header)
+        
+    Raises:
+        ValueError: If URL is malformed or has unsupported scheme
+    """
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"}:
         raise ValueError(f"unsupported proxy scheme: {parsed.scheme}")
@@ -229,9 +240,22 @@ def parse_proxy_url(url: str) -> Tuple[str, int, Optional[str]]:
     if parsed.username is not None:
         raw_user = parsed.username
         raw_pass = parsed.password or ""
+        # Validate credentials don't contain newlines that could break headers
+        if '\n' in raw_user or '\r' in raw_user or '\n' in raw_pass or '\r' in raw_pass:
+            raise ValueError("proxy credentials cannot contain newline characters")
         token = base64.b64encode(f"{raw_user}:{raw_pass}".encode("utf-8")).decode("ascii")
         auth_header = f"Proxy-Authorization: Basic {token}\r\n"
     return host, port, auth_header
+
+
+def _parse_http_status_code(status_line: str) -> Optional[int]:
+    parts = status_line.split()
+    if len(parts) < 2:
+        return None
+    try:
+        return int(parts[1])
+    except ValueError:
+        return None
 
 
 def check_hop_connectivity(hop_url: str, target: str, timeout: float = 3.0) -> Dict[str, Any]:
@@ -254,18 +278,22 @@ def check_hop_connectivity(hop_url: str, target: str, timeout: float = 3.0) -> D
         sock.sendall(request.encode("utf-8"))
         response = sock.recv(4096).decode("utf-8", errors="ignore")
         status_line = response.splitlines()[0] if response else "<no-response>"
-        ok = any(code in status_line for code in (" 200 ", " 403 ", " 407 "))
+        status_code = _parse_http_status_code(status_line)
+        reachable = status_code is not None
+        ok = status_code is not None and 200 <= status_code < 300
         result = {
             "ok": ok,
+            "reachable": reachable,
             "proxy": proxy_label,
             "status_line": status_line,
+            "status_code": status_code,
             "elapsed_ms": int((time.time() - start) * 1000),
             "checked_at": checked_at,
         }
         if not ok:
             result["error"] = status_line
         return result
-    except Exception as exc:
+    except (socket.error, socket.timeout, OSError) as exc:
         return {
             "ok": False,
             "proxy": proxy_label,
@@ -278,7 +306,8 @@ def check_hop_connectivity(hop_url: str, target: str, timeout: float = 3.0) -> D
             try:
                 sock.close()
             except OSError:
-                pass
+                # Socket may already be closed, ignore
+                logging.debug("Failed to close socket during cleanup")
 
 
 def collect_hop_statuses(cfg: Dict[str, Any], target: str) -> Dict[str, Any]:
@@ -817,13 +846,13 @@ def main(argv: Optional[List[str]] = None) -> int:
             refresh_ready_state(cfg)
             if STOP_EVENT.is_set():
                 break
-            logging.warning("pproxy exited rc=%s", rc)
+        except (OSError, ValueError, RuntimeError) as exc:
         except Exception as exc:
             processes["pproxy"] = None
             set_state({"pproxy": "error"})
             refresh_ready_state(cfg)
             if STOP_EVENT.is_set():
-                break
+            logging.exception("supervisor loop error")
             logging.exception("supervisor loop error: %s", exc)
 
         if STOP_EVENT.is_set():
