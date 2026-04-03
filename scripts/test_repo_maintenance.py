@@ -2,6 +2,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import repo_maintenance
@@ -66,6 +67,26 @@ class RepoMaintenanceTests(unittest.TestCase):
             found = repo_maintenance.discover_embedded_git_repos(root, include_third_party=False)
 
             self.assertEqual(found, [])
+
+    @patch("repo_maintenance.subprocess.run")
+    def test_main_forwards_stale_artifact_flags(self, mock_run) -> None:
+        mock_run.return_value.returncode = 0
+        rc = repo_maintenance.main(
+            [
+                "--root",
+                ".",
+                "--fix",
+                "--stale-artifact",
+                "dist/output.tar.gz",
+                "--stale-artifact",
+                "logs/runtime.dump",
+            ]
+        )
+        self.assertEqual(rc, 0)
+        invoked_cmd = mock_run.call_args.args[0]
+        self.assertIn("--stale-artifact", invoked_cmd)
+        self.assertIn("dist/output.tar.gz", invoked_cmd)
+        self.assertIn("logs/runtime.dump", invoked_cmd)
 
 
 if __name__ == "__main__":

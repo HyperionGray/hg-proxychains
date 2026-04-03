@@ -65,9 +65,19 @@ class RepoHygieneTests(unittest.TestCase):
         stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(
             tracked_paths=["README.md", "egressd-starter.tar.gz"],
             untracked_paths=["tmp/output.tmp", "egressd-starter.tar.gz"],
+            stale_artifact_paths={"egressd-starter.tar.gz"},
         )
         self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
         self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
+
+    def test_find_stale_artifacts_supports_extra_configured_paths(self) -> None:
+        stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(
+            tracked_paths=["README.md", "build/output.tar.gz"],
+            untracked_paths=["tmp/output.tmp", "dist/runtime.bundle"],
+            stale_artifact_paths={"build/output.tar.gz", "dist/runtime.bundle"},
+        )
+        self.assertEqual(stale_tracked, ["build/output.tar.gz"])
+        self.assertEqual(stale_untracked, ["dist/runtime.bundle"])
 
     def test_find_unfinished_markers_ignores_skipped_paths(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -156,6 +166,50 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_build_stale_artifact_paths_normalizes_extras(self) -> None:
+        configured = repo_hygiene.build_stale_artifact_paths(
+            ["./dist/a.tar.gz", "dist/a.tar.gz", "logs/latest.dump", ""]
+        )
+        self.assertIn("egressd-starter.tar.gz", configured)
+        self.assertIn("dist/a.tar.gz", configured)
+        self.assertIn("logs/latest.dump", configured)
+        self.assertNotIn("./dist/a.tar.gz", configured)
+
+    @patch("repo_hygiene.command_clean", return_value=0)
+    @patch("repo_hygiene.command_scan", return_value=0)
+    @patch("repo_hygiene.command_baseline", return_value=0)
+    def test_main_dispatches_clean_with_expected_options(
+        self,
+        mock_baseline,
+        mock_scan,
+        mock_clean,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            rc = repo_hygiene.main(
+                [
+                    "clean",
+                    "--repo-root",
+                    str(root),
+                    "--include-third-party",
+                    "--baseline-file",
+                    "custom-baseline.json",
+                    "--stale-artifact",
+                    "dist/output.tar.gz",
+                ]
+            )
+        self.assertEqual(rc, 0)
+        mock_clean.assert_called_once()
+        clean_kwargs = mock_clean.call_args.kwargs
+        self.assertTrue(clean_kwargs["include_third_party"])
+        self.assertEqual(clean_kwargs["baseline_path"], "custom-baseline.json")
+        self.assertIn("dist/output.tar.gz", clean_kwargs["stale_artifact_paths"])
+        self.assertIn("egressd-starter.tar.gz", clean_kwargs["stale_artifact_paths"])
+        self.assertFalse(clean_kwargs["json_output"])
+        mock_scan.assert_not_called()
+        mock_baseline.assert_not_called()
 
 
 if __name__ == "__main__":

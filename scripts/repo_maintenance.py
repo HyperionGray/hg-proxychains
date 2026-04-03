@@ -137,6 +137,16 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         default=".repo-hygiene-baseline.json",
         help="Marker baseline path relative to --root (default: .repo-hygiene-baseline.json).",
     )
+    parser.add_argument(
+        "--stale-artifact",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help=(
+            "Add a stale artifact path relative to --root. "
+            "Repeat this flag to configure multiple extra paths."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -159,6 +169,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         cmd.append("--include-third-party")
     if args.json:
         cmd.append("--json")
+    for artifact_path in args.stale_artifact:
+        cmd.extend(["--stale-artifact", artifact_path])
 
     proc = subprocess.run(cmd, check=False)
     return proc.returncode
