@@ -157,6 +157,67 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
 
+    def test_main_baseline_rejects_json_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            result = repo_hygiene.main(
+                [
+                    "baseline",
+                    "--repo-root",
+                    str(root),
+                    "--json",
+                ]
+            )
+
+        self.assertEqual(result, 2)
+
+    def test_main_clean_passes_include_third_party_and_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch("repo_hygiene.command_clean", return_value=0) as mock_clean:
+                result = repo_hygiene.main(
+                    [
+                        "clean",
+                        "--repo-root",
+                        str(root),
+                        "--include-third-party",
+                        "--baseline-file",
+                        "custom-baseline.json",
+                        "--json",
+                    ]
+                )
+
+        self.assertEqual(result, 0)
+        mock_clean.assert_called_once()
+        call_args, call_kwargs = mock_clean.call_args
+        self.assertEqual(call_args[0], root.resolve())
+        self.assertTrue(call_kwargs["include_third_party"])
+        self.assertEqual(call_kwargs["baseline_path"], "custom-baseline.json")
+        self.assertTrue(call_kwargs["json_output"])
+
+    def test_main_scan_passes_default_include_third_party_false(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch("repo_hygiene.command_scan", return_value=0) as mock_scan:
+                result = repo_hygiene.main(
+                    [
+                        "scan",
+                        "--repo-root",
+                        str(root),
+                    ]
+                )
+
+        self.assertEqual(result, 0)
+        mock_scan.assert_called_once()
+        call_args, call_kwargs = mock_scan.call_args
+        self.assertEqual(call_args[0], root.resolve())
+        self.assertFalse(call_kwargs["include_third_party"])
+        self.assertEqual(call_kwargs["baseline_path"], repo_hygiene.BASELINE_DEFAULT_PATH)
+        self.assertFalse(call_kwargs["json_output"])
+
 
 if __name__ == "__main__":
     unittest.main()
