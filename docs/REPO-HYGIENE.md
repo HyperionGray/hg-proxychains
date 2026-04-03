@@ -1,6 +1,8 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
+`scripts/repo_hygiene.py` is the primary scanner/cleaner for scheduled automation
+and local repository hygiene checks. `scripts/repo_maintenance.py` remains a
+compatibility wrapper that delegates to `repo_hygiene.py`.
 
 This repository includes a small maintenance utility at
 `scripts/repo_hygiene.py` for scheduled cleanups and local checks.
@@ -30,7 +32,8 @@ When you do want full-repo scanning (including nested third-party git state),
 use `--include-third-party`.
 
 Known upstream unfinished markers can be recorded in a baseline file so
-scheduled jobs can fail only on new findings.
+scheduled jobs can fail only on new findings. The scanner also reports
+`stale_baseline_entries` when a suppression no longer matches live findings.
 
 ## Usage
 
@@ -49,6 +52,12 @@ python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 # Remove untracked stray files/directories
 python3 scripts/repo_hygiene.py clean --repo-root .
 python3 scripts/repo_hygiene.py scan --repo-root . --json
+
+# Refresh baseline from current findings
+python3 scripts/repo_hygiene.py baseline --repo-root . --include-third-party
+
+# Remove stale suppressions that no longer match findings
+python3 scripts/repo_hygiene.py baseline-prune --repo-root . --include-third-party
 ```
 
 JSON output for automation:
@@ -94,6 +103,9 @@ By default, `scan`/`clean` load marker suppressions from:
 Override with `--baseline-file <path>`.
 
 The baseline currently suppresses marker findings only (not stray files).
+
+Use `baseline-prune` periodically to keep suppressions aligned with real
+third-party state and avoid stale suppressions accumulating.
 
 ## Legacy script
 

@@ -230,14 +230,14 @@ Run repository maintenance checks (unfinished markers, backup files, stale artif
 
 ```bash
 make maintenance
-# equivalent: python3 scripts/repo_hygiene.py scan --repo-root .
+# equivalent: python3 scripts/repo_hygiene.py scan --repo-root . --no-include-third-party
 ```
 
 For automatic cleanup of removable clutter (backup files, stray `__pycache__/` dirs, and known stale artifacts):
 
 ```bash
 make maintenance-fix
-# equivalent: python3 scripts/repo_hygiene.py clean --repo-root .
+# equivalent: python3 scripts/repo_hygiene.py clean --repo-root . --no-include-third-party
 ```
 
 `maintenance*` targets focus on first-party code by default. For a full scan that
@@ -246,6 +246,14 @@ also includes `third_party/FunkyDNS`, use:
 ```bash
 make maintenance-all
 make maintenance-all-json
+```
+
+If the baseline file accumulates stale suppressions over time, prune it:
+
+```bash
+python3 scripts/repo_hygiene.py baseline-prune --repo-root . --include-third-party
+# or regenerate from current findings:
+make maintenance-baseline
 ```
 
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
