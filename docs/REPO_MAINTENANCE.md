@@ -1,19 +1,19 @@
 # Repository maintenance workflow (legacy note)
 
 `scripts/repo_maintenance.py` is now a compatibility wrapper.
-
 Use `scripts/repo_hygiene.py` directly for all maintenance checks and cleanup.
-Primary documentation has moved to:
 
 - Unfinished markers in tracked files (`TODO`, `FIXME`, `STUB`, `TBD`, `XXX`, `UNFINISHED`)
 - Backup files (`*~`, `*.bak`, `*.orig`, `*.old`, `*.tmp`)
 - Stray Python cache directories (`__pycache__/`)
-- Known stale artifacts (currently `egressd-starter.tar.gz`)
+- Known stale artifacts from:
+  - built-in defaults (currently `egressd-starter.tar.gz`)
+  - optional `.repo-hygiene-stale-artifacts.txt` entries
 - Embedded git repositories outside the allowed third-party submodule path
 
-By default, marker scanning includes tracked files in `third_party/FunkyDNS` when that repository is present.
-For day-to-day repo automation, prefer the first-party-only mode (`--no-include-third-party`)
-to avoid noise from external dependency internals.
+By default, marker scanning is first-party only and skips
+`third_party/FunkyDNS` internals. For full scans that include third-party
+internals, pass `--include-third-party`.
 
 ## Commands
 
@@ -25,10 +25,13 @@ python3 scripts/repo_hygiene.py scan --repo-root .
 python3 scripts/repo_hygiene.py scan --repo-root . --json
 
 # Include third_party marker scan explicitly
-python3 scripts/repo_maintenance.py --include-third-party
+python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
 # Remove backup files + stray cache dirs + stale artifacts while scanning
-python3 scripts/repo_maintenance.py --fix
+python3 scripts/repo_hygiene.py clean --repo-root .
+
+# Use a custom stale artifact path file
+python3 scripts/repo_hygiene.py scan --repo-root . --stale-artifacts-file .repo-hygiene-stale-artifacts.txt
 ```
 
 Makefile wrappers:
@@ -46,6 +49,7 @@ make maintenance-all-json
 ## Notes
 
 - `--fix` removes backup files, stray `__pycache__/` directories, and known stale artifacts.
+- stale artifacts can be extended without code changes via `.repo-hygiene-stale-artifacts.txt`.
 - Unfinished markers are reported but not modified automatically.
 - Embedded git repositories are reported but never auto-removed by `--fix`.
 - Without `--fix`, exit code is `1` when any issues are found.

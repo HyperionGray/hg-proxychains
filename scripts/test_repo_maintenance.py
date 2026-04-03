@@ -67,6 +67,10 @@ class RepoMaintenanceTests(unittest.TestCase):
 
             self.assertEqual(found, [])
 
+    def test_parse_args_accepts_stale_artifacts_file(self) -> None:
+        args = repo_maintenance.parse_args(["--stale-artifacts-file", "custom-stale.txt"])
+        self.assertEqual(args.stale_artifacts_file, "custom-stale.txt")
+
 
 if __name__ == "__main__":
     unittest.main()

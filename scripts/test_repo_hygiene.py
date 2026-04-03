@@ -2,7 +2,6 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import repo_hygiene
@@ -68,6 +67,35 @@ class RepoHygieneTests(unittest.TestCase):
         )
         self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
         self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
+
+    def test_load_stale_artifact_paths_from_file(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            config_path = root / ".repo-hygiene-stale-artifacts.txt"
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "# comment",
+                        "dist/bundle.tar.gz",
+                        " logs/latest.log ",
+                        "/absolute/path/ignored",
+                        "../outside/ignored",
+                        ".",
+                        "",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            stale_paths = repo_hygiene.load_stale_artifact_paths(root, config_path.name)
+
+        self.assertIn("egressd-starter.tar.gz", stale_paths)
+        self.assertIn("dist/bundle.tar.gz", stale_paths)
+        self.assertIn("logs/latest.log", stale_paths)
+        self.assertNotIn("/absolute/path/ignored", stale_paths)
+        self.assertNotIn("../outside/ignored", stale_paths)
+        self.assertNotIn(".", stale_paths)
 
     def test_find_unfinished_markers_ignores_skipped_paths(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -156,6 +184,21 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_parse_args_supports_toggle_and_stale_artifact_file(self) -> None:
+        args = repo_hygiene.parse_args(
+            ["scan", "--no-include-third-party", "--stale-artifacts-file", "custom-stale.txt"]
+        )
+        self.assertEqual(args.command, "scan")
+        self.assertFalse(args.include_third_party)
+        self.assertEqual(args.stale_artifacts_file, "custom-stale.txt")
+
+    def test_main_baseline_rejects_json(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            exit_code = repo_hygiene.main(["baseline", "--repo-root", str(root), "--json"])
+        self.assertEqual(exit_code, 2)
 
 
 if __name__ == "__main__":

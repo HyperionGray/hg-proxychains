@@ -21,6 +21,7 @@ UNFINISHED_SKIP_PREFIXES = (".git/",)
 STRAY_FILE_PATTERNS = (
     "*~",
     "*.bak",
+    "*.old",
     "*.tmp",
     "*.orig",
     "*.rej",
@@ -35,9 +36,6 @@ STRAY_DIR_NAMES = {
     ".mypy_cache",
     ".ruff_cache",
 }
-STALE_ARTIFACT_PATHS = (
-    "egressd-starter.tar.gz",
-)
 UNFINISHED_SCAN_SUFFIXES = {
     ".py",
     ".sh",
@@ -55,9 +53,8 @@ UNFINISHED_SCAN_FILENAMES = {
     "Makefile",
 }
 BASELINE_DEFAULT_PATH = ".repo-hygiene-baseline.json"
-THIRD_PARTY_PREFIX = "third_party/"
-STALE_ARTIFACT_PATHS: frozenset[str] = frozenset()
-# Add known stale tracked/untracked artifact paths here (e.g. generated bundles) as they arise.
+STALE_ARTIFACTS_DEFAULT_PATH = ".repo-hygiene-stale-artifacts.txt"
+DEFAULT_STALE_ARTIFACT_PATHS: frozenset[str] = frozenset({"egressd-starter.tar.gz"})
 
 
 @dataclass(frozen=True)
@@ -231,12 +228,54 @@ def classify_stray_paths(
 def find_stale_artifacts(
     tracked_paths: Iterable[str],
     untracked_paths: Iterable[str],
+    stale_artifact_paths: Iterable[str] = DEFAULT_STALE_ARTIFACT_PATHS,
 ) -> tuple[list[str], list[str]]:
     tracked_set = set(tracked_paths)
     untracked_set = set(untracked_paths)
-    stale_tracked = sorted(path for path in STALE_ARTIFACT_PATHS if path in tracked_set)
-    stale_untracked = sorted(path for path in STALE_ARTIFACT_PATHS if path in untracked_set)
+    stale_set = set(stale_artifact_paths)
+    stale_tracked = sorted(path for path in stale_set if path in tracked_set)
+    stale_untracked = sorted(path for path in stale_set if path in untracked_set)
     return stale_tracked, stale_untracked
+
+
+def load_stale_artifact_paths(repo_root: Path, stale_path_file: str) -> frozenset[str]:
+    """Return configured stale-artifact paths.
+
+    Paths are loaded from the default built-in set plus optional entries from
+    *stale_path_file* (relative to *repo_root*). Lines starting with ``#`` and
+    blank lines are ignored.
+    """
+    configured: set[str] = set(DEFAULT_STALE_ARTIFACT_PATHS)
+    candidate = repo_root / stale_path_file
+    if not candidate.is_file():
+        return frozenset(sorted(configured))
+
+    try:
+        content = candidate.read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"warn: failed to read stale artifact path file {stale_path_file}: {exc}", file=sys.stderr)
+        return frozenset(sorted(configured))
+
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        path_obj = Path(line)
+        if path_obj.is_absolute():
+            print(
+                f"warn: ignoring absolute stale artifact path in {stale_path_file}: {line}",
+                file=sys.stderr,
+            )
+            continue
+        normalized = path_obj.as_posix()
+        if normalized in {"", "."} or normalized.startswith("../"):
+            print(
+                f"warn: ignoring invalid stale artifact path in {stale_path_file}: {line}",
+                file=sys.stderr,
+            )
+            continue
+        configured.add(normalized)
+    return frozenset(sorted(configured))
 
 
 def discover_embedded_git_repos(repo_root: Path, include_third_party: bool = False) -> list[str]:
@@ -360,6 +399,7 @@ def gather_hygiene_state(
     *,
     include_third_party: bool,
     baseline_path: str,
+    stale_artifact_paths: Iterable[str],
 ) -> tuple[list[MarkerFinding], list[str], list[str], list[str], list[str], int]:
     tracked = collect_git_paths(repo_root, ("ls-files",), include_third_party=include_third_party)
     untracked = collect_git_paths(
@@ -379,7 +419,11 @@ def gather_hygiene_state(
         load_marker_baseline(repo_root, baseline_path),
     )
     stray = classify_stray_paths(untracked, include_third_party=include_third_party)
-    stale_tracked, stale_untracked = find_stale_artifacts(tracked, untracked)
+    stale_tracked, stale_untracked = find_stale_artifacts(
+        tracked,
+        untracked,
+        stale_artifact_paths=stale_artifact_paths,
+    )
     embedded_git_repos = discover_embedded_git_repos(repo_root, include_third_party=include_third_party)
     return findings, stray, stale_tracked, stale_untracked, embedded_git_repos, suppressed
 
@@ -389,12 +433,14 @@ def command_scan(
     *,
     include_third_party: bool,
     baseline_path: str,
+    stale_artifact_paths: Iterable[str],
     json_output: bool = False,
 ) -> int:
     findings, stray, stale_tracked, stale_untracked, embedded_git_repos, suppressed = gather_hygiene_state(
         repo_root,
         include_third_party=include_third_party,
         baseline_path=baseline_path,
+        stale_artifact_paths=stale_artifact_paths,
     )
     report = build_scan_report(
         findings,
@@ -423,12 +469,14 @@ def command_clean(
     *,
     include_third_party: bool,
     baseline_path: str,
+    stale_artifact_paths: Iterable[str],
     json_output: bool = False,
 ) -> int:
     findings, stray, stale_tracked, stale_untracked, embedded_git_repos, suppressed = gather_hygiene_state(
         repo_root,
         include_third_party=include_third_party,
         baseline_path=baseline_path,
+        stale_artifact_paths=stale_artifact_paths,
     )
     report = build_scan_report(
         findings,
@@ -513,20 +561,17 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         help=f"marker baseline path relative to --repo-root (default: {BASELINE_DEFAULT_PATH})",
     )
     parser.add_argument(
+        "--stale-artifacts-file",
+        default=STALE_ARTIFACTS_DEFAULT_PATH,
+        help=(
+            "stale artifact path list relative to --repo-root "
+            f"(default: {STALE_ARTIFACTS_DEFAULT_PATH})"
+        ),
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         help="emit machine-readable JSON output",
-    )
-    parser.add_argument(
-        "--include-third-party",
-        action="store_true",
-        default=False,
-        help="include all of third_party/ (e.g. third_party/FunkyDNS) in marker and stray-file scanning (default: false)",
-    )
-    parser.add_argument(
-        "--baseline-file",
-        default=BASELINE_DEFAULT_PATH,
-        help=f"marker baseline path relative to --repo-root (default: {BASELINE_DEFAULT_PATH})",
     )
     return parser.parse_args(argv)
 
@@ -539,16 +584,31 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     if args.command == "baseline":
-        return command_baseline(repo_root, args.include_third_party, args.baseline_file)
-    if args.command == "clean":
-        return command_clean(repo_root, json_output=args.json)
-    elif args.command == "baseline":
-        # baseline command doesn't support --json flag
         if args.json:
             print("error: --json is not supported for the 'baseline' command", file=sys.stderr)
             return 2
-        return command_baseline(repo_root, include_third_party=False, baseline_path=BASELINE_DEFAULT_PATH)
-    return command_scan(repo_root, json_output=args.json)
+        return command_baseline(
+            repo_root,
+            include_third_party=args.include_third_party,
+            baseline_path=args.baseline_file,
+        )
+
+    stale_artifact_paths = load_stale_artifact_paths(repo_root, args.stale_artifacts_file)
+    if args.command == "clean":
+        return command_clean(
+            repo_root,
+            include_third_party=args.include_third_party,
+            baseline_path=args.baseline_file,
+            stale_artifact_paths=stale_artifact_paths,
+            json_output=args.json,
+        )
+    return command_scan(
+        repo_root,
+        include_third_party=args.include_third_party,
+        baseline_path=args.baseline_file,
+        stale_artifact_paths=stale_artifact_paths,
+        json_output=args.json,
+    )
 
 
 if __name__ == "__main__":

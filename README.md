@@ -233,6 +233,15 @@ make maintenance
 # equivalent: python3 scripts/repo_hygiene.py scan --repo-root .
 ```
 
+Stale artifacts use built-in defaults and optional entries from:
+
+```bash
+.repo-hygiene-stale-artifacts.txt
+```
+
+Add one relative path per line in that file to extend cleanup policy without
+editing Python code.
+
 For automatic cleanup of removable clutter (backup files, stray `__pycache__/` dirs, and known stale artifacts):
 
 ```bash

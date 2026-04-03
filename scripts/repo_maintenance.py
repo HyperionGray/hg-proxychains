@@ -137,6 +137,14 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         default=".repo-hygiene-baseline.json",
         help="Marker baseline path relative to --root (default: .repo-hygiene-baseline.json).",
     )
+    parser.add_argument(
+        "--stale-artifacts-file",
+        default=".repo-hygiene-stale-artifacts.txt",
+        help=(
+            "Stale artifact path list relative to --root "
+            "(default: .repo-hygiene-stale-artifacts.txt)."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -154,6 +162,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         str(root),
         "--baseline-file",
         args.baseline_file,
+        "--stale-artifacts-file",
+        args.stale_artifacts_file,
     ]
     if args.include_third_party:
         cmd.append("--include-third-party")

@@ -1,9 +1,7 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
-
-This repository includes a small maintenance utility at
-`scripts/repo_hygiene.py` for scheduled cleanups and local checks.
+`scripts/repo_hygiene.py` is the primary maintenance scanner/cleaner.
+`scripts/repo_maintenance.py` is a compatibility wrapper that delegates to it.
 
 ## What it checks
 
@@ -21,6 +19,7 @@ This repository includes a small maintenance utility at
   - Python cache outputs (`__pycache__/`, `*.pyc`, `*.pyo`)
   - common metadata noise (`.DS_Store`, `Thumbs.db`)
   - known generated bundles (`egressd-starter.tar.gz`)
+  - optional stale artifact paths from `.repo-hygiene-stale-artifacts.txt`
 
 The scanner intentionally skips `third_party/FunkyDNS/` when checking
 unfinished markers by default, because that path is managed as an external
@@ -48,7 +47,9 @@ python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
 # Remove untracked stray files/directories
 python3 scripts/repo_hygiene.py clean --repo-root .
-python3 scripts/repo_hygiene.py scan --repo-root . --json
+
+# Override stale artifact path file (relative to --repo-root)
+python3 scripts/repo_hygiene.py scan --repo-root . --stale-artifacts-file .repo-hygiene-stale-artifacts.txt
 ```
 
 JSON output for automation:
@@ -94,6 +95,15 @@ By default, `scan`/`clean` load marker suppressions from:
 Override with `--baseline-file <path>`.
 
 The baseline currently suppresses marker findings only (not stray files).
+
+## Stale artifact path file
+
+By default, `scan`/`clean` also load stale artifact paths from:
+
+- `.repo-hygiene-stale-artifacts.txt`
+
+Entries in that file are optional and additive to built-in defaults.
+Use `--stale-artifacts-file <path>` to point at a different list.
 
 ## Legacy script
 
