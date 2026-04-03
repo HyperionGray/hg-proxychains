@@ -293,7 +293,7 @@ def check_hop_connectivity(hop_url: str, target: str, timeout: float = 3.0) -> D
         if not ok:
             result["error"] = status_line
         return result
-    except (socket.error, socket.timeout, OSError) as exc:
+    except (socket.error, socket.timeout, OSError, ValueError) as exc:
         return {
             "ok": False,
             "proxy": proxy_label,
@@ -847,12 +847,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             if STOP_EVENT.is_set():
                 break
         except (OSError, ValueError, RuntimeError) as exc:
-        except Exception as exc:
             processes["pproxy"] = None
             set_state({"pproxy": "error"})
             refresh_ready_state(cfg)
             if STOP_EVENT.is_set():
-            logging.exception("supervisor loop error")
+                break
             logging.exception("supervisor loop error: %s", exc)
 
         if STOP_EVENT.is_set():
