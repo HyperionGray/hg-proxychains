@@ -1,6 +1,7 @@
 import sys
 import tempfile
 import unittest
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
@@ -235,10 +236,17 @@ class RepoHygieneTests(unittest.TestCase):
     def test_command_baseline_prune_removes_stale_entries(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            (root / ".git").mkdir()
+            subprocess.run(
+                ["git", "init"],
+                cwd=root,
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
             src_file = root / "src.py"
             active_line = "# TO" "DO: active marker"
             src_file.write_text(f"{active_line}\n", encoding="utf-8")
+            subprocess.run(["git", "add", "src.py"], cwd=root, check=True)
             repo_hygiene.write_marker_baseline(
                 root,
                 ".repo-hygiene-baseline.json",
