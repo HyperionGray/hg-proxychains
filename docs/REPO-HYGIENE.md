@@ -1,9 +1,9 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
-
-This repository includes a small maintenance utility at
+This repository includes a maintenance utility at
 `scripts/repo_hygiene.py` for scheduled cleanups and local checks.
+`scripts/repo_maintenance.py` is a compatibility wrapper that delegates
+to `repo_hygiene.py`.
 
 ## What it checks
 
@@ -30,7 +30,11 @@ When you do want full-repo scanning (including nested third-party git state),
 use `--include-third-party`.
 
 Known upstream unfinished markers can be recorded in a baseline file so
-scheduled jobs can fail only on new findings.
+scheduled jobs can fail only on new findings by default.
+
+If you want a stricter debt-burn mode in automation, use
+`--fail-on-suppressed-markers` to fail when baseline-suppressed markers still
+exist.
 
 ## Usage
 
@@ -45,6 +49,9 @@ python3 scripts/repo_hygiene.py scan --repo-root . --json
 
 # Include third-party dependency tree explicitly
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
+
+# Strict mode: fail if baseline-suppressed markers are still present
+python3 scripts/repo_hygiene.py scan --repo-root . --fail-on-suppressed-markers
 
 # Remove untracked stray files/directories
 python3 scripts/repo_hygiene.py clean --repo-root .
@@ -69,13 +76,12 @@ Or through Make targets:
 ```bash
 make maintenance
 make maintenance-fix
+make maintenance-strict
+make maintenance-strict-json
 make repo-scan
 make repo-clean
 make repo-scan-json
 ```
-
-`scripts/repo_maintenance.py` is retained as a compatibility wrapper and now
-delegates to `scripts/repo_hygiene.py`.
 
 ## Exit codes
 
@@ -83,6 +89,7 @@ delegates to `scripts/repo_hygiene.py`.
 - `1`: blocking issues found
   - `scan`: unfinished markers, stray untracked files, or stale artifacts
   - `clean`: unfinished markers or tracked stale artifacts (removable clutter is deleted)
+  - with `--fail-on-suppressed-markers`, baseline-suppressed markers also count as blocking
 - `2`: invalid invocation (for example, non-git directory)
 
 ## Baseline file
@@ -94,6 +101,8 @@ By default, `scan`/`clean` load marker suppressions from:
 Override with `--baseline-file <path>`.
 
 The baseline currently suppresses marker findings only (not stray files).
+Suppressed findings are still counted and printed, and can be made blocking with
+`--fail-on-suppressed-markers`.
 
 ## Legacy script
 

@@ -233,6 +233,14 @@ make maintenance
 # equivalent: python3 scripts/repo_hygiene.py scan --repo-root .
 ```
 
+Strict automation mode (fail even if only baseline-suppressed markers exist):
+
+```bash
+make maintenance-strict
+make maintenance-strict-json
+# equivalent: python3 scripts/repo_hygiene.py scan --repo-root . --fail-on-suppressed-markers
+```
+
 For automatic cleanup of removable clutter (backup files, stray `__pycache__/` dirs, and known stale artifacts):
 
 ```bash
