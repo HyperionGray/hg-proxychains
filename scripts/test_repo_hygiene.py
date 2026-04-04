@@ -3,6 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from io import StringIO
+from contextlib import redirect_stderr
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import repo_hygiene
@@ -68,6 +70,15 @@ class RepoHygieneTests(unittest.TestCase):
         )
         self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
         self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
+
+    def test_find_stale_artifacts_supports_custom_targets(self) -> None:
+        stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(
+            tracked_paths=["README.md", "build/cache.bin"],
+            untracked_paths=["tmp/output.tmp", "build/cache.bin"],
+            stale_artifact_paths=["build/cache.bin"],
+        )
+        self.assertEqual(stale_tracked, ["build/cache.bin"])
+        self.assertEqual(stale_untracked, ["build/cache.bin"])
 
     def test_find_unfinished_markers_ignores_skipped_paths(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -156,6 +167,49 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_main_forwards_clean_options(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_clean", return_value=17) as command_clean:
+                rc = repo_hygiene.main(
+                    [
+                        "clean",
+                        "--repo-root",
+                        str(root),
+                        "--include-third-party",
+                        "--baseline-file",
+                        "custom-baseline.json",
+                        "--stale-artifact",
+                        "build/cache.bin",
+                    ]
+                )
+        self.assertEqual(rc, 17)
+        command_clean.assert_called_once_with(
+            root.resolve(),
+            include_third_party=True,
+            baseline_path="custom-baseline.json",
+            stale_artifact_paths=["build/cache.bin"],
+            json_output=False,
+        )
+
+    def test_main_rejects_json_for_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            stderr = StringIO()
+            with redirect_stderr(stderr):
+                rc = repo_hygiene.main(
+                    [
+                        "baseline",
+                        "--repo-root",
+                        str(root),
+                        "--json",
+                    ]
+                )
+        self.assertEqual(rc, 2)
+        self.assertIn("--json is not supported for the 'baseline' command", stderr.getvalue())
 
 
 if __name__ == "__main__":

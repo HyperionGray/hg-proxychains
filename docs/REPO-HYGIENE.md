@@ -1,9 +1,10 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
+`scripts/repo_hygiene.py` is the primary maintenance utility for scheduled
+automation and local checks.
 
-This repository includes a small maintenance utility at
-`scripts/repo_hygiene.py` for scheduled cleanups and local checks.
+`scripts/repo_maintenance.py` remains available as a compatibility wrapper and
+delegates to `scripts/repo_hygiene.py`.
 
 ## What it checks
 
@@ -21,6 +22,8 @@ This repository includes a small maintenance utility at
   - Python cache outputs (`__pycache__/`, `*.pyc`, `*.pyo`)
   - common metadata noise (`.DS_Store`, `Thumbs.db`)
   - known generated bundles (`egressd-starter.tar.gz`)
+- Optional caller-supplied stale artifact paths (via repeated
+  `--stale-artifact <path>`)
 
 The scanner intentionally skips `third_party/FunkyDNS/` when checking
 unfinished markers by default, because that path is managed as an external
@@ -48,7 +51,11 @@ python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
 # Remove untracked stray files/directories
 python3 scripts/repo_hygiene.py clean --repo-root .
-python3 scripts/repo_hygiene.py scan --repo-root . --json
+
+# Add extra stale artifact targets for this run (repeatable)
+python3 scripts/repo_hygiene.py scan --repo-root . \
+  --stale-artifact build/cache.bin \
+  --stale-artifact dist/output.tar.gz
 ```
 
 JSON output for automation:
@@ -74,9 +81,6 @@ make repo-clean
 make repo-scan-json
 ```
 
-`scripts/repo_maintenance.py` is retained as a compatibility wrapper and now
-delegates to `scripts/repo_hygiene.py`.
-
 ## Exit codes
 
 - `0`: no issues remain after the command completes
@@ -94,6 +98,14 @@ By default, `scan`/`clean` load marker suppressions from:
 Override with `--baseline-file <path>`.
 
 The baseline currently suppresses marker findings only (not stray files).
+
+Write/update a baseline with:
+
+```bash
+python3 scripts/repo_hygiene.py baseline --repo-root .
+```
+
+`--json` is supported for `scan` and `clean`, but not for `baseline`.
 
 ## Legacy script
 
