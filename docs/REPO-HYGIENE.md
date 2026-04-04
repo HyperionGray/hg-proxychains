@@ -1,9 +1,10 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
-
-This repository includes a small maintenance utility at
+This repository includes a maintenance utility at
 `scripts/repo_hygiene.py` for scheduled cleanups and local checks.
+
+`scripts/repo_maintenance.py` is a compatibility wrapper that delegates to
+`repo_hygiene.py`.
 
 ## What it checks
 
@@ -48,7 +49,7 @@ python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
 # Remove untracked stray files/directories
 python3 scripts/repo_hygiene.py clean --repo-root .
-python3 scripts/repo_hygiene.py scan --repo-root . --json
+python3 scripts/repo_hygiene.py clean --repo-root . --json
 ```
 
 JSON output for automation:
@@ -62,6 +63,18 @@ Optional deep scan including `third_party/FunkyDNS` unfinished markers:
 
 ```bash
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
+```
+
+Ignore selected paths for scan/clean/baseline:
+
+```bash
+# Repeatable CLI ignores
+python3 scripts/repo_hygiene.py scan --repo-root . \
+  --ignore-path-glob 'logs/*' \
+  --ignore-path-glob 'tmp/*.tmp'
+
+# Use a custom ignore file (default: .repo-hygiene-ignore)
+python3 scripts/repo_hygiene.py scan --repo-root . --ignore-file .repo-hygiene-ignore
 ```
 
 Or through Make targets:
@@ -94,6 +107,16 @@ By default, `scan`/`clean` load marker suppressions from:
 Override with `--baseline-file <path>`.
 
 The baseline currently suppresses marker findings only (not stray files).
+
+## Ignore file
+
+By default, the scanner loads optional path-glob ignores from:
+
+- `.repo-hygiene-ignore`
+
+Each non-empty line is treated as a glob pattern. Lines starting with `#` are
+comments. You can combine file-based ignores with repeatable
+`--ignore-path-glob` flags.
 
 ## Legacy script
 

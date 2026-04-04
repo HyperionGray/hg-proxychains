@@ -248,7 +248,15 @@ make maintenance-all
 make maintenance-all-json
 ```
 
-For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
+For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early. If you need to suppress noisy paths without broadening the baseline, use repeatable ignore globs:
+
+```bash
+python3 scripts/repo_hygiene.py scan --repo-root . \
+  --ignore-path-glob "third_party/FunkyDNS/archive/*" \
+  --ignore-path-glob "tmp/*"
+```
+
+You can also commit a `.repo-hygiene-ignore` file (one glob per line, `#` comments supported); it is loaded automatically.
 
 For focused first-party hygiene scans and stray cleanup:
 

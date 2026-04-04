@@ -9,6 +9,26 @@ import repo_hygiene
 
 
 class RepoHygieneTests(unittest.TestCase):
+    def test_parse_args_supports_include_toggle_and_ignore_globs(self) -> None:
+        args = repo_hygiene.parse_args(
+            [
+                "scan",
+                "--repo-root",
+                ".",
+                "--no-include-third-party",
+                "--baseline-file",
+                "baseline.json",
+                "--ignore-path-glob",
+                "tmp/*",
+                "--ignore-path-glob",
+                "*.cache",
+            ]
+        )
+        self.assertEqual(args.command, "scan")
+        self.assertFalse(args.include_third_party)
+        self.assertEqual(args.baseline_file, "baseline.json")
+        self.assertEqual(args.ignore_path_glob, ["tmp/*", "*.cache"])
+
     def test_should_skip_for_unfinished(self) -> None:
         self.assertTrue(repo_hygiene.should_skip_for_unfinished("third_party/FunkyDNS/dns_server/doh.py"))
         self.assertFalse(
@@ -61,6 +81,15 @@ class RepoHygieneTests(unittest.TestCase):
             ],
         )
 
+    def test_classify_stray_paths_respects_ignored_globs(self) -> None:
+        paths = [
+            "tmp/output.tmp",
+            "logs/debug.tmp",
+            "pkg/__pycache__/module.cpython-312.pyc",
+        ]
+        stray = repo_hygiene.classify_stray_paths(paths, ignored_globs=("logs/*", "pkg/*"))
+        self.assertEqual(stray, ["tmp/output.tmp"])
+
     def test_find_stale_artifacts_tracks_known_generated_bundle(self) -> None:
         stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(
             tracked_paths=["README.md", "egressd-starter.tar.gz"],
@@ -68,6 +97,15 @@ class RepoHygieneTests(unittest.TestCase):
         )
         self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
         self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
+
+    def test_find_stale_artifacts_respects_ignored_globs(self) -> None:
+        stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(
+            tracked_paths=["egressd-starter.tar.gz"],
+            untracked_paths=["egressd-starter.tar.gz"],
+            ignored_globs=("*.tar.gz",),
+        )
+        self.assertEqual(stale_tracked, [])
+        self.assertEqual(stale_untracked, [])
 
     def test_find_unfinished_markers_ignores_skipped_paths(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -96,6 +134,19 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(findings[0].marker, "TODO")
         self.assertEqual(len(findings_with_dep), 2)
         self.assertEqual(findings_with_dep[1].path, "third_party/FunkyDNS/dep.py")
+
+    def test_find_unfinished_markers_respects_ignored_globs(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            src_file = root / "src.py"
+            src_file.write_text("# TO" "DO: fix this\n", encoding="utf-8")
+            findings = repo_hygiene.find_unfinished_markers(
+                root,
+                ["src.py"],
+                ignored_globs=("src.py",),
+            )
+        self.assertEqual(findings, [])
 
     def test_find_unfinished_markers_can_include_third_party(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -156,6 +207,36 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_load_ignore_globs_merges_cli_and_file_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            ignore_file = root / ".repo-hygiene-ignore"
+            ignore_file.write_text(
+                "# comment\n\nlogs/*\nlogs/*\ntmp/*.tmp\n",
+                encoding="utf-8",
+            )
+            patterns = repo_hygiene.load_ignore_globs(
+                root,
+                ".repo-hygiene-ignore",
+                ["tmp/*.tmp", "vendor/**"],
+            )
+        self.assertEqual(patterns, ("tmp/*.tmp", "vendor/**", "logs/*"))
+
+    def test_discover_embedded_git_repos_respects_ignored_globs(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            keep_repo = root / "tmp" / "keep" / ".git"
+            skip_repo = root / "tmp" / "skip" / ".git"
+            keep_repo.mkdir(parents=True, exist_ok=True)
+            skip_repo.mkdir(parents=True, exist_ok=True)
+
+            found = repo_hygiene.discover_embedded_git_repos(
+                root,
+                ignored_globs=("tmp/skip*",),
+            )
+        self.assertEqual(found, ["tmp/keep"])
 
 
 if __name__ == "__main__":
