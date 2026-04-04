@@ -240,6 +240,14 @@ make maintenance-fix
 # equivalent: python3 scripts/repo_hygiene.py clean --repo-root .
 ```
 
+To persist the JSON payload to a file for automation pipelines while still
+printing normal output, pass `--report-file`:
+
+```bash
+python3 scripts/repo_hygiene.py scan --repo-root . --json --report-file reports/hygiene-scan.json
+python3 scripts/repo_maintenance.py --json --report-file reports/hygiene-wrapper.json
+```
+
 `maintenance*` targets focus on first-party code by default. For a full scan that
 also includes `third_party/FunkyDNS`, use:
 

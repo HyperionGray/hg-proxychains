@@ -137,6 +137,11 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         default=".repo-hygiene-baseline.json",
         help="Marker baseline path relative to --root (default: .repo-hygiene-baseline.json).",
     )
+    parser.add_argument(
+        "--report-file",
+        default=None,
+        help="Optional JSON report file path forwarded to repo_hygiene.py.",
+    )
     return parser.parse_args(argv)
 
 
@@ -159,6 +164,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         cmd.append("--include-third-party")
     if args.json:
         cmd.append("--json")
+    if args.report_file:
+        cmd.extend(["--report-file", args.report_file])
 
     proc = subprocess.run(cmd, check=False)
     return proc.returncode

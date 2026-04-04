@@ -56,8 +56,8 @@ UNFINISHED_SCAN_FILENAMES = {
 }
 BASELINE_DEFAULT_PATH = ".repo-hygiene-baseline.json"
 THIRD_PARTY_PREFIX = "third_party/"
-STALE_ARTIFACT_PATHS: frozenset[str] = frozenset()
-# Add known stale tracked/untracked artifact paths here (e.g. generated bundles) as they arise.
+STALE_ARTIFACT_PATHS: frozenset[str] = frozenset(STALE_ARTIFACT_PATHS)
+# Add known stale tracked/untracked artifact paths here as they arise.
 
 
 @dataclass(frozen=True)
@@ -355,6 +355,16 @@ def print_scan_results(
         print(f"  - {rel_path}")
 
 
+def write_report_file(report: dict[str, object], repo_root: Path, report_file: str | None) -> None:
+    if not report_file:
+        return
+    report_path = Path(report_file)
+    if not report_path.is_absolute():
+        report_path = repo_root / report_path
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def gather_hygiene_state(
     repo_root: Path,
     *,
@@ -390,6 +400,7 @@ def command_scan(
     include_third_party: bool,
     baseline_path: str,
     json_output: bool = False,
+    report_file: str | None = None,
 ) -> int:
     findings, stray, stale_tracked, stale_untracked, embedded_git_repos, suppressed = gather_hygiene_state(
         repo_root,
@@ -415,6 +426,7 @@ def command_scan(
             embedded_git_repos,
             suppressed_markers=suppressed,
         )
+    write_report_file(report, repo_root, report_file)
     return 1 if report["summary"]["total_issues"] else 0
 
 
@@ -424,6 +436,7 @@ def command_clean(
     include_third_party: bool,
     baseline_path: str,
     json_output: bool = False,
+    report_file: str | None = None,
 ) -> int:
     findings, stray, stale_tracked, stale_untracked, embedded_git_repos, suppressed = gather_hygiene_state(
         repo_root,
@@ -457,6 +470,7 @@ def command_clean(
             suppressed_markers=suppressed,
         )
         print(f"deleted removable paths: {deleted}")
+    write_report_file(report, repo_root, report_file)
 
     cleanup_incomplete = deleted != len(removable_paths)
     return 1 if findings or stale_tracked or embedded_git_repos or cleanup_incomplete else 0
@@ -518,15 +532,9 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         help="emit machine-readable JSON output",
     )
     parser.add_argument(
-        "--include-third-party",
-        action="store_true",
-        default=False,
-        help="include all of third_party/ (e.g. third_party/FunkyDNS) in marker and stray-file scanning (default: false)",
-    )
-    parser.add_argument(
-        "--baseline-file",
-        default=BASELINE_DEFAULT_PATH,
-        help=f"marker baseline path relative to --repo-root (default: {BASELINE_DEFAULT_PATH})",
+        "--report-file",
+        default=None,
+        help="optional JSON report file path (absolute or relative to --repo-root)",
     )
     return parser.parse_args(argv)
 
@@ -539,16 +547,28 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     if args.command == "baseline":
-        return command_baseline(repo_root, args.include_third_party, args.baseline_file)
-    if args.command == "clean":
-        return command_clean(repo_root, json_output=args.json)
-    elif args.command == "baseline":
-        # baseline command doesn't support --json flag
         if args.json:
             print("error: --json is not supported for the 'baseline' command", file=sys.stderr)
             return 2
-        return command_baseline(repo_root, include_third_party=False, baseline_path=BASELINE_DEFAULT_PATH)
-    return command_scan(repo_root, json_output=args.json)
+        if args.report_file:
+            print("error: --report-file is not supported for the 'baseline' command", file=sys.stderr)
+            return 2
+        return command_baseline(repo_root, args.include_third_party, args.baseline_file)
+    if args.command == "clean":
+        return command_clean(
+            repo_root,
+            include_third_party=args.include_third_party,
+            baseline_path=args.baseline_file,
+            json_output=args.json,
+            report_file=args.report_file,
+        )
+    return command_scan(
+        repo_root,
+        include_third_party=args.include_third_party,
+        baseline_path=args.baseline_file,
+        json_output=args.json,
+        report_file=args.report_file,
+    )
 
 
 if __name__ == "__main__":

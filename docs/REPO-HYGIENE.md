@@ -1,9 +1,7 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
-
-This repository includes a small maintenance utility at
-`scripts/repo_hygiene.py` for scheduled cleanups and local checks.
+`scripts/repo_hygiene.py` is the primary maintenance tool used by this
+repository for scheduled cleanup checks and local hygiene runs.
 
 ## What it checks
 
@@ -64,6 +62,13 @@ Optional deep scan including `third_party/FunkyDNS` unfinished markers:
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 ```
 
+Write the same JSON report to disk while still printing to stdout:
+
+```bash
+python3 scripts/repo_hygiene.py scan --repo-root . --json --report-file reports/hygiene-scan.json
+python3 scripts/repo_hygiene.py clean --repo-root . --json --report-file reports/hygiene-clean.json
+```
+
 Or through Make targets:
 
 ```bash
@@ -74,7 +79,7 @@ make repo-clean
 make repo-scan-json
 ```
 
-`scripts/repo_maintenance.py` is retained as a compatibility wrapper and now
+`scripts/repo_maintenance.py` is retained as a compatibility wrapper and
 delegates to `scripts/repo_hygiene.py`.
 
 ## Exit codes
@@ -95,7 +100,16 @@ Override with `--baseline-file <path>`.
 
 The baseline currently suppresses marker findings only (not stray files).
 
+## Report file output
+
+`scan` and `clean` optionally write a JSON report file:
+
+- `--report-file <path>`
+
+If `<path>` is relative, it is resolved under `--repo-root`.
+
 ## Legacy script
 
 `scripts/repo_maintenance.py` remains as a compatibility wrapper and delegates
-to `repo_hygiene.py`.
+to `repo_hygiene.py`. It forwards `--json`, `--baseline-file`, and
+`--report-file`.

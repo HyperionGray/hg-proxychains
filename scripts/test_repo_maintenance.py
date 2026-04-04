@@ -2,12 +2,17 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import repo_maintenance
 
 
 class RepoMaintenanceTests(unittest.TestCase):
+    def test_parse_args_accepts_report_file(self) -> None:
+        args = repo_maintenance.parse_args(["--report-file", "reports/run.json"])
+        self.assertEqual(args.report_file, "reports/run.json")
+
     def test_discover_embedded_git_repos_skips_allowed_submodule(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -66,6 +71,28 @@ class RepoMaintenanceTests(unittest.TestCase):
             found = repo_maintenance.discover_embedded_git_repos(root, include_third_party=False)
 
             self.assertEqual(found, [])
+
+    def test_main_forwards_report_file_to_repo_hygiene(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            args = [
+                "--root",
+                str(root),
+                "--no-include-third-party",
+                "--json",
+                "--report-file",
+                "reports/latest.json",
+                "--baseline-file",
+                ".repo-hygiene-baseline.json",
+            ]
+            with patch("repo_maintenance.subprocess.run") as mocked_run:
+                mocked_run.return_value.returncode = 0
+                rc = repo_maintenance.main(args)
+
+        self.assertEqual(rc, 0)
+        command = mocked_run.call_args.args[0]
+        self.assertIn("--report-file", command)
+        self.assertIn("reports/latest.json", command)
 
 
 if __name__ == "__main__":

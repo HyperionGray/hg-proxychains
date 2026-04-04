@@ -1,3 +1,4 @@
+import json
 import sys
 import tempfile
 import unittest
@@ -9,6 +10,10 @@ import repo_hygiene
 
 
 class RepoHygieneTests(unittest.TestCase):
+    def test_parse_args_accepts_boolean_optional_include_flag(self) -> None:
+        args = repo_hygiene.parse_args(["scan", "--no-include-third-party"])
+        self.assertFalse(args.include_third_party)
+
     def test_should_skip_for_unfinished(self) -> None:
         self.assertTrue(repo_hygiene.should_skip_for_unfinished("third_party/FunkyDNS/dns_server/doh.py"))
         self.assertFalse(
@@ -156,6 +161,91 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_write_report_file_writes_relative_path_under_repo_root(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            report = {"summary": {"total_issues": 0}}
+
+            repo_hygiene.write_report_file(report, root, "out/report.json")
+
+            out_path = root / "out" / "report.json"
+            self.assertTrue(out_path.is_file())
+            self.assertEqual(json.loads(out_path.read_text(encoding="utf-8")), report)
+
+    def test_main_forwards_scan_flags_and_report_file(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_scan", return_value=7) as mocked_scan:
+                rc = repo_hygiene.main(
+                    [
+                        "scan",
+                        "--repo-root",
+                        str(root),
+                        "--include-third-party",
+                        "--baseline-file",
+                        "baseline.json",
+                        "--json",
+                        "--report-file",
+                        "reports/latest.json",
+                    ]
+                )
+
+        self.assertEqual(rc, 7)
+        mocked_scan.assert_called_once_with(
+            root.resolve(),
+            include_third_party=True,
+            baseline_path="baseline.json",
+            json_output=True,
+            report_file="reports/latest.json",
+        )
+
+    def test_main_forwards_clean_flags_and_report_file(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_clean", return_value=9) as mocked_clean:
+                rc = repo_hygiene.main(
+                    [
+                        "clean",
+                        "--repo-root",
+                        str(root),
+                        "--no-include-third-party",
+                        "--baseline-file",
+                        "baseline.json",
+                        "--json",
+                        "--report-file",
+                        "/tmp/hygiene.json",
+                    ]
+                )
+
+        self.assertEqual(rc, 9)
+        mocked_clean.assert_called_once_with(
+            root.resolve(),
+            include_third_party=False,
+            baseline_path="baseline.json",
+            json_output=True,
+            report_file="/tmp/hygiene.json",
+        )
+
+    def test_main_rejects_report_file_for_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_baseline", return_value=0) as mocked_baseline:
+                rc = repo_hygiene.main(
+                    [
+                        "baseline",
+                        "--repo-root",
+                        str(root),
+                        "--report-file",
+                        "reports/baseline.json",
+                    ]
+                )
+
+        self.assertEqual(rc, 2)
+        mocked_baseline.assert_not_called()
 
 
 if __name__ == "__main__":
