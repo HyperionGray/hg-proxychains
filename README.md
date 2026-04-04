@@ -249,6 +249,8 @@ make maintenance-all-json
 ```
 
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
+Use `make maintenance-baseline` to refresh `.repo-hygiene-baseline.json` when
+known third-party marker debt changes and should be explicitly suppressed.
 
 For focused first-party hygiene scans and stray cleanup:
 
