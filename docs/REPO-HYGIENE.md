@@ -1,9 +1,10 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
+`scripts/repo_hygiene.py` is the canonical maintenance scanner/cleaner used by
+automation and local checks.
 
-This repository includes a small maintenance utility at
-`scripts/repo_hygiene.py` for scheduled cleanups and local checks.
+`scripts/repo_maintenance.py` is retained as a compatibility wrapper for legacy
+entrypoints and delegates to `repo_hygiene.py`.
 
 ## What it checks
 
@@ -48,7 +49,6 @@ python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
 # Remove untracked stray files/directories
 python3 scripts/repo_hygiene.py clean --repo-root .
-python3 scripts/repo_hygiene.py scan --repo-root . --json
 ```
 
 JSON output for automation:
@@ -64,6 +64,12 @@ Optional deep scan including `third_party/FunkyDNS` unfinished markers:
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 ```
 
+Write/update a marker baseline file:
+
+```bash
+python3 scripts/repo_hygiene.py baseline --repo-root . --include-third-party
+```
+
 Or through Make targets:
 
 ```bash
@@ -74,9 +80,6 @@ make repo-clean
 make repo-scan-json
 ```
 
-`scripts/repo_maintenance.py` is retained as a compatibility wrapper and now
-delegates to `scripts/repo_hygiene.py`.
-
 ## Exit codes
 
 - `0`: no issues remain after the command completes
@@ -84,6 +87,9 @@ delegates to `scripts/repo_hygiene.py`.
   - `scan`: unfinished markers, stray untracked files, or stale artifacts
   - `clean`: unfinished markers or tracked stale artifacts (removable clutter is deleted)
 - `2`: invalid invocation (for example, non-git directory)
+
+`baseline --json` is rejected and returns `2` because `baseline` writes a file
+rather than emitting a scan/clean report.
 
 ## Baseline file
 
@@ -97,5 +103,5 @@ The baseline currently suppresses marker findings only (not stray files).
 
 ## Legacy script
 
-`scripts/repo_maintenance.py` remains as a compatibility wrapper and delegates
-to `repo_hygiene.py`.
+`scripts/repo_maintenance.py` remains a compatibility wrapper and delegates to
+`repo_hygiene.py`.
