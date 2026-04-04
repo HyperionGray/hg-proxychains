@@ -293,7 +293,7 @@ def check_hop_connectivity(hop_url: str, target: str, timeout: float = 3.0) -> D
         if not ok:
             result["error"] = status_line
         return result
-    except (socket.error, socket.timeout, OSError) as exc:
+    except (ValueError, socket.error, socket.timeout, OSError) as exc:
         return {
             "ok": False,
             "proxy": proxy_label,
