@@ -41,12 +41,18 @@ make maintenance-json   # first-party only + JSON
 # optional full scan including third_party/FunkyDNS internals
 make maintenance-all
 make maintenance-all-json
+make maintenance-baseline
+make maintenance-baseline-prune
 ```
 
 ## Notes
 
 - `--fix` removes backup files, stray `__pycache__/` directories, and known stale artifacts.
 - Unfinished markers are reported but not modified automatically.
+- `maintenance-baseline` snapshots all currently detected unfinished markers into
+  `.repo-hygiene-baseline.json`.
+- `maintenance-baseline-prune` removes baseline entries that no longer match
+  current tracked markers.
 - Embedded git repositories are reported but never auto-removed by `--fix`.
 - Without `--fix`, exit code is `1` when any issues are found.
 - With `--fix`, exit code reflects post-fix state (`0` when only removable clutter was found and removed; `1` if issues remain).

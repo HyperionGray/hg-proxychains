@@ -250,6 +250,14 @@ make maintenance-all-json
 
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
 
+When upstream TODO/FIXME markers are resolved, prune stale suppressions from
+the baseline file:
+
+```bash
+make maintenance-baseline-prune
+# equivalent: python3 scripts/repo_hygiene.py baseline-prune --repo-root . --include-third-party
+```
+
 For focused first-party hygiene scans and stray cleanup:
 
 ```bash

@@ -157,6 +157,65 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
 
+    def test_prune_marker_baseline_entries_drops_resolved_markers(self) -> None:
+        todo_line = "# TO" "DO: keep"
+        fixme_line = "# FI" "XME: resolved"
+        baseline = {
+            ("a.py", "TODO", todo_line),
+            ("b.py", "FIXME", fixme_line),
+        }
+        findings = [
+            repo_hygiene.MarkerFinding("a.py", 10, "TODO", todo_line),
+        ]
+
+        kept, removed = repo_hygiene.prune_marker_baseline_entries(baseline, findings)
+
+        self.assertEqual(kept, {("a.py", "TODO", todo_line)})
+        self.assertEqual(removed, 1)
+
+    def test_baseline_payload_from_entries_is_sorted_and_stable(self) -> None:
+        todo_line = "# TO" "DO: z"
+        fixme_line = "# FI" "XME: a"
+        entries = {
+            ("z.py", "TODO", todo_line),
+            ("a.py", "FIXME", fixme_line),
+        }
+
+        payload = repo_hygiene.baseline_payload_from_entries(entries)
+
+        self.assertEqual(
+            payload["unfinished_markers"],
+            [
+                {"path": "a.py", "marker": "FIXME", "line": fixme_line},
+                {"path": "z.py", "marker": "TODO", "line": todo_line},
+            ],
+        )
+
+    def test_main_clean_dispatches_with_parsed_options(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch("repo_hygiene.command_clean", return_value=7) as mock_clean:
+                code = repo_hygiene.main(
+                    [
+                        "clean",
+                        "--repo-root",
+                        str(root),
+                        "--include-third-party",
+                        "--baseline-file",
+                        "custom-baseline.json",
+                        "--json",
+                    ]
+                )
+
+        self.assertEqual(code, 7)
+        self.assertEqual(mock_clean.call_count, 1)
+        called_root = mock_clean.call_args.args[0]
+        self.assertEqual(called_root, root.resolve())
+        self.assertEqual(mock_clean.call_args.kwargs["include_third_party"], True)
+        self.assertEqual(mock_clean.call_args.kwargs["baseline_path"], "custom-baseline.json")
+        self.assertEqual(mock_clean.call_args.kwargs["json_output"], True)
+
 
 if __name__ == "__main__":
     unittest.main()

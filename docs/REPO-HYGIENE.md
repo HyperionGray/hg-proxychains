@@ -32,6 +32,9 @@ use `--include-third-party`.
 Known upstream unfinished markers can be recorded in a baseline file so
 scheduled jobs can fail only on new findings.
 
+Stale baseline entries can be removed automatically with the
+`baseline-prune` command.
+
 ## Usage
 
 From repo root:
@@ -49,6 +52,12 @@ python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 # Remove untracked stray files/directories
 python3 scripts/repo_hygiene.py clean --repo-root .
 python3 scripts/repo_hygiene.py scan --repo-root . --json
+
+# Write baseline from current findings
+python3 scripts/repo_hygiene.py baseline --repo-root .
+
+# Prune baseline entries that no longer exist in tracked files
+python3 scripts/repo_hygiene.py baseline-prune --repo-root .
 ```
 
 JSON output for automation:
@@ -72,6 +81,8 @@ make maintenance-fix
 make repo-scan
 make repo-clean
 make repo-scan-json
+make maintenance-baseline
+make maintenance-baseline-prune
 ```
 
 `scripts/repo_maintenance.py` is retained as a compatibility wrapper and now
@@ -94,6 +105,11 @@ By default, `scan`/`clean` load marker suppressions from:
 Override with `--baseline-file <path>`.
 
 The baseline currently suppresses marker findings only (not stray files).
+
+Useful baseline management commands:
+
+- `baseline`: rewrite the baseline from currently observed markers.
+- `baseline-prune`: keep only baseline entries still present in tracked files.
 
 ## Legacy script
 
