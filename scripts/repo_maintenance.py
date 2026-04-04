@@ -137,6 +137,14 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         default=".repo-hygiene-baseline.json",
         help="Marker baseline path relative to --root (default: .repo-hygiene-baseline.json).",
     )
+    parser.add_argument(
+        "--fail-on-suppressed-markers",
+        action="store_true",
+        help=(
+            "Treat baseline-suppressed unfinished markers as blocking issues "
+            "(default: false)."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -159,6 +167,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         cmd.append("--include-third-party")
     if args.json:
         cmd.append("--json")
+    if args.fail_on_suppressed_markers:
+        cmd.append("--fail-on-suppressed-markers")
 
     proc = subprocess.run(cmd, check=False)
     return proc.returncode

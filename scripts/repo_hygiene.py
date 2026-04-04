@@ -35,9 +35,6 @@ STRAY_DIR_NAMES = {
     ".mypy_cache",
     ".ruff_cache",
 }
-STALE_ARTIFACT_PATHS = (
-    "egressd-starter.tar.gz",
-)
 UNFINISHED_SCAN_SUFFIXES = {
     ".py",
     ".sh",
@@ -56,7 +53,11 @@ UNFINISHED_SCAN_FILENAMES = {
 }
 BASELINE_DEFAULT_PATH = ".repo-hygiene-baseline.json"
 THIRD_PARTY_PREFIX = "third_party/"
-STALE_ARTIFACT_PATHS: frozenset[str] = frozenset()
+STALE_ARTIFACT_PATHS: frozenset[str] = frozenset(
+    {
+        "egressd-starter.tar.gz",
+    }
+)
 # Add known stale tracked/untracked artifact paths here (e.g. generated bundles) as they arise.
 
 
@@ -389,6 +390,7 @@ def command_scan(
     *,
     include_third_party: bool,
     baseline_path: str,
+    fail_on_suppressed_markers: bool = False,
     json_output: bool = False,
 ) -> int:
     findings, stray, stale_tracked, stale_untracked, embedded_git_repos, suppressed = gather_hygiene_state(
@@ -415,7 +417,10 @@ def command_scan(
             embedded_git_repos,
             suppressed_markers=suppressed,
         )
-    return 1 if report["summary"]["total_issues"] else 0
+    has_blocking_issues = bool(report["summary"]["total_issues"])
+    if fail_on_suppressed_markers and suppressed:
+        has_blocking_issues = True
+    return 1 if has_blocking_issues else 0
 
 
 def command_clean(
@@ -423,6 +428,7 @@ def command_clean(
     *,
     include_third_party: bool,
     baseline_path: str,
+    fail_on_suppressed_markers: bool = False,
     json_output: bool = False,
 ) -> int:
     findings, stray, stale_tracked, stale_untracked, embedded_git_repos, suppressed = gather_hygiene_state(
@@ -459,7 +465,8 @@ def command_clean(
         print(f"deleted removable paths: {deleted}")
 
     cleanup_incomplete = deleted != len(removable_paths)
-    return 1 if findings or stale_tracked or embedded_git_repos or cleanup_incomplete else 0
+    suppressed_blocking = fail_on_suppressed_markers and bool(suppressed)
+    return 1 if findings or stale_tracked or embedded_git_repos or cleanup_incomplete or suppressed_blocking else 0
 
 
 def command_baseline(repo_root: Path, include_third_party: bool, baseline_path: str) -> int:
@@ -518,15 +525,12 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         help="emit machine-readable JSON output",
     )
     parser.add_argument(
-        "--include-third-party",
+        "--fail-on-suppressed-markers",
         action="store_true",
-        default=False,
-        help="include all of third_party/ (e.g. third_party/FunkyDNS) in marker and stray-file scanning (default: false)",
-    )
-    parser.add_argument(
-        "--baseline-file",
-        default=BASELINE_DEFAULT_PATH,
-        help=f"marker baseline path relative to --repo-root (default: {BASELINE_DEFAULT_PATH})",
+        help=(
+            "treat baseline-suppressed unfinished markers as blocking issues "
+            "(default: false)"
+        ),
     )
     return parser.parse_args(argv)
 
@@ -541,14 +545,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "baseline":
         return command_baseline(repo_root, args.include_third_party, args.baseline_file)
     if args.command == "clean":
-        return command_clean(repo_root, json_output=args.json)
-    elif args.command == "baseline":
-        # baseline command doesn't support --json flag
-        if args.json:
-            print("error: --json is not supported for the 'baseline' command", file=sys.stderr)
-            return 2
-        return command_baseline(repo_root, include_third_party=False, baseline_path=BASELINE_DEFAULT_PATH)
-    return command_scan(repo_root, json_output=args.json)
+        return command_clean(
+            repo_root,
+            include_third_party=args.include_third_party,
+            baseline_path=args.baseline_file,
+            fail_on_suppressed_markers=args.fail_on_suppressed_markers,
+            json_output=args.json,
+        )
+    return command_scan(
+        repo_root,
+        include_third_party=args.include_third_party,
+        baseline_path=args.baseline_file,
+        fail_on_suppressed_markers=args.fail_on_suppressed_markers,
+        json_output=args.json,
+    )
 
 
 if __name__ == "__main__":

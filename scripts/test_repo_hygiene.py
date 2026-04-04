@@ -157,6 +157,67 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
 
+    def test_command_scan_can_fail_on_suppressed_markers(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            report_tuple = ([], [], [], [], [], 1)
+
+            with patch.object(repo_hygiene, "gather_hygiene_state", return_value=report_tuple):
+                rc = repo_hygiene.command_scan(
+                    root,
+                    include_third_party=False,
+                    baseline_path=".repo-hygiene-baseline.json",
+                    fail_on_suppressed_markers=True,
+                    json_output=True,
+                )
+            self.assertEqual(rc, 1)
+
+    def test_command_scan_ignores_suppressed_markers_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            report_tuple = ([], [], [], [], [], 2)
+
+            with patch.object(repo_hygiene, "gather_hygiene_state", return_value=report_tuple):
+                rc = repo_hygiene.command_scan(
+                    root,
+                    include_third_party=False,
+                    baseline_path=".repo-hygiene-baseline.json",
+                    fail_on_suppressed_markers=False,
+                    json_output=True,
+                )
+            self.assertEqual(rc, 0)
+
+    def test_parse_args_supports_fail_on_suppressed_markers(self) -> None:
+        args = repo_hygiene.parse_args(["scan", "--fail-on-suppressed-markers"])
+        self.assertEqual(args.command, "scan")
+        self.assertTrue(args.fail_on_suppressed_markers)
+
+    def test_main_clean_passes_expected_parameters(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_clean", return_value=7) as clean_mock:
+                rc = repo_hygiene.main(
+                    [
+                        "clean",
+                        "--repo-root",
+                        str(root),
+                        "--include-third-party",
+                        "--baseline-file",
+                        "custom-baseline.json",
+                        "--fail-on-suppressed-markers",
+                        "--json",
+                    ]
+                )
+        self.assertEqual(rc, 7)
+        clean_mock.assert_called_once_with(
+            root.resolve(),
+            include_third_party=True,
+            baseline_path="custom-baseline.json",
+            fail_on_suppressed_markers=True,
+            json_output=True,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

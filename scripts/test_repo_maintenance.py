@@ -2,6 +2,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import repo_maintenance
@@ -66,6 +67,25 @@ class RepoMaintenanceTests(unittest.TestCase):
             found = repo_maintenance.discover_embedded_git_repos(root, include_third_party=False)
 
             self.assertEqual(found, [])
+
+    def test_main_forwards_fail_on_suppressed_markers_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch.object(repo_maintenance, "subprocess") as mock_subprocess:
+                mock_subprocess.run.return_value.returncode = 0
+                rc = repo_maintenance.main(
+                    [
+                        "--root",
+                        str(root),
+                        "--no-include-third-party",
+                        "--fail-on-suppressed-markers",
+                    ]
+                )
+        self.assertEqual(rc, 0)
+        cmd = mock_subprocess.run.call_args.args[0]
+        self.assertIn("--fail-on-suppressed-markers", cmd)
+        self.assertNotIn("--include-third-party", cmd)
 
 
 if __name__ == "__main__":
