@@ -157,6 +157,108 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
 
+    def test_prune_marker_baseline_entries_keeps_active_only(self) -> None:
+        active_line = "# TO" "DO: still active"
+        stale_line = "# TO" "DO: stale"
+        baseline = {
+            ("a.py", "TODO", active_line),
+            ("b.py", "TODO", stale_line),
+        }
+        findings = [repo_hygiene.MarkerFinding("a.py", 3, "TODO", active_line)]
+
+        retained, removed = repo_hygiene.prune_marker_baseline_entries(baseline, findings)
+
+        self.assertEqual(retained, {("a.py", "TODO", active_line)})
+        self.assertEqual(removed, 1)
+
+    def test_write_marker_baseline_sorts_and_deduplicates_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            count = repo_hygiene.write_marker_baseline(
+                root,
+                ".repo-hygiene-baseline.json",
+                [
+                    ("z.py", "TODO", "# TO" "DO: z"),
+                    ("a.py", "FIXME", "# FI" "XME: a"),
+                    ("z.py", "TODO", "# TO" "DO: z"),
+                ],
+            )
+            payload = (root / ".repo-hygiene-baseline.json").read_text(encoding="utf-8")
+
+        self.assertEqual(count, 2)
+        self.assertIn('"path": "a.py"', payload)
+        self.assertIn('"path": "z.py"', payload)
+        self.assertLess(payload.index('"path": "a.py"'), payload.index('"path": "z.py"'))
+
+    @patch("repo_hygiene.parse_args")
+    def test_main_rejects_prune_without_baseline_command(self, parse_args_mock) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            parse_args_mock.return_value = type(
+                "Args",
+                (),
+                {
+                    "command": "scan",
+                    "repo_root": str(root),
+                    "include_third_party": False,
+                    "baseline_file": ".repo-hygiene-baseline.json",
+                    "json": False,
+                    "prune": True,
+                },
+            )()
+            rc = repo_hygiene.main([])
+
+        self.assertEqual(rc, 2)
+
+    @patch("repo_hygiene.parse_args")
+    def test_main_rejects_json_with_baseline_command(self, parse_args_mock) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            parse_args_mock.return_value = type(
+                "Args",
+                (),
+                {
+                    "command": "baseline",
+                    "repo_root": str(root),
+                    "include_third_party": False,
+                    "baseline_file": ".repo-hygiene-baseline.json",
+                    "json": True,
+                    "prune": False,
+                },
+            )()
+            rc = repo_hygiene.main([])
+
+        self.assertEqual(rc, 2)
+
+    def test_command_baseline_prune_removes_stale_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            src_file = root / "src.py"
+            active_line = "# TO" "DO: active marker"
+            src_file.write_text(f"{active_line}\n", encoding="utf-8")
+            repo_hygiene.write_marker_baseline(
+                root,
+                ".repo-hygiene-baseline.json",
+                [
+                    ("src.py", "TODO", active_line),
+                    ("gone.py", "TODO", "# TO" "DO: no longer present"),
+                ],
+            )
+
+            rc = repo_hygiene.command_baseline(
+                root,
+                include_third_party=False,
+                baseline_path=".repo-hygiene-baseline.json",
+                prune=True,
+            )
+            entries = repo_hygiene.load_marker_baseline(root, ".repo-hygiene-baseline.json")
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(entries, {("src.py", "TODO", active_line)})
+
 
 if __name__ == "__main__":
     unittest.main()

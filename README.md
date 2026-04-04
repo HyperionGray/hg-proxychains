@@ -246,9 +246,20 @@ also includes `third_party/FunkyDNS`, use:
 ```bash
 make maintenance-all
 make maintenance-all-json
+make maintenance-baseline
 ```
 
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
+
+Baseline helpers:
+
+```bash
+# rewrite baseline from current marker findings
+python3 scripts/repo_hygiene.py baseline --repo-root . --include-third-party
+
+# prune baseline entries that no longer match active findings
+python3 scripts/repo_hygiene.py baseline --repo-root . --include-third-party --prune
+```
 
 For focused first-party hygiene scans and stray cleanup:
 

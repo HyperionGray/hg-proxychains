@@ -11,9 +11,8 @@ Primary documentation has moved to:
 - Known stale artifacts (currently `egressd-starter.tar.gz`)
 - Embedded git repositories outside the allowed third-party submodule path
 
-By default, marker scanning includes tracked files in `third_party/FunkyDNS` when that repository is present.
-For day-to-day repo automation, prefer the first-party-only mode (`--no-include-third-party`)
-to avoid noise from external dependency internals.
+By default, marker scanning is first-party only and skips `third_party/FunkyDNS`
+unless `--include-third-party` is explicitly enabled.
 
 ## Commands
 
@@ -29,6 +28,12 @@ python3 scripts/repo_maintenance.py --include-third-party
 
 # Remove backup files + stray cache dirs + stale artifacts while scanning
 python3 scripts/repo_maintenance.py --fix
+
+# Regenerate baseline from current markers
+python3 scripts/repo_hygiene.py baseline --repo-root . --include-third-party
+
+# Prune stale baseline entries that no longer match active markers
+python3 scripts/repo_hygiene.py baseline --repo-root . --include-third-party --prune
 ```
 
 Makefile wrappers:
@@ -47,6 +52,8 @@ make maintenance-all-json
 
 - `--fix` removes backup files, stray `__pycache__/` directories, and known stale artifacts.
 - Unfinished markers are reported but not modified automatically.
+- `baseline` rewrites suppressions from current findings; `baseline --prune` keeps
+  only entries that still match active findings.
 - Embedded git repositories are reported but never auto-removed by `--fix`.
 - Without `--fix`, exit code is `1` when any issues are found.
 - With `--fix`, exit code reflects post-fix state (`0` when only removable clutter was found and removed; `1` if issues remain).
