@@ -157,6 +157,108 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
 
+    def test_command_scan_fail_on_suppressed_markers(self) -> None:
+        with patch(
+            "repo_hygiene.gather_hygiene_state",
+            return_value=([], [], [], [], [], 2),
+        ):
+            allowed = repo_hygiene.command_scan(
+                Path("."),
+                include_third_party=False,
+                baseline_path=".repo-hygiene-baseline.json",
+                fail_on_suppressed_markers=False,
+            )
+            blocked = repo_hygiene.command_scan(
+                Path("."),
+                include_third_party=False,
+                baseline_path=".repo-hygiene-baseline.json",
+                fail_on_suppressed_markers=True,
+            )
+        self.assertEqual(allowed, 0)
+        self.assertEqual(blocked, 1)
+
+    def test_command_clean_fail_on_suppressed_markers(self) -> None:
+        with patch(
+            "repo_hygiene.gather_hygiene_state",
+            return_value=([], [], [], [], [], 1),
+        ), patch("repo_hygiene.delete_paths", return_value=0):
+            allowed = repo_hygiene.command_clean(
+                Path("."),
+                include_third_party=False,
+                baseline_path=".repo-hygiene-baseline.json",
+                fail_on_suppressed_markers=False,
+            )
+            blocked = repo_hygiene.command_clean(
+                Path("."),
+                include_third_party=False,
+                baseline_path=".repo-hygiene-baseline.json",
+                fail_on_suppressed_markers=True,
+            )
+        self.assertEqual(allowed, 0)
+        self.assertEqual(blocked, 1)
+
+    def test_main_dispatches_scan_clean_and_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            baseline = "custom-baseline.json"
+
+            with patch("repo_hygiene.command_scan", return_value=0) as scan_mock:
+                rc = repo_hygiene.main(
+                    [
+                        "scan",
+                        "--repo-root",
+                        str(root),
+                        "--include-third-party",
+                        "--baseline-file",
+                        baseline,
+                        "--json",
+                        "--fail-on-suppressed-markers",
+                    ]
+                )
+                self.assertEqual(rc, 0)
+                scan_mock.assert_called_once_with(
+                    root.resolve(),
+                    include_third_party=True,
+                    baseline_path=baseline,
+                    fail_on_suppressed_markers=True,
+                    json_output=True,
+                )
+
+            with patch("repo_hygiene.command_clean", return_value=0) as clean_mock:
+                rc = repo_hygiene.main(
+                    [
+                        "clean",
+                        "--repo-root",
+                        str(root),
+                        "--no-include-third-party",
+                        "--baseline-file",
+                        baseline,
+                    ]
+                )
+                self.assertEqual(rc, 0)
+                clean_mock.assert_called_once_with(
+                    root.resolve(),
+                    include_third_party=False,
+                    baseline_path=baseline,
+                    fail_on_suppressed_markers=False,
+                    json_output=False,
+                )
+
+            with patch("repo_hygiene.command_baseline", return_value=0) as baseline_mock:
+                rc = repo_hygiene.main(
+                    [
+                        "baseline",
+                        "--repo-root",
+                        str(root),
+                        "--include-third-party",
+                        "--baseline-file",
+                        baseline,
+                    ]
+                )
+                self.assertEqual(rc, 0)
+                baseline_mock.assert_called_once_with(root.resolve(), True, baseline)
+
 
 if __name__ == "__main__":
     unittest.main()
