@@ -70,7 +70,12 @@ class MarkerFinding:
 
 
 def normalize_rel_path(rel_path: str) -> str:
-    return Path(rel_path).as_posix().lstrip("./")
+    normalized = Path(rel_path).as_posix()
+    if normalized == ".":
+        return ""
+    if normalized.startswith("./"):
+        return normalized[2:]
+    return normalized
 
 
 def path_matches_globs(rel_path: str, globs: Sequence[str]) -> bool:
@@ -320,6 +325,8 @@ def discover_embedded_git_repos(
         if not include_third_party and rel_marker.startswith(FUNKYDNS_PREFIX):
             continue
         rel_repo_path = normalize_rel_path(git_marker.parent.relative_to(repo_root).as_posix())
+        if not rel_repo_path:
+            continue
         if path_matches_globs(rel_repo_path, ignored_globs):
             continue
         found.add(rel_repo_path)
