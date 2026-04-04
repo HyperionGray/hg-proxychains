@@ -9,6 +9,55 @@ import repo_hygiene
 
 
 class RepoHygieneTests(unittest.TestCase):
+    def test_parse_args_include_third_party_flags(self) -> None:
+        default_args = repo_hygiene.parse_args([])
+        self.assertFalse(default_args.include_third_party)
+
+        include_args = repo_hygiene.parse_args(["scan", "--include-third-party"])
+        self.assertTrue(include_args.include_third_party)
+
+        no_include_args = repo_hygiene.parse_args(["scan", "--no-include-third-party"])
+        self.assertFalse(no_include_args.include_third_party)
+
+    def test_main_rejects_json_for_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            exit_code = repo_hygiene.main(
+                [
+                    "baseline",
+                    "--repo-root",
+                    str(root),
+                    "--json",
+                ]
+            )
+        self.assertEqual(exit_code, 2)
+
+    def test_main_clean_forwards_runtime_options(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_clean", return_value=7) as command_clean:
+                exit_code = repo_hygiene.main(
+                    [
+                        "clean",
+                        "--repo-root",
+                        str(root),
+                        "--include-third-party",
+                        "--baseline-file",
+                        "custom-baseline.json",
+                        "--json",
+                    ]
+                )
+
+        self.assertEqual(exit_code, 7)
+        command_clean.assert_called_once_with(
+            root.resolve(),
+            include_third_party=True,
+            baseline_path="custom-baseline.json",
+            json_output=True,
+        )
+
     def test_should_skip_for_unfinished(self) -> None:
         self.assertTrue(repo_hygiene.should_skip_for_unfinished("third_party/FunkyDNS/dns_server/doh.py"))
         self.assertFalse(
