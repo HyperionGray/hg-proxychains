@@ -157,6 +157,59 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
 
+    def test_filter_excluded_paths_applies_globs(self) -> None:
+        paths = [
+            "docs/notes.md",
+            "scripts/repo_hygiene.py",
+            "scripts/test_repo_hygiene.py",
+            "tests/test_readiness.py",
+        ]
+        filtered = repo_hygiene.filter_excluded_paths(
+            paths,
+            exclude_globs=["docs/*", "scripts/test_*"],
+        )
+        self.assertEqual(filtered, ["scripts/repo_hygiene.py", "tests/test_readiness.py"])
+
+    def test_discover_embedded_git_repos_honors_exclude_glob(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            keep = root / "scratch" / ".git"
+            ignore = root / "demo" / "nested" / ".git"
+            keep.mkdir(parents=True, exist_ok=True)
+            ignore.mkdir(parents=True, exist_ok=True)
+
+            found = repo_hygiene.discover_embedded_git_repos(
+                root,
+                exclude_globs=["demo/*"],
+            )
+
+        self.assertEqual(found, ["scratch"])
+
+    def test_parse_args_accepts_exclude_glob(self) -> None:
+        args = repo_hygiene.parse_args(["scan", "--exclude-glob", "docs/*", "--exclude-glob", "demo/*"])
+        self.assertEqual(args.command, "scan")
+        self.assertEqual(args.exclude_glob, ["docs/*", "demo/*"])
+
+    def test_command_baseline_allows_absolute_baseline_path(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src_file = root / "src.py"
+            src_file.write_text("# TO" "DO: baseline marker\n", encoding="utf-8")
+            baseline_out = root / "out" / "baseline.json"
+            baseline_out.parent.mkdir(parents=True, exist_ok=True)
+
+            with patch.object(repo_hygiene, "collect_git_paths", return_value=["src.py"]):
+                rc = repo_hygiene.command_baseline(
+                    root,
+                    include_third_party=False,
+                    baseline_path=str(baseline_out),
+                    exclude_globs=(),
+                )
+
+            self.assertEqual(rc, 0)
+            self.assertTrue(baseline_out.exists())
+
 
 if __name__ == "__main__":
     unittest.main()
