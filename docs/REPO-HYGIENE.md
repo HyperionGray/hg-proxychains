@@ -1,9 +1,10 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
+`scripts/repo_hygiene.py` is the primary maintenance utility for scheduled
+automation and local checks.
 
-This repository includes a small maintenance utility at
-`scripts/repo_hygiene.py` for scheduled cleanups and local checks.
+`scripts/repo_maintenance.py` remains as a compatibility wrapper that delegates
+to `repo_hygiene.py`.
 
 ## What it checks
 
@@ -76,6 +77,24 @@ make repo-scan-json
 
 `scripts/repo_maintenance.py` is retained as a compatibility wrapper and now
 delegates to `scripts/repo_hygiene.py`.
+
+### Path exclusions
+
+Use `--exclude-glob` (repeatable) to ignore matching repo-relative paths during
+tracked/untracked scans and embedded-git detection.
+
+Examples:
+
+```bash
+# Ignore docs and archived fixtures
+python3 scripts/repo_hygiene.py scan --repo-root . \
+  --exclude-glob "docs/*" \
+  --exclude-glob "tests/fixtures/archive/*"
+
+# Keep cleanup focused on first-party runtime code
+python3 scripts/repo_hygiene.py clean --repo-root . \
+  --exclude-glob "demo/*"
+```
 
 ## Exit codes
 
