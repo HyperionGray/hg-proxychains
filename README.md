@@ -249,6 +249,8 @@ make maintenance-all-json
 ```
 
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
+`scripts/repo_hygiene.py` is the primary scanner/cleaner, with
+`scripts/repo_maintenance.py` kept as a compatibility wrapper.
 
 For focused first-party hygiene scans and stray cleanup:
 

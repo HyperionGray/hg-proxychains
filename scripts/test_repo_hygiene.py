@@ -9,6 +9,11 @@ import repo_hygiene
 
 
 class RepoHygieneTests(unittest.TestCase):
+    def test_parse_args_accepts_boolean_optional_include_third_party(self) -> None:
+        parsed = repo_hygiene.parse_args(["scan", "--include-third-party"])
+        self.assertEqual(parsed.command, "scan")
+        self.assertTrue(parsed.include_third_party)
+
     def test_should_skip_for_unfinished(self) -> None:
         self.assertTrue(repo_hygiene.should_skip_for_unfinished("third_party/FunkyDNS/dns_server/doh.py"))
         self.assertFalse(
@@ -156,6 +161,96 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_main_scan_forwards_include_third_party_and_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            (repo_root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_scan", return_value=0) as command_scan:
+                rc = repo_hygiene.main(
+                    [
+                        "scan",
+                        "--repo-root",
+                        str(repo_root),
+                        "--include-third-party",
+                        "--baseline-file",
+                        "custom-baseline.json",
+                        "--json",
+                    ]
+                )
+
+        self.assertEqual(rc, 0)
+        command_scan.assert_called_once_with(
+            repo_root.resolve(),
+            include_third_party=True,
+            baseline_path="custom-baseline.json",
+            json_output=True,
+        )
+
+    def test_main_clean_forwards_include_third_party_and_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            (repo_root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_clean", return_value=0) as command_clean:
+                rc = repo_hygiene.main(
+                    [
+                        "clean",
+                        "--repo-root",
+                        str(repo_root),
+                        "--include-third-party",
+                        "--baseline-file",
+                        "custom-baseline.json",
+                        "--json",
+                    ]
+                )
+
+        self.assertEqual(rc, 0)
+        command_clean.assert_called_once_with(
+            repo_root.resolve(),
+            include_third_party=True,
+            baseline_path="custom-baseline.json",
+            json_output=True,
+        )
+
+    def test_main_baseline_rejects_json_output(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            (repo_root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_baseline", return_value=0) as command_baseline:
+                rc = repo_hygiene.main(
+                    [
+                        "baseline",
+                        "--repo-root",
+                        str(repo_root),
+                        "--json",
+                    ]
+                )
+
+        self.assertEqual(rc, 2)
+        command_baseline.assert_not_called()
+
+    def test_main_baseline_forwards_include_third_party_and_path(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            (repo_root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_baseline", return_value=0) as command_baseline:
+                rc = repo_hygiene.main(
+                    [
+                        "baseline",
+                        "--repo-root",
+                        str(repo_root),
+                        "--include-third-party",
+                        "--baseline-file",
+                        "custom-baseline.json",
+                    ]
+                )
+
+        self.assertEqual(rc, 0)
+        command_baseline.assert_called_once_with(
+            repo_root.resolve(),
+            True,
+            "custom-baseline.json",
+        )
 
 
 if __name__ == "__main__":
