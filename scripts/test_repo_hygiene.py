@@ -9,6 +9,92 @@ import repo_hygiene
 
 
 class RepoHygieneTests(unittest.TestCase):
+    def test_parse_args_accepts_include_third_party_toggle(self) -> None:
+        args = repo_hygiene.parse_args(
+            [
+                "scan",
+                "--repo-root",
+                "/tmp/repo",
+                "--baseline-file",
+                "custom-baseline.json",
+                "--no-include-third-party",
+            ]
+        )
+        self.assertEqual(args.command, "scan")
+        self.assertEqual(args.repo_root, "/tmp/repo")
+        self.assertEqual(args.baseline_file, "custom-baseline.json")
+        self.assertFalse(args.include_third_party)
+
+    def test_main_scan_passes_include_and_baseline_options(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            called: dict[str, object] = {}
+
+            def _fake_scan(repo_root, *, include_third_party, baseline_path, json_output=False):
+                called["repo_root"] = repo_root
+                called["include_third_party"] = include_third_party
+                called["baseline_path"] = baseline_path
+                called["json_output"] = json_output
+                return 0
+
+            with patch.object(repo_hygiene, "command_scan", side_effect=_fake_scan):
+                rc = repo_hygiene.main(
+                    [
+                        "scan",
+                        "--repo-root",
+                        str(root),
+                        "--include-third-party",
+                        "--baseline-file",
+                        "custom-baseline.json",
+                        "--json",
+                    ]
+                )
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(called["repo_root"], root.resolve())
+        self.assertTrue(called["include_third_party"])
+        self.assertEqual(called["baseline_path"], "custom-baseline.json")
+        self.assertTrue(called["json_output"])
+
+    def test_main_clean_passes_include_and_baseline_options(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            called: dict[str, object] = {}
+
+            def _fake_clean(repo_root, *, include_third_party, baseline_path, json_output=False):
+                called["repo_root"] = repo_root
+                called["include_third_party"] = include_third_party
+                called["baseline_path"] = baseline_path
+                called["json_output"] = json_output
+                return 0
+
+            with patch.object(repo_hygiene, "command_clean", side_effect=_fake_clean):
+                rc = repo_hygiene.main(
+                    [
+                        "clean",
+                        "--repo-root",
+                        str(root),
+                        "--no-include-third-party",
+                        "--baseline-file",
+                        ".repo-hygiene-baseline.json",
+                    ]
+                )
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(called["repo_root"], root.resolve())
+        self.assertFalse(called["include_third_party"])
+        self.assertEqual(called["baseline_path"], ".repo-hygiene-baseline.json")
+        self.assertFalse(called["json_output"])
+
+    def test_main_baseline_rejects_json_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            rc = repo_hygiene.main(["baseline", "--repo-root", str(root), "--json"])
+        self.assertEqual(rc, 2)
+
     def test_should_skip_for_unfinished(self) -> None:
         self.assertTrue(repo_hygiene.should_skip_for_unfinished("third_party/FunkyDNS/dns_server/doh.py"))
         self.assertFalse(

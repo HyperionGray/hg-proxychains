@@ -1,6 +1,8 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
+`scripts/repo_hygiene.py` is the primary scanner and cleanup tool. For scheduled
+automation and compatibility with older invocations, `scripts/repo_maintenance.py`
+wraps it (`make maintenance` / `make maintenance-fix`).
 
 This repository includes a small maintenance utility at
 `scripts/repo_hygiene.py` for scheduled cleanups and local checks.
@@ -74,7 +76,7 @@ make repo-clean
 make repo-scan-json
 ```
 
-`scripts/repo_maintenance.py` is retained as a compatibility wrapper and now
+`scripts/repo_maintenance.py` is retained as a compatibility wrapper and
 delegates to `scripts/repo_hygiene.py`.
 
 ## Exit codes
