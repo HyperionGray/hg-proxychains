@@ -3,7 +3,7 @@
 `scripts/repo_maintenance.py` is now a compatibility wrapper.
 
 Use `scripts/repo_hygiene.py` directly for all maintenance checks and cleanup.
-Primary documentation has moved to:
+Primary documentation has moved to `docs/REPO-HYGIENE.md`.
 
 - Unfinished markers in tracked files (`TODO`, `FIXME`, `STUB`, `TBD`, `XXX`, `UNFINISHED`)
 - Backup files (`*~`, `*.bak`, `*.orig`, `*.old`, `*.tmp`)
@@ -29,6 +29,10 @@ python3 scripts/repo_maintenance.py --include-third-party
 
 # Remove backup files + stray cache dirs + stale artifacts while scanning
 python3 scripts/repo_maintenance.py --fix
+
+# Add runtime stale artifact paths for this invocation
+python3 scripts/repo_hygiene.py scan --repo-root . --stale-artifact-path build/cache.tar
+python3 scripts/repo_hygiene.py clean --repo-root . --stale-artifact-path build/cache.tar
 ```
 
 Makefile wrappers:

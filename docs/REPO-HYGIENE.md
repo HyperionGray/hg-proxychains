@@ -1,9 +1,8 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
-
-This repository includes a small maintenance utility at
+This repository includes a maintenance utility at
 `scripts/repo_hygiene.py` for scheduled cleanups and local checks.
+`scripts/repo_maintenance.py` remains a compatibility wrapper.
 
 ## What it checks
 
@@ -46,9 +45,14 @@ python3 scripts/repo_hygiene.py scan --repo-root . --json
 # Include third-party dependency tree explicitly
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
-# Remove untracked stray files/directories
+# Remove untracked stray files/directories and stale untracked artifacts
 python3 scripts/repo_hygiene.py clean --repo-root .
 python3 scripts/repo_hygiene.py scan --repo-root . --json
+
+# Add extra stale artifact paths for this run (repeatable flag)
+python3 scripts/repo_hygiene.py scan --repo-root . \
+  --stale-artifact-path dist/output.bin \
+  --stale-artifact-path build/cache.tar
 ```
 
 JSON output for automation:
@@ -81,8 +85,8 @@ delegates to `scripts/repo_hygiene.py`.
 
 - `0`: no issues remain after the command completes
 - `1`: blocking issues found
-  - `scan`: unfinished markers, stray untracked files, or stale artifacts
-  - `clean`: unfinished markers or tracked stale artifacts (removable clutter is deleted)
+  - `scan`: unfinished markers, stray untracked files, stale artifacts, or embedded git repos
+  - `clean`: unfinished markers, tracked stale artifacts, embedded git repos, or partial cleanup failure
 - `2`: invalid invocation (for example, non-git directory)
 
 ## Baseline file
@@ -95,7 +99,10 @@ Override with `--baseline-file <path>`.
 
 The baseline currently suppresses marker findings only (not stray files).
 
-## Legacy script
+## Runtime stale-artifact overrides
 
-`scripts/repo_maintenance.py` remains as a compatibility wrapper and delegates
-to `repo_hygiene.py`.
+If a branch temporarily introduces generated outputs that should be treated as
+stale cleanup targets, pass one or more `--stale-artifact-path` flags. The
+paths are interpreted relative to `--repo-root`.
+
+This extends (does not replace) the built-in stale artifact list.

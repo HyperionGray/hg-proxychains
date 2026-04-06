@@ -9,6 +9,23 @@ import repo_hygiene
 
 
 class RepoHygieneTests(unittest.TestCase):
+    def test_parse_args_supports_repeated_stale_artifact_paths(self) -> None:
+        args = repo_hygiene.parse_args(
+            [
+                "scan",
+                "--repo-root",
+                ".",
+                "--no-include-third-party",
+                "--stale-artifact-path",
+                "build/cache.tar",
+                "--stale-artifact-path",
+                "dist/output.bin",
+            ]
+        )
+        self.assertEqual(args.command, "scan")
+        self.assertFalse(args.include_third_party)
+        self.assertEqual(args.stale_artifact_path, ["build/cache.tar", "dist/output.bin"])
+
     def test_should_skip_for_unfinished(self) -> None:
         self.assertTrue(repo_hygiene.should_skip_for_unfinished("third_party/FunkyDNS/dns_server/doh.py"))
         self.assertFalse(
@@ -68,6 +85,15 @@ class RepoHygieneTests(unittest.TestCase):
         )
         self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
         self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
+
+    def test_find_stale_artifacts_can_use_runtime_override_paths(self) -> None:
+        stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(
+            tracked_paths=["README.md", "dist/output.bin", "build/cache.tar"],
+            untracked_paths=["tmp/output.tmp", "build/cache.tar"],
+            stale_artifact_paths=["dist/output.bin", "build/cache.tar"],
+        )
+        self.assertEqual(stale_tracked, ["build/cache.tar", "dist/output.bin"])
+        self.assertEqual(stale_untracked, ["build/cache.tar"])
 
     def test_find_unfinished_markers_ignores_skipped_paths(self) -> None:
         with tempfile.TemporaryDirectory() as td:

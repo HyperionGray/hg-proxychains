@@ -248,6 +248,14 @@ make maintenance-all
 make maintenance-all-json
 ```
 
+Need to track an extra generated artifact for one-off cleanup runs? Add one or
+more explicit paths:
+
+```bash
+python3 scripts/repo_hygiene.py scan --repo-root . --stale-artifact-path dist/output.bin
+python3 scripts/repo_hygiene.py clean --repo-root . --stale-artifact-path dist/output.bin
+```
+
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
 
 For focused first-party hygiene scans and stray cleanup:
