@@ -69,6 +69,35 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
         self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
 
+    def test_resolve_stale_artifact_paths_merges_defaults_file_and_args(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            stale_file = root / ".repo-hygiene-stale-artifacts.txt"
+            stale_file.write_text(
+                "\n".join(
+                    [
+                        "# comment line",
+                        "tmp/generated.tar.gz",
+                        "./logs/stale.log",
+                        "../invalid-path",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            resolved = repo_hygiene.resolve_stale_artifact_paths(
+                root,
+                stale_artifacts_file=".repo-hygiene-stale-artifacts.txt",
+                stale_artifact_args=["./manual/stale.bin", "/absolute/invalid"],
+            )
+
+        self.assertIn("egressd-starter.tar.gz", resolved)
+        self.assertIn("tmp/generated.tar.gz", resolved)
+        self.assertIn("logs/stale.log", resolved)
+        self.assertIn("manual/stale.bin", resolved)
+        self.assertNotIn("../invalid-path", resolved)
+        self.assertNotIn("/absolute/invalid", resolved)
+
     def test_find_unfinished_markers_ignores_skipped_paths(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -156,6 +185,39 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_main_rejects_json_with_baseline_command(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            exit_code = repo_hygiene.main(
+                ["baseline", "--repo-root", str(root), "--json"]
+            )
+        self.assertEqual(exit_code, 2)
+
+    def test_main_clean_propagates_cli_flags_and_custom_stale_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_clean", return_value=7) as mock_clean:
+                exit_code = repo_hygiene.main(
+                    [
+                        "clean",
+                        "--repo-root",
+                        str(root),
+                        "--include-third-party",
+                        "--baseline-file",
+                        "custom-baseline.json",
+                        "--stale-artifact",
+                        "tmp/manual.bin",
+                    ]
+                )
+        self.assertEqual(exit_code, 7)
+        kwargs = mock_clean.call_args.kwargs
+        self.assertTrue(kwargs["include_third_party"])
+        self.assertEqual(kwargs["baseline_path"], "custom-baseline.json")
+        self.assertIn("tmp/manual.bin", kwargs["stale_artifact_paths"])
+        self.assertIn("egressd-starter.tar.gz", kwargs["stale_artifact_paths"])
 
 
 if __name__ == "__main__":

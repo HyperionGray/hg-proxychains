@@ -5,10 +5,12 @@
 Use `scripts/repo_hygiene.py` directly for all maintenance checks and cleanup.
 Primary documentation has moved to:
 
+- `docs/REPO-HYGIENE.md`
+
 - Unfinished markers in tracked files (`TODO`, `FIXME`, `STUB`, `TBD`, `XXX`, `UNFINISHED`)
 - Backup files (`*~`, `*.bak`, `*.orig`, `*.old`, `*.tmp`)
 - Stray Python cache directories (`__pycache__/`)
-- Known stale artifacts (currently `egressd-starter.tar.gz`)
+- Known stale artifacts (default: `egressd-starter.tar.gz`)
 - Embedded git repositories outside the allowed third-party submodule path
 
 By default, marker scanning includes tracked files in `third_party/FunkyDNS` when that repository is present.
@@ -29,6 +31,22 @@ python3 scripts/repo_maintenance.py --include-third-party
 
 # Remove backup files + stray cache dirs + stale artifacts while scanning
 python3 scripts/repo_maintenance.py --fix
+
+# Add extra stale artifact paths at runtime (repeatable)
+python3 scripts/repo_hygiene.py scan --repo-root . \
+  --stale-artifact logs/stale.log \
+  --stale-artifact tmp/generated.tar.gz
+```
+
+Optional repo-local stale artifact list:
+
+```bash
+# one repo-relative path per line; '#' starts a comment
+cat > .repo-hygiene-stale-artifacts.txt <<'EOF'
+# Generated artifacts to report and clean when untracked
+logs/stale.log
+tmp/generated.tar.gz
+EOF
 ```
 
 Makefile wrappers:
@@ -46,6 +64,10 @@ make maintenance-all-json
 ## Notes
 
 - `--fix` removes backup files, stray `__pycache__/` directories, and known stale artifacts.
+- Stale artifacts are resolved from three sources:
+  1) built-in defaults,
+  2) `.repo-hygiene-stale-artifacts.txt` if present (override with `--stale-artifacts-file`),
+  3) any `--stale-artifact PATH` arguments.
 - Unfinished markers are reported but not modified automatically.
 - Embedded git repositories are reported but never auto-removed by `--fix`.
 - Without `--fix`, exit code is `1` when any issues are found.

@@ -20,7 +20,7 @@ This repository includes a small maintenance utility at
   - temporary files (`*.tmp`)
   - Python cache outputs (`__pycache__/`, `*.pyc`, `*.pyo`)
   - common metadata noise (`.DS_Store`, `Thumbs.db`)
-  - known generated bundles (`egressd-starter.tar.gz`)
+  - known generated bundles (`egressd-starter.tar.gz` by default)
 
 The scanner intentionally skips `third_party/FunkyDNS/` when checking
 unfinished markers by default, because that path is managed as an external
@@ -64,6 +64,21 @@ Optional deep scan including `third_party/FunkyDNS` unfinished markers:
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 ```
 
+Provide additional stale artifact paths at runtime:
+
+```bash
+python3 scripts/repo_hygiene.py scan --repo-root . --stale-artifact tmp/old-bundle.tar.gz
+python3 scripts/repo_hygiene.py clean --repo-root . --stale-artifact logs/legacy.log
+```
+
+Or track shared stale artifact paths in a repo file:
+
+```bash
+# default optional file path:
+# .repo-hygiene-stale-artifacts.txt
+python3 scripts/repo_hygiene.py scan --repo-root . --stale-artifacts-file .repo-hygiene-stale-artifacts.txt
+```
+
 Or through Make targets:
 
 ```bash
@@ -94,6 +109,15 @@ By default, `scan`/`clean` load marker suppressions from:
 Override with `--baseline-file <path>`.
 
 The baseline currently suppresses marker findings only (not stray files).
+
+## Stale artifacts file
+
+By default, `scan`/`clean` also look for an optional stale artifact list file:
+
+- `.repo-hygiene-stale-artifacts.txt`
+
+The file format is one repo-relative path per line. Empty lines and `#` comments
+are ignored. Paths outside the repository root are rejected.
 
 ## Legacy script
 

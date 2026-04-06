@@ -250,6 +250,25 @@ make maintenance-all-json
 
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
 
+You can extend stale-artifact detection (in addition to the built-in
+`egressd-starter.tar.gz`) by creating a repo-local
+`.repo-hygiene-stale-artifacts.txt` file with one relative path per line.
+Lines starting with `#` are treated as comments.
+
+Example:
+
+```text
+# Generated artifacts we never commit
+tmp/old-bundle.tar.gz
+logs/legacy-run.log
+```
+
+You can also add ad-hoc stale paths at runtime:
+
+```bash
+python3 scripts/repo_hygiene.py scan --repo-root . --stale-artifact tmp/manual.bin
+```
+
 For focused first-party hygiene scans and stray cleanup:
 
 ```bash
