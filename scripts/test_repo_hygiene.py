@@ -157,6 +157,55 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
 
+    def test_parse_args_supports_include_third_party_boolean_flags(self) -> None:
+        default_args = repo_hygiene.parse_args([])
+        self.assertFalse(default_args.include_third_party)
+
+        include_args = repo_hygiene.parse_args(["--include-third-party"])
+        self.assertTrue(include_args.include_third_party)
+
+        exclude_args = repo_hygiene.parse_args(["--no-include-third-party"])
+        self.assertFalse(exclude_args.include_third_party)
+
+    def test_main_rejects_json_with_baseline_command(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            code = repo_hygiene.main(
+                [
+                    "baseline",
+                    "--repo-root",
+                    str(root),
+                    "--json",
+                ]
+            )
+        self.assertEqual(code, 2)
+
+    def test_main_dispatches_clean_with_expected_arguments(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_clean", return_value=11) as clean_mock:
+                code = repo_hygiene.main(
+                    [
+                        "clean",
+                        "--repo-root",
+                        str(root),
+                        "--include-third-party",
+                        "--baseline-file",
+                        "custom-baseline.json",
+                        "--json",
+                    ]
+                )
+
+        self.assertEqual(code, 11)
+        clean_mock.assert_called_once_with(
+            root.resolve(),
+            include_third_party=True,
+            baseline_path="custom-baseline.json",
+            json_output=True,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

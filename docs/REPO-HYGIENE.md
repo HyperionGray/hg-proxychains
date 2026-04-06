@@ -1,8 +1,6 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
-
-This repository includes a small maintenance utility at
+This repository includes a maintenance utility at
 `scripts/repo_hygiene.py` for scheduled cleanups and local checks.
 
 ## What it checks
@@ -48,7 +46,6 @@ python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
 # Remove untracked stray files/directories
 python3 scripts/repo_hygiene.py clean --repo-root .
-python3 scripts/repo_hygiene.py scan --repo-root . --json
 ```
 
 JSON output for automation:
@@ -84,6 +81,9 @@ delegates to `scripts/repo_hygiene.py`.
   - `scan`: unfinished markers, stray untracked files, or stale artifacts
   - `clean`: unfinished markers or tracked stale artifacts (removable clutter is deleted)
 - `2`: invalid invocation (for example, non-git directory)
+
+`baseline` supports `--repo-root`, `--baseline-file`, and third-party include flags,
+but intentionally rejects `--json`.
 
 ## Baseline file
 
