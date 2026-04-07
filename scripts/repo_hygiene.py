@@ -35,9 +35,6 @@ STRAY_DIR_NAMES = {
     ".mypy_cache",
     ".ruff_cache",
 }
-STALE_ARTIFACT_PATHS = (
-    "egressd-starter.tar.gz",
-)
 UNFINISHED_SCAN_SUFFIXES = {
     ".py",
     ".sh",
@@ -56,7 +53,11 @@ UNFINISHED_SCAN_FILENAMES = {
 }
 BASELINE_DEFAULT_PATH = ".repo-hygiene-baseline.json"
 THIRD_PARTY_PREFIX = "third_party/"
-STALE_ARTIFACT_PATHS: frozenset[str] = frozenset()
+STALE_ARTIFACT_PATHS: frozenset[str] = frozenset(
+    {
+        "egressd-starter.tar.gz",
+    }
+)
 # Add known stale tracked/untracked artifact paths here (e.g. generated bundles) as they arise.
 
 
@@ -323,6 +324,27 @@ def build_scan_report(
     }
 
 
+def _resolve_report_target(repo_root: Path, report_file: str) -> Path:
+    target = Path(report_file)
+    if not target.is_absolute():
+        target = repo_root / target
+    return target
+
+
+def maybe_write_report_file(
+    report: dict[str, object],
+    *,
+    repo_root: Path,
+    report_file: str | None,
+) -> Path | None:
+    if not report_file:
+        return None
+    target = _resolve_report_target(repo_root, report_file)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return target
+
+
 def print_scan_results(
     findings: Sequence[MarkerFinding],
     stray_paths: Sequence[str],
@@ -390,6 +412,7 @@ def command_scan(
     include_third_party: bool,
     baseline_path: str,
     json_output: bool = False,
+    report_file: str | None = None,
 ) -> int:
     findings, stray, stale_tracked, stale_untracked, embedded_git_repos, suppressed = gather_hygiene_state(
         repo_root,
@@ -404,6 +427,11 @@ def command_scan(
         embedded_git_repos,
         suppressed_markers=suppressed,
     )
+    report_target = maybe_write_report_file(
+        report,
+        repo_root=repo_root,
+        report_file=report_file,
+    )
     if json_output:
         print(json.dumps(report, indent=2, sort_keys=True))
     else:
@@ -415,6 +443,8 @@ def command_scan(
             embedded_git_repos,
             suppressed_markers=suppressed,
         )
+        if report_target is not None:
+            print(f"report written: {report_target}")
     return 1 if report["summary"]["total_issues"] else 0
 
 
@@ -424,6 +454,7 @@ def command_clean(
     include_third_party: bool,
     baseline_path: str,
     json_output: bool = False,
+    report_file: str | None = None,
 ) -> int:
     findings, stray, stale_tracked, stale_untracked, embedded_git_repos, suppressed = gather_hygiene_state(
         repo_root,
@@ -444,6 +475,11 @@ def command_clean(
         "deleted_paths": deleted,
         "requested_paths": len(removable_paths),
     }
+    report_target = maybe_write_report_file(
+        report,
+        repo_root=repo_root,
+        report_file=report_file,
+    )
 
     if json_output:
         print(json.dumps(report, indent=2, sort_keys=True))
@@ -457,6 +493,8 @@ def command_clean(
             suppressed_markers=suppressed,
         )
         print(f"deleted removable paths: {deleted}")
+        if report_target is not None:
+            print(f"report written: {report_target}")
 
     cleanup_incomplete = deleted != len(removable_paths)
     return 1 if findings or stale_tracked or embedded_git_repos or cleanup_incomplete else 0
@@ -518,15 +556,9 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         help="emit machine-readable JSON output",
     )
     parser.add_argument(
-        "--include-third-party",
-        action="store_true",
-        default=False,
-        help="include all of third_party/ (e.g. third_party/FunkyDNS) in marker and stray-file scanning (default: false)",
-    )
-    parser.add_argument(
-        "--baseline-file",
-        default=BASELINE_DEFAULT_PATH,
-        help=f"marker baseline path relative to --repo-root (default: {BASELINE_DEFAULT_PATH})",
+        "--report-file",
+        default=None,
+        help="optional JSON report path for scan/clean output (relative to --repo-root unless absolute)",
     )
     return parser.parse_args(argv)
 
@@ -539,16 +571,32 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     if args.command == "baseline":
-        return command_baseline(repo_root, args.include_third_party, args.baseline_file)
-    if args.command == "clean":
-        return command_clean(repo_root, json_output=args.json)
-    elif args.command == "baseline":
-        # baseline command doesn't support --json flag
         if args.json:
             print("error: --json is not supported for the 'baseline' command", file=sys.stderr)
             return 2
-        return command_baseline(repo_root, include_third_party=False, baseline_path=BASELINE_DEFAULT_PATH)
-    return command_scan(repo_root, json_output=args.json)
+        if args.report_file:
+            print("error: --report-file is not supported for the 'baseline' command", file=sys.stderr)
+            return 2
+        return command_baseline(
+            repo_root,
+            include_third_party=args.include_third_party,
+            baseline_path=args.baseline_file,
+        )
+    if args.command == "clean":
+        return command_clean(
+            repo_root,
+            include_third_party=args.include_third_party,
+            baseline_path=args.baseline_file,
+            json_output=args.json,
+            report_file=args.report_file,
+        )
+    return command_scan(
+        repo_root,
+        include_third_party=args.include_third_party,
+        baseline_path=args.baseline_file,
+        json_output=args.json,
+        report_file=args.report_file,
+    )
 
 
 if __name__ == "__main__":

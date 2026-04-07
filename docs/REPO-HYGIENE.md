@@ -1,9 +1,10 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
-
-This repository includes a small maintenance utility at
+This repository includes a maintenance utility at
 `scripts/repo_hygiene.py` for scheduled cleanups and local checks.
+
+`scripts/repo_maintenance.py` remains available as a compatibility wrapper
+that delegates to `repo_hygiene.py`.
 
 ## What it checks
 
@@ -43,12 +44,15 @@ python3 scripts/repo_hygiene.py scan --repo-root .
 # JSON report for automation
 python3 scripts/repo_hygiene.py scan --repo-root . --json
 
+# Write JSON report to a file (path is relative to --repo-root)
+python3 scripts/repo_hygiene.py scan --repo-root . --report-file reports/hygiene-scan.json
+
 # Include third-party dependency tree explicitly
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
 # Remove untracked stray files/directories
 python3 scripts/repo_hygiene.py clean --repo-root .
-python3 scripts/repo_hygiene.py scan --repo-root . --json
+python3 scripts/repo_hygiene.py clean --repo-root . --json --report-file reports/hygiene-clean.json
 ```
 
 JSON output for automation:
@@ -74,9 +78,6 @@ make repo-clean
 make repo-scan-json
 ```
 
-`scripts/repo_maintenance.py` is retained as a compatibility wrapper and now
-delegates to `scripts/repo_hygiene.py`.
-
 ## Exit codes
 
 - `0`: no issues remain after the command completes
@@ -95,7 +96,7 @@ Override with `--baseline-file <path>`.
 
 The baseline currently suppresses marker findings only (not stray files).
 
-## Legacy script
+## Compatibility wrapper
 
-`scripts/repo_maintenance.py` remains as a compatibility wrapper and delegates
-to `repo_hygiene.py`.
+`scripts/repo_maintenance.py` remains available for legacy invocations and
+delegates to `repo_hygiene.py`.

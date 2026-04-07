@@ -1,3 +1,4 @@
+import json
 import sys
 import tempfile
 import unittest
@@ -156,6 +157,69 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_maybe_write_report_file_writes_json(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            report = {"summary": {"total_issues": 0}}
+
+            report_path = repo_hygiene.maybe_write_report_file(
+                report,
+                repo_root=root,
+                report_file="tmp/scan-report.json",
+            )
+
+            self.assertEqual(report_path, root / "tmp" / "scan-report.json")
+            self.assertTrue(report_path.is_file())
+            self.assertEqual(
+                json.loads(report_path.read_text(encoding="utf-8")),
+                report,
+            )
+
+    def test_main_scan_passes_cli_options(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_scan", return_value=0) as mocked_scan:
+                exit_code = repo_hygiene.main(
+                    [
+                        "scan",
+                        "--repo-root",
+                        str(root),
+                        "--include-third-party",
+                        "--baseline-file",
+                        "custom-baseline.json",
+                        "--json",
+                        "--report-file",
+                        "reports/hygiene.json",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            mocked_scan.assert_called_once_with(
+                root.resolve(),
+                include_third_party=True,
+                baseline_path="custom-baseline.json",
+                json_output=True,
+                report_file="reports/hygiene.json",
+            )
+
+    def test_main_baseline_rejects_report_file(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+
+            exit_code = repo_hygiene.main(
+                [
+                    "baseline",
+                    "--repo-root",
+                    str(root),
+                    "--report-file",
+                    "reports/hygiene.json",
+                ]
+            )
+
+        self.assertEqual(exit_code, 2)
 
 
 if __name__ == "__main__":

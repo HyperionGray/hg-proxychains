@@ -233,6 +233,13 @@ make maintenance
 # equivalent: python3 scripts/repo_hygiene.py scan --repo-root .
 ```
 
+To persist machine-readable output for scheduled jobs, add:
+
+```bash
+python3 scripts/repo_hygiene.py scan --repo-root . --report-file reports/hygiene-scan.json
+python3 scripts/repo_hygiene.py clean --repo-root . --json --report-file reports/hygiene-clean.json
+```
+
 For automatic cleanup of removable clutter (backup files, stray `__pycache__/` dirs, and known stale artifacts):
 
 ```bash
