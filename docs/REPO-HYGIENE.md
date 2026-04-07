@@ -64,6 +64,16 @@ Optional deep scan including `third_party/FunkyDNS` unfinished markers:
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 ```
 
+Track additional stale artifacts for one-off cleanup runs:
+
+```bash
+python3 scripts/repo_hygiene.py scan --repo-root . \
+  --stale-artifact dist/build.tar.gz \
+  --stale-artifact tmp/cache.db
+```
+
+`--stale-artifact` is repeatable and works for both `scan` and `clean`.
+
 Or through Make targets:
 
 ```bash
