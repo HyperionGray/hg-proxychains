@@ -1,9 +1,10 @@
 # Repository maintenance workflow (legacy note)
 
-`scripts/repo_maintenance.py` is now a compatibility wrapper.
+`scripts/repo_hygiene.py` is the primary maintenance utility.
+`scripts/repo_maintenance.py` remains a compatibility wrapper that delegates to
+`repo_hygiene.py`.
 
-Use `scripts/repo_hygiene.py` directly for all maintenance checks and cleanup.
-Primary documentation has moved to `docs/REPO-HYGIENE.md`.
+Primary documentation lives in `docs/REPO-HYGIENE.md`.
 
 - Unfinished markers in tracked files (`TODO`, `FIXME`, `STUB`, `TBD`, `XXX`, `UNFINISHED`)
 - Backup files (`*~`, `*.bak`, `*.orig`, `*.old`, `*.tmp`)
@@ -11,9 +12,9 @@ Primary documentation has moved to `docs/REPO-HYGIENE.md`.
 - Known stale artifacts (currently `egressd-starter.tar.gz`)
 - Embedded git repositories outside the allowed third-party submodule path
 
-By default, marker scanning includes tracked files in `third_party/FunkyDNS` when that repository is present.
-For day-to-day repo automation, prefer the first-party-only mode (`--no-include-third-party`)
-to avoid noise from external dependency internals.
+By default, marker scanning is first-party only and skips
+`third_party/FunkyDNS` internals. Use `--include-third-party` when you
+explicitly want full dependency-tree visibility.
 
 ## Commands
 
@@ -37,6 +38,8 @@ Makefile wrappers:
 make maintenance        # first-party only
 make maintenance-fix    # first-party only + cleanup
 make maintenance-json   # first-party only + JSON
+make maintenance-automation      # excludes known automation plan note
+make maintenance-automation-fix  # automation profile + cleanup
 
 # optional full scan including third_party/FunkyDNS internals
 make maintenance-all

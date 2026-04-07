@@ -248,6 +248,22 @@ make maintenance-all
 make maintenance-all-json
 ```
 
+For scheduled automation in this repository, use:
+
+```bash
+make maintenance-automation
+make maintenance-automation-fix
+```
+
+To exclude noisy generated paths in one run (path prefix or glob), pass
+`--exclude-path` to the maintenance wrapper:
+
+```bash
+python3 scripts/repo_maintenance.py --no-include-third-party \
+  --exclude-path docs/generated/** \
+  --exclude-path logs
+```
+
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
 
 For focused first-party hygiene scans and stray cleanup:

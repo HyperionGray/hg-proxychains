@@ -2,6 +2,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import repo_maintenance
@@ -66,6 +67,42 @@ class RepoMaintenanceTests(unittest.TestCase):
             found = repo_maintenance.discover_embedded_git_repos(root, include_third_party=False)
 
             self.assertEqual(found, [])
+
+    def test_parse_args_supports_exclude_path_repeatable_flag(self) -> None:
+        args = repo_maintenance.parse_args(
+            [
+                "--root",
+                ".",
+                "--exclude-path",
+                "logs",
+                "--exclude-path",
+                "docs/generated/**",
+            ]
+        )
+        self.assertEqual(args.exclude_path, ["logs", "docs/generated/**"])
+
+    def test_main_passes_exclude_paths_to_repo_hygiene(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            with patch.object(repo_maintenance.subprocess, "run") as mock_run:
+                mock_run.return_value.returncode = 0
+                rc = repo_maintenance.main(
+                    [
+                        "--root",
+                        str(root),
+                        "--exclude-path",
+                        "logs",
+                        "--exclude-path",
+                        "docs/generated/**",
+                    ]
+                )
+        self.assertEqual(rc, 0)
+        cmd = mock_run.call_args.args[0]
+        self.assertIn("--exclude-path", cmd)
+        self.assertEqual(
+            cmd[-4:],
+            ["--exclude-path", "logs", "--exclude-path", "docs/generated/**"],
+        )
 
 
 if __name__ == "__main__":

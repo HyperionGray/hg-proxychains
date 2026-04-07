@@ -180,6 +180,57 @@ class RepoHygieneTests(unittest.TestCase):
         )
         self.assertEqual(args.stale_artifact, ["dist/build.tar.gz", "tmp/cache.db"])
 
+    def test_parse_args_supports_exclude_path_repeatable_flag(self) -> None:
+        args = repo_hygiene.parse_args(
+            [
+                "scan",
+                "--repo-root",
+                ".",
+                "--exclude-path",
+                "docs/generated/**",
+                "--exclude-path",
+                "tmp",
+            ]
+        )
+        self.assertEqual(args.exclude_path, ["docs/generated/**", "tmp"])
+
+    def test_apply_path_exclusions_supports_prefix_and_glob(self) -> None:
+        paths = [
+            "docs/generated/report.md",
+            "docs/guide.md",
+            "tmp/cache.db",
+            "scripts/repo_hygiene.py",
+        ]
+        excluded = repo_hygiene.apply_path_exclusions(paths, ["docs/generated/**", "tmp"])
+        self.assertEqual(excluded, ["docs/guide.md", "scripts/repo_hygiene.py"])
+
+    def test_gather_hygiene_state_respects_excluded_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            tracked_file = root / "src.py"
+            excluded_file = root / "generated" / "snapshot.py"
+            excluded_file.parent.mkdir(parents=True, exist_ok=True)
+            tracked_file.write_text("# TO" "DO: in source\n", encoding="utf-8")
+            excluded_file.write_text("# TO" "DO: in generated\n", encoding="utf-8")
+
+            with patch.object(
+                repo_hygiene,
+                "collect_git_paths",
+                side_effect=[
+                    ["src.py", "generated/snapshot.py"],
+                    [],
+                ],
+            ):
+                findings, _, _, _, _, _, excluded_paths = repo_hygiene.gather_hygiene_state(
+                    root,
+                    include_third_party=False,
+                    baseline_path=".repo-hygiene-baseline.json",
+                    exclude_paths=["generated/**"],
+                )
+        self.assertEqual([finding.path for finding in findings], ["src.py"])
+        self.assertEqual(excluded_paths, ["generated/**"])
+
     def test_main_passes_expected_arguments_to_scan(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -195,6 +246,8 @@ class RepoHygieneTests(unittest.TestCase):
                         "custom-baseline.json",
                         "--stale-artifact",
                         "dist/build.tar.gz",
+                        "--exclude-path",
+                        "docs/generated/**",
                         "--json",
                     ]
                 )
@@ -204,6 +257,7 @@ class RepoHygieneTests(unittest.TestCase):
             self.assertTrue(kwargs["include_third_party"])
             self.assertEqual(kwargs["baseline_path"], "custom-baseline.json")
             self.assertEqual(kwargs["extra_stale_artifacts"], ["dist/build.tar.gz"])
+            self.assertEqual(kwargs["exclude_paths"], ["docs/generated/**"])
             self.assertTrue(kwargs["json_output"])
 
     def test_main_rejects_json_for_baseline_command(self) -> None:

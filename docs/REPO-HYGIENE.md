@@ -1,6 +1,11 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
+`scripts/repo_hygiene.py` is the primary scanner/cleaner for scheduled automation
+and local maintenance checks.
+
+`scripts/repo_maintenance.py` remains as a compatibility wrapper around
+`repo_hygiene.py` for legacy entry points (`make maintenance` /
+`make maintenance-fix`).
 
 This repository includes a small maintenance utility at
 `scripts/repo_hygiene.py` for scheduled cleanups and local checks.
@@ -74,17 +79,33 @@ python3 scripts/repo_hygiene.py scan --repo-root . \
 
 `--stale-artifact` is repeatable and works for both `scan` and `clean`.
 
+Exclude noisy paths or generated trees for a specific run:
+
+```bash
+python3 scripts/repo_hygiene.py scan --repo-root . \
+  --exclude-path docs/generated/** \
+  --exclude-path logs
+```
+
+`--exclude-path` is repeatable and works with `scan`, `clean`, and `baseline`.
+Patterns are repo-relative and support shell-style globs (`*`, `?`, `[]`).
+
 Or through Make targets:
 
 ```bash
 make maintenance
 make maintenance-fix
+make maintenance-automation
+make maintenance-automation-fix
 make repo-scan
 make repo-clean
 make repo-scan-json
 ```
 
-`scripts/repo_maintenance.py` is retained as a compatibility wrapper and now
+`maintenance-automation*` targets are preconfigured for scheduled runs in this
+repo and exclude `third_party/FunkyDNS/AUTOMATION.txt`.
+
+`scripts/repo_maintenance.py` is retained as a compatibility wrapper and
 delegates to `scripts/repo_hygiene.py`.
 
 ## Exit codes
