@@ -1,9 +1,10 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
-
-This repository includes a small maintenance utility at
+This repository includes a maintenance utility at
 `scripts/repo_hygiene.py` for scheduled cleanups and local checks.
+
+`scripts/repo_maintenance.py` is a compatibility wrapper that forwards to
+`repo_hygiene.py`.
 
 ## What it checks
 
@@ -46,6 +47,11 @@ python3 scripts/repo_hygiene.py scan --repo-root . --json
 # Include third-party dependency tree explicitly
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
+# Exclude noisy paths/globs for a focused scan (repeatable)
+python3 scripts/repo_hygiene.py scan --repo-root . \
+  --exclude-path docs \
+  --exclude-path "*.tmp"
+
 # Remove untracked stray files/directories
 python3 scripts/repo_hygiene.py clean --repo-root .
 python3 scripts/repo_hygiene.py scan --repo-root . --json
@@ -74,8 +80,12 @@ make repo-clean
 make repo-scan-json
 ```
 
-`scripts/repo_maintenance.py` is retained as a compatibility wrapper and now
-delegates to `scripts/repo_hygiene.py`.
+Compatibility wrapper examples:
+
+```bash
+python3 scripts/repo_maintenance.py --no-include-third-party
+python3 scripts/repo_maintenance.py --no-include-third-party --fix
+```
 
 ## Exit codes
 
@@ -93,9 +103,23 @@ By default, `scan`/`clean` load marker suppressions from:
 
 Override with `--baseline-file <path>`.
 
+To create or refresh the baseline file:
+
+```bash
+python3 scripts/repo_hygiene.py baseline --repo-root . --include-third-party
+```
+
 The baseline currently suppresses marker findings only (not stray files).
+
+## Notes
+
+- `baseline` does not support `--json`.
+- `--exclude-path` accepts either a path prefix (`docs`) or a glob pattern
+  (`*.tmp`) and can be repeated.
+- `clean` only deletes removable clutter (stray untracked paths and known
+  untracked stale artifacts). It never edits source markers.
 
 ## Legacy script
 
-`scripts/repo_maintenance.py` remains as a compatibility wrapper and delegates
-to `repo_hygiene.py`.
+`scripts/repo_maintenance.py` remains as a compatibility wrapper for older
+automation hooks.

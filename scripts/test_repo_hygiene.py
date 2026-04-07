@@ -9,6 +9,23 @@ import repo_hygiene
 
 
 class RepoHygieneTests(unittest.TestCase):
+    def test_path_is_excluded_supports_prefix_and_glob_patterns(self) -> None:
+        patterns = ["docs", "*.tmp", "nested/*.bak"]
+        self.assertTrue(repo_hygiene.path_is_excluded("docs/README.md", patterns))
+        self.assertTrue(repo_hygiene.path_is_excluded("notes.tmp", patterns))
+        self.assertTrue(repo_hygiene.path_is_excluded("nested/file.bak", patterns))
+        self.assertFalse(repo_hygiene.path_is_excluded("scripts/repo_hygiene.py", patterns))
+
+    def test_apply_path_exclusions_filters_matching_paths(self) -> None:
+        paths = [
+            "docs/guide.md",
+            "scripts/repo_hygiene.py",
+            "tmp/ignore.tmp",
+            "tmp/keep.txt",
+        ]
+        filtered = repo_hygiene.apply_path_exclusions(paths, ["docs", "*.tmp"])
+        self.assertEqual(filtered, ["scripts/repo_hygiene.py", "tmp/keep.txt"])
+
     def test_should_skip_for_unfinished(self) -> None:
         self.assertTrue(repo_hygiene.should_skip_for_unfinished("third_party/FunkyDNS/dns_server/doh.py"))
         self.assertFalse(
@@ -156,6 +173,46 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_main_rejects_json_for_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            result = repo_hygiene.main(
+                [
+                    "baseline",
+                    "--repo-root",
+                    str(root),
+                    "--json",
+                ]
+            )
+        self.assertEqual(result, 2)
+
+    def test_main_passes_exclusions_to_scan(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch("repo_hygiene.command_scan", return_value=0) as scan:
+                result = repo_hygiene.main(
+                    [
+                        "scan",
+                        "--repo-root",
+                        str(root),
+                        "--exclude-path",
+                        "docs",
+                        "--exclude-path",
+                        "*.tmp",
+                    ]
+                )
+
+        self.assertEqual(result, 0)
+        scan.assert_called_once_with(
+            root.resolve(),
+            include_third_party=False,
+            baseline_path=repo_hygiene.BASELINE_DEFAULT_PATH,
+            excluded_path_patterns=["docs", "*.tmp"],
+            json_output=False,
+        )
 
 
 if __name__ == "__main__":

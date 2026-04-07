@@ -233,6 +233,15 @@ make maintenance
 # equivalent: python3 scripts/repo_hygiene.py scan --repo-root .
 ```
 
+For focused scans that intentionally ignore specific paths (for example docs
+or generated scratch trees), use repeatable exclusions:
+
+```bash
+python3 scripts/repo_hygiene.py scan --repo-root . \
+  --exclude-path docs \
+  --exclude-path "*.tmp"
+```
+
 For automatic cleanup of removable clutter (backup files, stray `__pycache__/` dirs, and known stale artifacts):
 
 ```bash
