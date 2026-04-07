@@ -161,20 +161,14 @@ def marker_baseline_key(finding: MarkerFinding) -> tuple[str, str, str]:
     return finding.path, finding.marker, finding.line
 
 
-def load_marker_baseline(repo_root: Path, baseline_path: str) -> set[tuple[str, str, str]]:
-    candidate = repo_root / baseline_path
-    if not candidate.is_file():
-        return set()
-    try:
-        payload = json.loads(candidate.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        print(f"warn: failed to load baseline {baseline_path}: {exc}", file=sys.stderr)
-        return set()
+def _parse_baseline_entries(payload: object) -> list[tuple[str, str, str]]:
+    if not isinstance(payload, dict):
+        return []
 
     items = payload.get("unfinished_markers", [])
-    baseline: set[tuple[str, str, str]] = set()
+    parsed: list[tuple[str, str, str]] = []
     if not isinstance(items, list):
-        return baseline
+        return parsed
     for item in items:
         if not isinstance(item, dict):
             continue
@@ -182,8 +176,45 @@ def load_marker_baseline(repo_root: Path, baseline_path: str) -> set[tuple[str, 
         marker = item.get("marker")
         line = item.get("line")
         if isinstance(path, str) and isinstance(marker, str) and isinstance(line, str):
-            baseline.add((path, marker, line.strip()))
-    return baseline
+            parsed.append((path, marker, line.strip()))
+    return parsed
+
+
+def load_marker_baseline_entries(repo_root: Path, baseline_path: str) -> list[tuple[str, str, str]]:
+    candidate = repo_root / baseline_path
+    if not candidate.is_file():
+        return []
+    try:
+        payload = json.loads(candidate.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"warn: failed to load baseline {baseline_path}: {exc}", file=sys.stderr)
+        return []
+    return _parse_baseline_entries(payload)
+
+
+def load_marker_baseline(repo_root: Path, baseline_path: str) -> set[tuple[str, str, str]]:
+    return set(load_marker_baseline_entries(repo_root, baseline_path))
+
+
+def write_marker_baseline(
+    repo_root: Path,
+    baseline_path: str,
+    entries: Iterable[tuple[str, str, str]],
+) -> int:
+    unique_entries = sorted(set(entries))
+    payload = {
+        "unfinished_markers": [
+            {
+                "path": path,
+                "marker": marker,
+                "line": line,
+            }
+            for path, marker, line in unique_entries
+        ]
+    }
+    target = repo_root / baseline_path
+    target.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return len(unique_entries)
 
 
 def apply_marker_baseline(
@@ -484,19 +515,38 @@ def command_baseline(repo_root: Path, include_third_party: bool, baseline_path: 
         include_third_party=include_third_party,
         excluded_paths={baseline_rel_path},
     )
-    payload = {
-        "unfinished_markers": [
-            {
-                "path": finding.path,
-                "marker": finding.marker,
-                "line": finding.line,
-            }
-            for finding in findings
-        ]
-    }
-    target = repo_root / baseline_path
-    target.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(f"wrote baseline entries: {len(findings)} -> {target.relative_to(repo_root)}")
+    entry_count = write_marker_baseline(
+        repo_root,
+        baseline_path,
+        (marker_baseline_key(finding) for finding in findings),
+    )
+    print(f"wrote baseline entries: {entry_count} -> {baseline_rel_path}")
+    return 0
+
+
+def command_baseline_prune(repo_root: Path, include_third_party: bool, baseline_path: str) -> int:
+    baseline_rel_path = Path(baseline_path).as_posix()
+    target = repo_root / baseline_rel_path
+    if not target.exists():
+        print(f"baseline file not found, nothing to prune: {baseline_rel_path}")
+        return 0
+
+    tracked = collect_git_paths(repo_root, ("ls-files",), include_third_party=include_third_party)
+    findings = find_unfinished_markers(
+        repo_root,
+        tracked,
+        include_third_party=include_third_party,
+        excluded_paths={baseline_rel_path},
+    )
+    active_entries = {marker_baseline_key(finding) for finding in findings}
+    existing_entries = load_marker_baseline_entries(repo_root, baseline_rel_path)
+    kept_entries = [entry for entry in existing_entries if entry in active_entries]
+    written_count = write_marker_baseline(repo_root, baseline_rel_path, kept_entries)
+    removed_count = len(existing_entries) - len(kept_entries)
+    print(
+        "pruned baseline entries: "
+        f"removed={removed_count}, kept={written_count} -> {baseline_rel_path}"
+    )
     return 0
 
 
@@ -505,9 +555,12 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument(
         "command",
         nargs="?",
-        choices=("scan", "clean", "baseline"),
+        choices=("scan", "clean", "baseline", "baseline-prune"),
         default="scan",
-        help="scan for issues, clean removable artifacts, or write a marker baseline file",
+        help=(
+            "scan for issues, clean removable artifacts, "
+            "write a marker baseline file, or prune stale baseline entries"
+        ),
     )
     parser.add_argument(
         "--repo-root",
@@ -547,11 +600,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"error: {repo_root} is not a git repository", file=sys.stderr)
         return 2
 
-    if args.command == "baseline":
+    if args.command in {"baseline", "baseline-prune"}:
         if args.json:
-            print("error: --json is not supported for the 'baseline' command", file=sys.stderr)
+            print(
+                "error: --json is not supported for the 'baseline' or "
+                "'baseline-prune' command",
+                file=sys.stderr,
+            )
             return 2
-        return command_baseline(repo_root, args.include_third_party, args.baseline_file)
+        if args.command == "baseline":
+            return command_baseline(repo_root, args.include_third_party, args.baseline_file)
+        return command_baseline_prune(repo_root, args.include_third_party, args.baseline_file)
     if args.command == "clean":
         return command_clean(
             repo_root,

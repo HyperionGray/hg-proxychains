@@ -1,3 +1,5 @@
+import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -180,6 +182,65 @@ class RepoHygieneTests(unittest.TestCase):
         )
         self.assertEqual(args.stale_artifact, ["dist/build.tar.gz", "tmp/cache.db"])
 
+    def test_parse_args_supports_baseline_prune_command(self) -> None:
+        args = repo_hygiene.parse_args(["baseline-prune", "--repo-root", "."])
+        self.assertEqual(args.command, "baseline-prune")
+
+    def test_write_and_load_marker_baseline_round_trip(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            count = repo_hygiene.write_marker_baseline(
+                root,
+                ".repo-hygiene-baseline.json",
+                [
+                    ("a.py", "TODO", "# TO" "DO: first"),
+                    ("b.py", "FIXME", "# FI" "XME: second"),
+                    ("a.py", "TODO", "# TO" "DO: first"),
+                ],
+            )
+            self.assertEqual(count, 2)
+            loaded = repo_hygiene.load_marker_baseline_entries(root, ".repo-hygiene-baseline.json")
+            self.assertEqual(
+                loaded,
+                [
+                    ("a.py", "TODO", "# TO" "DO: first"),
+                    ("b.py", "FIXME", "# FI" "XME: second"),
+                ],
+            )
+
+    def test_command_baseline_prune_removes_stale_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            subprocess.run(["git", "init"], cwd=root, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+            source = root / "src.py"
+            source.write_text("# TO" "DO: active marker\n", encoding="utf-8")
+            subprocess.run(["git", "add", "src.py"], cwd=root, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+            baseline_file = root / ".repo-hygiene-baseline.json"
+            baseline_file.write_text(
+                json.dumps(
+                    {
+                        "unfinished_markers": [
+                            {"path": "src.py", "marker": "TODO", "line": "# TO" "DO: active marker"},
+                            {"path": "stale.py", "marker": "TODO", "line": "# TO" "DO: stale marker"},
+                        ]
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            rc = repo_hygiene.command_baseline_prune(root, include_third_party=False, baseline_path=".repo-hygiene-baseline.json")
+            self.assertEqual(rc, 0)
+            payload = json.loads(baseline_file.read_text(encoding="utf-8"))
+            self.assertEqual(
+                payload["unfinished_markers"],
+                [{"line": "# TO" "DO: active marker", "marker": "TODO", "path": "src.py"}],
+            )
+
     def test_main_passes_expected_arguments_to_scan(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -213,6 +274,20 @@ class RepoHygieneTests(unittest.TestCase):
             rc = repo_hygiene.main(
                 [
                     "baseline",
+                    "--repo-root",
+                    str(root),
+                    "--json",
+                ]
+            )
+        self.assertEqual(rc, 2)
+
+    def test_main_rejects_json_for_baseline_prune_command(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            rc = repo_hygiene.main(
+                [
+                    "baseline-prune",
                     "--repo-root",
                     str(root),
                     "--json",

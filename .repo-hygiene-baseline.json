@@ -11,17 +11,12 @@
       "path": "third_party/FunkyDNS/dns_server/doh.py"
     },
     {
-      "line": "# TODO: Implement Redis storage",
+      "line": "# TODO: Implement Redis backend",
       "marker": "TODO",
       "path": "third_party/FunkyDNS/dns_server/social_engineering/sessions.py"
     },
     {
-      "line": "# TODO: Implement Redis retrieval",
-      "marker": "TODO",
-      "path": "third_party/FunkyDNS/dns_server/social_engineering/sessions.py"
-    },
-    {
-      "line": "# TODO: Implement Redis update",
+      "line": "# TODO: Implement Redis cleanup",
       "marker": "TODO",
       "path": "third_party/FunkyDNS/dns_server/social_engineering/sessions.py"
     },
@@ -36,12 +31,17 @@
       "path": "third_party/FunkyDNS/dns_server/social_engineering/sessions.py"
     },
     {
-      "line": "# TODO: Implement Redis cleanup",
+      "line": "# TODO: Implement Redis retrieval",
       "marker": "TODO",
       "path": "third_party/FunkyDNS/dns_server/social_engineering/sessions.py"
     },
     {
-      "line": "# TODO: Implement Redis backend",
+      "line": "# TODO: Implement Redis storage",
+      "marker": "TODO",
+      "path": "third_party/FunkyDNS/dns_server/social_engineering/sessions.py"
+    },
+    {
+      "line": "# TODO: Implement Redis update",
       "marker": "TODO",
       "path": "third_party/FunkyDNS/dns_server/social_engineering/sessions.py"
     }
