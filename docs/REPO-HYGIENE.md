@@ -74,6 +74,17 @@ python3 scripts/repo_hygiene.py scan --repo-root . \
 
 `--stale-artifact` is repeatable and works for both `scan` and `clean`.
 
+Exclude selected paths or globs from scanning/cleanup for local workflows:
+
+```bash
+python3 scripts/repo_hygiene.py scan --repo-root . \
+  --exclude-path docs \
+  --exclude-path "tmp/*"
+```
+
+`--exclude-path` is repeatable and applies to tracked-marker scans, untracked
+stray detection, stale artifact checks, and embedded git repo reporting.
+
 Or through Make targets:
 
 ```bash
@@ -82,6 +93,9 @@ make maintenance-fix
 make repo-scan
 make repo-clean
 make repo-scan-json
+
+# pass exclusions through Make (optional)
+make maintenance REPO_HYGIENE_EXCLUDE_ARGS="--exclude-path docs --exclude-path 'tmp/*'"
 ```
 
 `scripts/repo_maintenance.py` is retained as a compatibility wrapper and now

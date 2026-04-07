@@ -2,6 +2,7 @@ COMPOSE ?= podman-compose
 PODMAN ?= podman
 PYTHON ?= python3
 EGRESSD_IMAGE ?= localhost/hg-proxychains-egressd-validate:latest
+REPO_HYGIENE_EXCLUDE_ARGS ?=
 
 .PHONY: deps smoke down logs health ready pycheck unittest test check preflight validate-config validate-image repo-scan repo-scan-json repo-clean maintenance maintenance-json maintenance-fix maintenance-all maintenance-all-json maintenance-baseline bundle clean
 
@@ -43,31 +44,31 @@ validate-config: validate-image
 	$(PODMAN) run --rm -e EGRESSD_VALIDATE_ONLY=1 $(EGRESSD_IMAGE) $(PYTHON) /opt/egressd/supervisor.py
 
 repo-scan:
-	$(PYTHON) scripts/repo_hygiene.py scan --repo-root . --no-include-third-party
+	$(PYTHON) scripts/repo_hygiene.py scan --repo-root . --no-include-third-party $(REPO_HYGIENE_EXCLUDE_ARGS)
 
 repo-clean:
-	$(PYTHON) scripts/repo_hygiene.py clean --repo-root . --no-include-third-party
+	$(PYTHON) scripts/repo_hygiene.py clean --repo-root . --no-include-third-party $(REPO_HYGIENE_EXCLUDE_ARGS)
 
 maintenance:
-	$(PYTHON) scripts/repo_maintenance.py --no-include-third-party
+	$(PYTHON) scripts/repo_maintenance.py --no-include-third-party $(REPO_HYGIENE_EXCLUDE_ARGS)
 
 maintenance-fix:
-	$(PYTHON) scripts/repo_maintenance.py --no-include-third-party --fix
+	$(PYTHON) scripts/repo_maintenance.py --no-include-third-party --fix $(REPO_HYGIENE_EXCLUDE_ARGS)
 
 repo-scan-json:
-	$(PYTHON) scripts/repo_hygiene.py scan --repo-root . --no-include-third-party --json
+	$(PYTHON) scripts/repo_hygiene.py scan --repo-root . --no-include-third-party --json $(REPO_HYGIENE_EXCLUDE_ARGS)
 
 maintenance-json:
-	$(PYTHON) scripts/repo_maintenance.py --no-include-third-party --json
+	$(PYTHON) scripts/repo_maintenance.py --no-include-third-party --json $(REPO_HYGIENE_EXCLUDE_ARGS)
 
 maintenance-all:
-	$(PYTHON) scripts/repo_maintenance.py --include-third-party
+	$(PYTHON) scripts/repo_maintenance.py --include-third-party $(REPO_HYGIENE_EXCLUDE_ARGS)
 
 maintenance-all-json:
-	$(PYTHON) scripts/repo_maintenance.py --include-third-party --json
+	$(PYTHON) scripts/repo_maintenance.py --include-third-party --json $(REPO_HYGIENE_EXCLUDE_ARGS)
 
 maintenance-baseline:
-	$(PYTHON) scripts/repo_hygiene.py baseline --repo-root . --include-third-party
+	$(PYTHON) scripts/repo_hygiene.py baseline --repo-root . --include-third-party $(REPO_HYGIENE_EXCLUDE_ARGS)
 
 bundle:
 	tar -czf egressd-starter.tar.gz .

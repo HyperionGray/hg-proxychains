@@ -26,7 +26,7 @@ The design goal is intentionally boring:
 │   ├── BRINGUP-CHECKLIST.md
 │   ├── FUNKYDNS-REVIEW.md
 │   ├── HOST-DEPLOYMENT.md
-│   ├── REPO_MAINTENANCE.md
+│   ├── REPO-HYGIENE.md
 │   └── USER-FLOW-REVIEW.md
 ├── egressd/
 │   ├── Dockerfile
@@ -256,6 +256,8 @@ For focused first-party hygiene scans and stray cleanup:
 make repo-scan
 make repo-clean
 make repo-scan-json
+# optionally skip noisy paths during a scan:
+make repo-scan REPO_HYGIENE_EXCLUDE_ARGS='--exclude-path docs --exclude-path "tmp/*"'
 ```
 
 ## Notes on FunkyDNS review
