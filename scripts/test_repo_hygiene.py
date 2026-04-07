@@ -180,6 +180,74 @@ class RepoHygieneTests(unittest.TestCase):
         )
         self.assertEqual(args.stale_artifact, ["dist/build.tar.gz", "tmp/cache.db"])
 
+    def test_path_matching_supports_prefix_and_glob(self) -> None:
+        self.assertTrue(repo_hygiene.path_matches_pattern("docs/REPO-HYGIENE.md", "docs"))
+        self.assertTrue(repo_hygiene.path_matches_pattern("docs/REPO-HYGIENE.md", "docs/*.md"))
+        self.assertFalse(repo_hygiene.path_matches_pattern("scripts/repo_hygiene.py", "docs"))
+
+    def test_filter_excluded_paths_drops_matching_items(self) -> None:
+        paths = [
+            "docs/REPO-HYGIENE.md",
+            "scripts/repo_hygiene.py",
+            "tests/test_chain.py",
+        ]
+        filtered = repo_hygiene.filter_excluded_paths(paths, ["docs", "tests/*.py"])
+        self.assertEqual(filtered, ["scripts/repo_hygiene.py"])
+
+    def test_normalize_path_patterns_preserves_dot_prefix(self) -> None:
+        normalized = repo_hygiene.normalize_path_patterns(["./docs", ".hidden/cache", "tmp/*"])
+        self.assertEqual(normalized, ["docs", ".hidden/cache", "tmp/*"])
+
+    def test_gather_hygiene_state_respects_excluded_path_patterns(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            docs_dir = root / "docs"
+            docs_dir.mkdir(parents=True, exist_ok=True)
+            docs_file = docs_dir / "notes.py"
+            docs_file.write_text("# TO" "DO: ignored marker\n", encoding="utf-8")
+            src_file = root / "src.py"
+            src_file.write_text("# TO" "DO: kept marker\n", encoding="utf-8")
+            cache_file = root / "tmp" / "__pycache__" / "x.pyc"
+            cache_file.parent.mkdir(parents=True, exist_ok=True)
+            cache_file.write_bytes(b"x")
+            stale_artifact = root / "dist" / "build.tar.gz"
+            stale_artifact.parent.mkdir(parents=True, exist_ok=True)
+            stale_artifact.write_text("bundle\n", encoding="utf-8")
+            embedded_git = root / "vendor" / ".git"
+            embedded_git.mkdir(parents=True, exist_ok=True)
+
+            def fake_collect_git_paths(
+                _repo_root: Path,
+                list_args: tuple[str, ...],
+                include_third_party: bool = False,
+            ) -> list[str]:
+                if list_args == ("ls-files",):
+                    return ["docs/notes.py", "src.py", "dist/build.tar.gz"]
+                if list_args == ("ls-files", "--others", "--exclude-standard"):
+                    return ["tmp/__pycache__/x.pyc", "tmp/out.tmp", "vendor/.git/config"]
+                self.fail(f"unexpected git list args: {list_args}")
+
+            with (
+                patch.object(repo_hygiene, "collect_git_paths", side_effect=fake_collect_git_paths),
+                patch.object(repo_hygiene, "discover_embedded_git_repos", return_value=["vendor"]),
+            ):
+                findings, stray, stale_tracked, stale_untracked, embedded, _suppressed = (
+                    repo_hygiene.gather_hygiene_state(
+                        root,
+                        include_third_party=False,
+                        baseline_path=".repo-hygiene-baseline.json",
+                        extra_stale_artifacts=["dist/build.tar.gz"],
+                        excluded_path_patterns=["docs", "tmp/*", "vendor"],
+                    )
+                )
+
+            self.assertEqual([f.path for f in findings], ["src.py"])
+            self.assertEqual(stray, [])
+            self.assertEqual(stale_tracked, ["dist/build.tar.gz"])
+            self.assertEqual(stale_untracked, [])
+            self.assertEqual(embedded, [])
+
     def test_main_passes_expected_arguments_to_scan(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -205,6 +273,27 @@ class RepoHygieneTests(unittest.TestCase):
             self.assertEqual(kwargs["baseline_path"], "custom-baseline.json")
             self.assertEqual(kwargs["extra_stale_artifacts"], ["dist/build.tar.gz"])
             self.assertTrue(kwargs["json_output"])
+
+    def test_main_passes_excluded_paths_to_scan(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_scan", return_value=0) as mock_scan:
+                rc = repo_hygiene.main(
+                    [
+                        "scan",
+                        "--repo-root",
+                        str(root),
+                        "--exclude-path",
+                        "docs",
+                        "--exclude-path",
+                        "tmp/*",
+                    ]
+                )
+            self.assertEqual(rc, 0)
+            mock_scan.assert_called_once()
+            _, kwargs = mock_scan.call_args
+            self.assertEqual(kwargs["excluded_path_patterns"], ["docs", "tmp/*"])
 
     def test_main_rejects_json_for_baseline_command(self) -> None:
         with tempfile.TemporaryDirectory() as td:
