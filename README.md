@@ -246,6 +246,8 @@ also includes `third_party/FunkyDNS`, use:
 ```bash
 make maintenance-all
 make maintenance-all-json
+# prune stale marker suppressions from baseline file
+make maintenance-baseline-prune
 ```
 
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.

@@ -1,6 +1,8 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
+`scripts/repo_hygiene.py` is the primary scanner used by scheduled automation.
+`scripts/repo_maintenance.py` is a compatibility wrapper (`make maintenance` /
+`make maintenance-fix`) that delegates to it.
 
 This repository includes a small maintenance utility at
 `scripts/repo_hygiene.py` for scheduled cleanups and local checks.
@@ -30,7 +32,8 @@ When you do want full-repo scanning (including nested third-party git state),
 use `--include-third-party`.
 
 Known upstream unfinished markers can be recorded in a baseline file so
-scheduled jobs can fail only on new findings.
+scheduled jobs can fail only on new findings. The scanner also reports stale
+baseline entries (for example, markers whose source path no longer exists).
 
 ## Usage
 
@@ -45,6 +48,9 @@ python3 scripts/repo_hygiene.py scan --repo-root . --json
 
 # Include third-party dependency tree explicitly
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
+
+# Prune stale/duplicate baseline entries while keeping active suppressions
+python3 scripts/repo_hygiene.py baseline-prune --repo-root . --include-third-party
 
 # Remove untracked stray files/directories
 python3 scripts/repo_hygiene.py clean --repo-root .
@@ -74,8 +80,8 @@ make repo-clean
 make repo-scan-json
 ```
 
-`scripts/repo_maintenance.py` is retained as a compatibility wrapper and now
-delegates to `scripts/repo_hygiene.py`.
+`scripts/repo_maintenance.py` remains a compatibility wrapper and delegates to
+`repo_hygiene.py`.
 
 ## Exit codes
 

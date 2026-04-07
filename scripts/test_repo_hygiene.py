@@ -157,6 +157,106 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
 
+    def test_find_stale_baseline_entries_marks_missing_paths(self) -> None:
+        baseline_entries = [
+            repo_hygiene.BaselineMarker(
+                path="missing.py",
+                marker="TODO",
+                line="# TO" "DO: old",
+            )
+        ]
+        stale = repo_hygiene.find_stale_baseline_entries(
+            baseline_entries=baseline_entries,
+            raw_findings=[],
+            tracked_paths={"src.py"},
+            include_third_party=True,
+            excluded_paths=set(),
+        )
+        self.assertEqual(len(stale), 1)
+        self.assertEqual(stale[0]["path"], "missing.py")
+        self.assertEqual(stale[0]["reason"], "path_missing")
+
+    def test_find_stale_baseline_entries_skips_active_marker(self) -> None:
+        active_line = "# TO" "DO: active"
+        finding = repo_hygiene.MarkerFinding("src.py", 2, "TODO", active_line)
+        baseline_entries = [
+            repo_hygiene.BaselineMarker(path="src.py", marker="TODO", line=active_line),
+        ]
+        stale = repo_hygiene.find_stale_baseline_entries(
+            baseline_entries=baseline_entries,
+            raw_findings=[finding],
+            tracked_paths={"src.py"},
+            include_third_party=True,
+            excluded_paths=set(),
+        )
+        self.assertEqual(stale, [])
+
+    def test_command_prune_baseline_removes_stale_and_duplicates(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src_file = root / "src.py"
+            src_line = "# TO" "DO: keep me"
+            src_file.write_text(f"{src_line}\n", encoding="utf-8")
+            git_init = __import__("subprocess").run(
+                ["git", "init"],
+                cwd=root,
+                check=False,
+                stdout=__import__("subprocess").PIPE,
+                stderr=__import__("subprocess").PIPE,
+            )
+            self.assertEqual(git_init.returncode, 0, git_init.stderr.decode("utf-8", errors="replace"))
+            git_add = __import__("subprocess").run(
+                ["git", "add", "src.py"],
+                cwd=root,
+                check=False,
+                stdout=__import__("subprocess").PIPE,
+                stderr=__import__("subprocess").PIPE,
+            )
+            self.assertEqual(git_add.returncode, 0, git_add.stderr.decode("utf-8", errors="replace"))
+            baseline_path = root / ".repo-hygiene-baseline.json"
+            baseline_payload = {
+                "unfinished_markers": [
+                    {"path": "src.py", "marker": "TODO", "line": src_line},
+                    {"path": "src.py", "marker": "TODO", "line": src_line},
+                    {"path": "missing.py", "marker": "TODO", "line": "# TO" "DO: old"},
+                ]
+            }
+            baseline_path.write_text(
+                __import__("json").dumps(baseline_payload, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+
+            exit_code = repo_hygiene.command_prune_baseline(
+                root,
+                include_third_party=True,
+                baseline_path=".repo-hygiene-baseline.json",
+            )
+
+            payload = __import__("json").loads(baseline_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(len(payload["unfinished_markers"]), 1)
+        self.assertEqual(payload["unfinished_markers"][0]["path"], "src.py")
+
+    def test_build_scan_report_counts_stale_baseline_in_total(self) -> None:
+        report = repo_hygiene.build_scan_report(
+            findings=[],
+            stray_paths=[],
+            stale_tracked=[],
+            stale_untracked=[],
+            embedded_git_repos=[],
+            stale_baseline_entries=[
+                {
+                    "path": "missing.py",
+                    "marker": "TODO",
+                    "line": "# TO" "DO: old",
+                    "reason": "path_missing",
+                }
+            ],
+        )
+        self.assertEqual(report["summary"]["stale_baseline_entries"], 1)
+        self.assertEqual(report["summary"]["total_issues"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()
