@@ -29,6 +29,9 @@ python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
 # Remove backup files + stray cache dirs + stale artifacts while scanning
 python3 scripts/repo_hygiene.py clean --repo-root .
+
+# Prune stale baseline entries that no longer match active markers
+python3 scripts/repo_hygiene.py baseline-prune --repo-root . --include-third-party
 ```
 
 Makefile wrappers:

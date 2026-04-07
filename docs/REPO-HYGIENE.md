@@ -1,6 +1,7 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
+`scripts/repo_hygiene.py` is the primary scanner/cleaner.
+`scripts/repo_maintenance.py` is a compatibility wrapper that delegates to it.
 
 This repository includes a small maintenance utility at
 `scripts/repo_hygiene.py` for scheduled cleanups and local checks.
@@ -84,8 +85,27 @@ make repo-clean
 make repo-scan-json
 ```
 
-`scripts/repo_maintenance.py` is retained as a compatibility wrapper and now
-delegates to `scripts/repo_hygiene.py`.
+`scripts/repo_maintenance.py` remains as a compatibility wrapper and delegates
+to `repo_hygiene.py`.
+
+## Baseline lifecycle
+
+Use baseline commands to manage known upstream markers safely:
+
+```bash
+# Write/refresh baseline from current findings
+python3 scripts/repo_hygiene.py baseline --repo-root . --include-third-party
+
+# Remove baseline entries that no longer map to active findings
+python3 scripts/repo_hygiene.py baseline-prune --repo-root . --include-third-party
+```
+
+Make targets:
+
+```bash
+make maintenance-baseline
+make maintenance-baseline-prune
+```
 
 ## Exit codes
 

@@ -248,6 +248,13 @@ make maintenance-all
 make maintenance-all-json
 ```
 
+If you need to refresh the tracked suppression list and then remove stale suppressions that no longer match active findings:
+
+```bash
+make maintenance-baseline
+make maintenance-baseline-prune
+```
+
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
 
 For focused first-party hygiene scans and stray cleanup:
