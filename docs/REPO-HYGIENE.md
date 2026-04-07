@@ -1,6 +1,7 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
+`scripts/repo_hygiene.py` is the primary scanner/cleaner for scheduled automation
+and local maintenance checks.
 
 This repository includes a small maintenance utility at
 `scripts/repo_hygiene.py` for scheduled cleanups and local checks.
@@ -58,6 +59,13 @@ python3 scripts/repo_hygiene.py scan --repo-root . --json
 python3 scripts/repo_hygiene.py clean --repo-root . --json
 ```
 
+Write a machine-readable report file for CI/cron artifacts:
+
+```bash
+python3 scripts/repo_hygiene.py scan --repo-root . --output reports/repo-hygiene-scan.json
+python3 scripts/repo_hygiene.py clean --repo-root . --output reports/repo-hygiene-clean.json
+```
+
 Optional deep scan including `third_party/FunkyDNS` unfinished markers:
 
 ```bash
@@ -94,6 +102,14 @@ By default, `scan`/`clean` load marker suppressions from:
 Override with `--baseline-file <path>`.
 
 The baseline currently suppresses marker findings only (not stray files).
+
+## Report file output
+
+- `--output <path>` writes the same JSON report payload to a file path relative
+  to `--repo-root`.
+- `--output` is supported for `scan` and `clean`.
+- `--output` is rejected for `baseline`.
+- Output paths must remain inside `--repo-root`.
 
 ## Legacy script
 

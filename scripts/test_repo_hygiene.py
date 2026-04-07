@@ -1,3 +1,4 @@
+import json
 import sys
 import tempfile
 import unittest
@@ -9,6 +10,13 @@ import repo_hygiene
 
 
 class RepoHygieneTests(unittest.TestCase):
+    def test_parse_args_supports_boolean_optional_include_third_party(self) -> None:
+        args = repo_hygiene.parse_args(["scan", "--repo-root", ".", "--no-include-third-party"])
+        self.assertFalse(args.include_third_party)
+
+        args = repo_hygiene.parse_args(["scan", "--repo-root", ".", "--include-third-party"])
+        self.assertTrue(args.include_third_party)
+
     def test_should_skip_for_unfinished(self) -> None:
         self.assertTrue(repo_hygiene.should_skip_for_unfinished("third_party/FunkyDNS/dns_server/doh.py"))
         self.assertFalse(
@@ -156,6 +164,25 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_write_report_output_writes_json_file(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            report = {
+                "summary": {"total_issues": 0},
+                "unfinished_markers": [],
+            }
+
+            repo_hygiene.write_report_output(root, "reports/hygiene.json", report)
+            payload = json.loads((root / "reports" / "hygiene.json").read_text(encoding="utf-8"))
+            self.assertEqual(payload["summary"]["total_issues"], 0)
+
+    def test_write_report_output_rejects_path_outside_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            report = {"summary": {"total_issues": 1}}
+            with self.assertRaises(ValueError):
+                repo_hygiene.write_report_output(root, "../outside.json", report)
 
 
 if __name__ == "__main__":
