@@ -54,7 +54,6 @@ UNFINISHED_SCAN_FILENAMES = {
     "Makefile",
 }
 BASELINE_DEFAULT_PATH = ".repo-hygiene-baseline.json"
-THIRD_PARTY_PREFIX = "third_party/"
 # Add known stale tracked/untracked artifact paths here (e.g. generated bundles) as they arise.
 
 
