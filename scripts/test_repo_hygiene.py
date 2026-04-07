@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+import json
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import repo_hygiene
@@ -180,6 +181,31 @@ class RepoHygieneTests(unittest.TestCase):
         )
         self.assertEqual(args.stale_artifact, ["dist/build.tar.gz", "tmp/cache.db"])
 
+    def test_load_hygiene_config_supports_expected_keys(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            payload = {
+                "include_third_party": True,
+                "baseline_file": "custom-baseline.json",
+                "stale_artifacts": ["dist/build.tar.gz"],
+                "exclude_paths": ["tmp/**"],
+            }
+            (root / ".repo-hygiene.json").write_text(json.dumps(payload), encoding="utf-8")
+
+            config = repo_hygiene.load_hygiene_config(root, ".repo-hygiene.json")
+
+        self.assertTrue(config.include_third_party)
+        self.assertEqual(config.baseline_file, "custom-baseline.json")
+        self.assertEqual(config.stale_artifacts, ("dist/build.tar.gz",))
+        self.assertEqual(config.exclude_paths, ("tmp/**",))
+
+    def test_apply_path_exclusions_filters_matching_paths(self) -> None:
+        filtered = repo_hygiene.apply_path_exclusions(
+            ["tmp/cache.db", "src/main.py", "docs/note.md"],
+            ["tmp/**", "docs/*"],
+        )
+        self.assertEqual(filtered, ["src/main.py"])
+
     def test_main_passes_expected_arguments_to_scan(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -195,6 +221,8 @@ class RepoHygieneTests(unittest.TestCase):
                         "custom-baseline.json",
                         "--stale-artifact",
                         "dist/build.tar.gz",
+                        "--exclude-path",
+                        "tmp/**",
                         "--json",
                     ]
                 )
@@ -204,7 +232,59 @@ class RepoHygieneTests(unittest.TestCase):
             self.assertTrue(kwargs["include_third_party"])
             self.assertEqual(kwargs["baseline_path"], "custom-baseline.json")
             self.assertEqual(kwargs["extra_stale_artifacts"], ["dist/build.tar.gz"])
+            self.assertEqual(kwargs["excluded_paths"], ["tmp/**"])
             self.assertTrue(kwargs["json_output"])
+
+    def test_main_prefers_config_defaults_for_scan(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            (root / ".repo-hygiene.json").write_text(
+                json.dumps(
+                    {
+                        "include_third_party": True,
+                        "baseline_file": "cfg-baseline.json",
+                        "stale_artifacts": ["dist/build.tar.gz"],
+                        "exclude_paths": ["tmp/**"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch.object(repo_hygiene, "command_scan", return_value=0) as mock_scan:
+                rc = repo_hygiene.main(
+                    [
+                        "scan",
+                        "--repo-root",
+                        str(root),
+                    ]
+                )
+            self.assertEqual(rc, 0)
+            _, kwargs = mock_scan.call_args
+            self.assertTrue(kwargs["include_third_party"])
+            self.assertEqual(kwargs["baseline_path"], "cfg-baseline.json")
+            self.assertEqual(kwargs["extra_stale_artifacts"], ["dist/build.tar.gz"])
+            self.assertEqual(kwargs["excluded_paths"], ["tmp/**"])
+
+    def test_main_no_config_keeps_cli_only_defaults(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            (root / ".repo-hygiene.json").write_text(
+                json.dumps({"include_third_party": True}),
+                encoding="utf-8",
+            )
+            with patch.object(repo_hygiene, "command_scan", return_value=0) as mock_scan:
+                rc = repo_hygiene.main(
+                    [
+                        "scan",
+                        "--repo-root",
+                        str(root),
+                        "--no-config",
+                    ]
+                )
+            self.assertEqual(rc, 0)
+            _, kwargs = mock_scan.call_args
+            self.assertFalse(kwargs["include_third_party"])
 
     def test_main_rejects_json_for_baseline_command(self) -> None:
         with tempfile.TemporaryDirectory() as td:

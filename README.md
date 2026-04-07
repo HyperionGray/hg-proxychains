@@ -248,6 +248,28 @@ make maintenance-all
 make maintenance-all-json
 ```
 
+To keep automation settings consistent across environments, commit a
+`.repo-hygiene.json` file at the repo root. Example:
+
+```json
+{
+  "include_third_party": false,
+  "baseline_file": ".repo-hygiene-baseline.json",
+  "stale_artifacts": [
+    "egressd-starter.tar.gz",
+    "dist/build.tar.gz"
+  ],
+  "exclude_paths": [
+    "third_party/FunkyDNS/archive/**",
+    "docs/generated/**"
+  ]
+}
+```
+
+`scripts/repo_hygiene.py` and `scripts/repo_maintenance.py` load this file by
+default (`--config-file .repo-hygiene.json`). CLI flags override config values,
+and `--no-config` disables config loading for one-off runs.
+
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
 
 For focused first-party hygiene scans and stray cleanup:

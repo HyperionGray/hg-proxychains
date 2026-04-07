@@ -2,6 +2,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import repo_maintenance
@@ -66,6 +67,69 @@ class RepoMaintenanceTests(unittest.TestCase):
             found = repo_maintenance.discover_embedded_git_repos(root, include_third_party=False)
 
             self.assertEqual(found, [])
+
+    def test_parse_args_supports_config_and_exclusions(self) -> None:
+        args = repo_maintenance.parse_args(
+            [
+                "--root",
+                ".",
+                "--config-file",
+                ".custom-hygiene.json",
+                "--no-config",
+                "--stale-artifact",
+                "dist/build.tar.gz",
+                "--exclude-path",
+                "third_party/**",
+            ]
+        )
+        self.assertEqual(args.config_file, ".custom-hygiene.json")
+        self.assertTrue(args.no_config)
+        self.assertEqual(args.stale_artifact, ["dist/build.tar.gz"])
+        self.assertEqual(args.exclude_path, ["third_party/**"])
+
+    def test_main_forwards_explicit_false_include_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            with patch.object(repo_maintenance.subprocess, "run") as mock_run:
+                mock_run.return_value.returncode = 0
+                rc = repo_maintenance.main(
+                    [
+                        "--root",
+                        str(root),
+                        "--no-include-third-party",
+                    ]
+                )
+        self.assertEqual(rc, 0)
+        command = mock_run.call_args.args[0]
+        self.assertIn("--no-include-third-party", command)
+
+    def test_main_forwards_config_and_repeatable_flags(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            with patch.object(repo_maintenance.subprocess, "run") as mock_run:
+                mock_run.return_value.returncode = 0
+                rc = repo_maintenance.main(
+                    [
+                        "--root",
+                        str(root),
+                        "--config-file",
+                        ".repo-hygiene.custom.json",
+                        "--no-config",
+                        "--stale-artifact",
+                        "dist/build.tar.gz",
+                        "--exclude-path",
+                        "tmp/**",
+                    ]
+                )
+        self.assertEqual(rc, 0)
+        command = mock_run.call_args.args[0]
+        self.assertIn("--config-file", command)
+        self.assertIn(".repo-hygiene.custom.json", command)
+        self.assertIn("--no-config", command)
+        self.assertIn("--stale-artifact", command)
+        self.assertIn("dist/build.tar.gz", command)
+        self.assertIn("--exclude-path", command)
+        self.assertIn("tmp/**", command)
 
 
 if __name__ == "__main__":

@@ -49,6 +49,12 @@ make maintenance-all-json
   directories, and known stale artifacts.
 - `--stale-artifact <path>` can be supplied repeatedly on `scan` or `clean`
   to track extra generated files for a run.
+- `--exclude-path <glob>` can be supplied repeatedly on `scan`, `clean`, or
+  `baseline` to skip specific paths from all checks.
+- Both scripts also load `.repo-hygiene.json` by default for shared
+  maintenance settings (`stale_artifacts`, `exclude_paths`,
+  `include_third_party`, and `baseline_file`).
+- Use `--no-config` when you need a config-free run for debugging or CI.
 - Unfinished markers are reported but not modified automatically.
 - Embedded git repositories are reported but never auto-removed by `clean`.
 - `scan` exits `1` when issues are found.

@@ -1,9 +1,11 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
+`scripts/repo_hygiene.py` is the primary scanner/cleaner. The legacy
+wrapper `scripts/repo_maintenance.py` delegates to it (`make maintenance` /
+`make maintenance-fix`).
 
-This repository includes a small maintenance utility at
-`scripts/repo_hygiene.py` for scheduled cleanups and local checks.
+This repository includes a maintenance utility at `scripts/repo_hygiene.py`
+for scheduled cleanups and local checks.
 
 ## What it checks
 
@@ -74,6 +76,16 @@ python3 scripts/repo_hygiene.py scan --repo-root . \
 
 `--stale-artifact` is repeatable and works for both `scan` and `clean`.
 
+Exclude paths from all hygiene checks:
+
+```bash
+python3 scripts/repo_hygiene.py scan --repo-root . \
+  --exclude-path "third_party/FunkyDNS/archive/**" \
+  --exclude-path "docs/generated/**"
+```
+
+`--exclude-path` uses shell-style globs against repository-relative paths.
+
 Or through Make targets:
 
 ```bash
@@ -86,6 +98,40 @@ make repo-scan-json
 
 `scripts/repo_maintenance.py` is retained as a compatibility wrapper and now
 delegates to `scripts/repo_hygiene.py`.
+
+## Optional config file
+
+`repo_hygiene.py` optionally loads `.repo-hygiene.json` from the repo root.
+This allows scheduled jobs to keep shared defaults without repeating long
+CLI flags.
+
+Supported keys:
+
+- `include_third_party` (boolean)
+- `baseline_file` (string)
+- `stale_artifacts` (array of paths)
+- `exclude_paths` (array of glob patterns)
+
+Example:
+
+```json
+{
+  "include_third_party": false,
+  "baseline_file": ".repo-hygiene-baseline.json",
+  "stale_artifacts": [
+    "dist/build.tar.gz"
+  ],
+  "exclude_paths": [
+    "third_party/FunkyDNS/archive/**"
+  ]
+}
+```
+
+Notes:
+
+- CLI flags override config values where both are provided.
+- `--stale-artifact` and `--exclude-path` append to configured lists.
+- Use `--no-config` to ignore `.repo-hygiene.json` for a run.
 
 ## Exit codes
 

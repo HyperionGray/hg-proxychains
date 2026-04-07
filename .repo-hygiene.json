@@ -1,0 +1,8 @@
+{
+  "include_third_party": false,
+  "baseline_file": ".repo-hygiene-baseline.json",
+  "stale_artifacts": [
+    "egressd-starter.tar.gz"
+  ],
+  "exclude_paths": []
+}

@@ -133,9 +133,33 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         help="Emit JSON output from scripts/repo_hygiene.py.",
     )
     parser.add_argument(
+        "--config-file",
+        default=".repo-hygiene.json",
+        help="Optional repo_hygiene config path relative to --root (default: .repo-hygiene.json).",
+    )
+    parser.add_argument(
+        "--no-config",
+        action="store_true",
+        help="Ignore --config-file values and use CLI flags only.",
+    )
+    parser.add_argument(
         "--baseline-file",
         default=".repo-hygiene-baseline.json",
         help="Marker baseline path relative to --root (default: .repo-hygiene-baseline.json).",
+    )
+    parser.add_argument(
+        "--stale-artifact",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help="Additional stale artifact path to track (repeatable).",
+    )
+    parser.add_argument(
+        "--exclude-path",
+        action="append",
+        default=[],
+        metavar="GLOB",
+        help="Exclude matching relative paths from hygiene checks (repeatable glob).",
     )
     return parser.parse_args(argv)
 
@@ -154,11 +178,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         str(root),
         "--baseline-file",
         args.baseline_file,
+        "--config-file",
+        args.config_file,
     ]
+    if args.no_config:
+        cmd.append("--no-config")
     if args.include_third_party:
         cmd.append("--include-third-party")
+    else:
+        cmd.append("--no-include-third-party")
     if args.json:
         cmd.append("--json")
+    for stale_artifact in args.stale_artifact:
+        cmd.extend(["--stale-artifact", stale_artifact])
+    for exclude_path in args.exclude_path:
+        cmd.extend(["--exclude-path", exclude_path])
 
     proc = subprocess.run(cmd, check=False)
     return proc.returncode
