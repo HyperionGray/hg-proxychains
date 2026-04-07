@@ -264,7 +264,16 @@ def check_hop_connectivity(hop_url: str, target: str, timeout: float = 3.0) -> D
     proxy_label = hop_url
     sock: Optional[socket.socket] = None
     try:
-        host, port, auth_header = parse_proxy_url(hop_url)
+        try:
+            host, port, auth_header = parse_proxy_url(hop_url)
+        except ValueError as exc:
+            return {
+                "ok": False,
+                "proxy": proxy_label,
+                "error": str(exc),
+                "elapsed_ms": int((time.time() - start) * 1000),
+                "checked_at": checked_at,
+            }
         proxy_label = f"{host}:{port}"
         sock = socket.create_connection((host, port), timeout=timeout)
         sock.settimeout(timeout)
@@ -846,13 +855,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             refresh_ready_state(cfg)
             if STOP_EVENT.is_set():
                 break
-        except (OSError, ValueError, RuntimeError) as exc:
         except Exception as exc:
             processes["pproxy"] = None
             set_state({"pproxy": "error"})
             refresh_ready_state(cfg)
             if STOP_EVENT.is_set():
-            logging.exception("supervisor loop error")
+                break
             logging.exception("supervisor loop error: %s", exc)
 
         if STOP_EVENT.is_set():
