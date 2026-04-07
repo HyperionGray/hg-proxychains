@@ -157,6 +157,36 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
 
+    def test_discover_embedded_git_repos_with_allowlist_prefix(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            allowed_git = root / "sandbox" / "tooling" / ".git"
+            blocked_git = root / "scratch" / "nested" / ".git"
+            allowed_git.mkdir(parents=True, exist_ok=True)
+            blocked_git.mkdir(parents=True, exist_ok=True)
+
+            findings = repo_hygiene.discover_embedded_git_repos_with_allowlist(
+                root,
+                allowed_prefixes=("sandbox",),
+            )
+
+        self.assertEqual(findings, ["scratch/nested"])
+
+    def test_parse_args_supports_no_include_third_party_flag(self) -> None:
+        args = repo_hygiene.parse_args(["scan", "--no-include-third-party"])
+        self.assertFalse(args.include_third_party)
+
+    def test_main_rejects_json_for_baseline_command(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch("repo_hygiene.sys.stderr") as mock_stderr:
+                rc = repo_hygiene.main(["baseline", "--repo-root", str(root), "--json"])
+
+        self.assertEqual(rc, 2)
+        self.assertTrue(mock_stderr.write.called)
+
 
 if __name__ == "__main__":
     unittest.main()

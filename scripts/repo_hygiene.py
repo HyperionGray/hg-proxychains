@@ -35,9 +35,6 @@ STRAY_DIR_NAMES = {
     ".mypy_cache",
     ".ruff_cache",
 }
-STALE_ARTIFACT_PATHS = (
-    "egressd-starter.tar.gz",
-)
 UNFINISHED_SCAN_SUFFIXES = {
     ".py",
     ".sh",
@@ -56,7 +53,7 @@ UNFINISHED_SCAN_FILENAMES = {
 }
 BASELINE_DEFAULT_PATH = ".repo-hygiene-baseline.json"
 THIRD_PARTY_PREFIX = "third_party/"
-STALE_ARTIFACT_PATHS: frozenset[str] = frozenset()
+STALE_ARTIFACT_PATHS: frozenset[str] = frozenset({"egressd-starter.tar.gz"})
 # Add known stale tracked/untracked artifact paths here (e.g. generated bundles) as they arise.
 
 
@@ -240,6 +237,20 @@ def find_stale_artifacts(
 
 
 def discover_embedded_git_repos(repo_root: Path, include_third_party: bool = False) -> list[str]:
+    return discover_embedded_git_repos_with_allowlist(repo_root, include_third_party=include_third_party)
+
+
+def discover_embedded_git_repos_with_allowlist(
+    repo_root: Path,
+    *,
+    include_third_party: bool = False,
+    allowed_prefixes: Sequence[str] = (),
+) -> list[str]:
+    normalized_allowed_prefixes = tuple(
+        prefix.strip().strip("/").removeprefix("./")
+        for prefix in allowed_prefixes
+        if prefix.strip().strip("/")
+    )
     found: set[str] = set()
     for git_marker in repo_root.rglob(".git"):
         rel_marker = git_marker.relative_to(repo_root).as_posix()
@@ -249,7 +260,13 @@ def discover_embedded_git_repos(repo_root: Path, include_third_party: bool = Fal
             continue
         if not include_third_party and rel_marker.startswith(FUNKYDNS_PREFIX):
             continue
-        found.add(git_marker.parent.relative_to(repo_root).as_posix())
+        rel_repo = git_marker.parent.relative_to(repo_root).as_posix()
+        if any(
+            rel_repo == allowed_prefix or rel_repo.startswith(f"{allowed_prefix}/")
+            for allowed_prefix in normalized_allowed_prefixes
+        ):
+            continue
+        found.add(rel_repo)
     return sorted(found)
 
 
@@ -360,6 +377,7 @@ def gather_hygiene_state(
     *,
     include_third_party: bool,
     baseline_path: str,
+    embedded_git_allow_prefixes: Sequence[str] = (),
 ) -> tuple[list[MarkerFinding], list[str], list[str], list[str], list[str], int]:
     tracked = collect_git_paths(repo_root, ("ls-files",), include_third_party=include_third_party)
     untracked = collect_git_paths(
@@ -380,7 +398,11 @@ def gather_hygiene_state(
     )
     stray = classify_stray_paths(untracked, include_third_party=include_third_party)
     stale_tracked, stale_untracked = find_stale_artifacts(tracked, untracked)
-    embedded_git_repos = discover_embedded_git_repos(repo_root, include_third_party=include_third_party)
+    embedded_git_repos = discover_embedded_git_repos_with_allowlist(
+        repo_root,
+        include_third_party=include_third_party,
+        allowed_prefixes=embedded_git_allow_prefixes,
+    )
     return findings, stray, stale_tracked, stale_untracked, embedded_git_repos, suppressed
 
 
@@ -389,12 +411,14 @@ def command_scan(
     *,
     include_third_party: bool,
     baseline_path: str,
+    embedded_git_allow_prefixes: Sequence[str] = (),
     json_output: bool = False,
 ) -> int:
     findings, stray, stale_tracked, stale_untracked, embedded_git_repos, suppressed = gather_hygiene_state(
         repo_root,
         include_third_party=include_third_party,
         baseline_path=baseline_path,
+        embedded_git_allow_prefixes=embedded_git_allow_prefixes,
     )
     report = build_scan_report(
         findings,
@@ -423,12 +447,14 @@ def command_clean(
     *,
     include_third_party: bool,
     baseline_path: str,
+    embedded_git_allow_prefixes: Sequence[str] = (),
     json_output: bool = False,
 ) -> int:
     findings, stray, stale_tracked, stale_untracked, embedded_git_repos, suppressed = gather_hygiene_state(
         repo_root,
         include_third_party=include_third_party,
         baseline_path=baseline_path,
+        embedded_git_allow_prefixes=embedded_git_allow_prefixes,
     )
     report = build_scan_report(
         findings,
@@ -518,15 +544,14 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         help="emit machine-readable JSON output",
     )
     parser.add_argument(
-        "--include-third-party",
-        action="store_true",
-        default=False,
-        help="include all of third_party/ (e.g. third_party/FunkyDNS) in marker and stray-file scanning (default: false)",
-    )
-    parser.add_argument(
-        "--baseline-file",
-        default=BASELINE_DEFAULT_PATH,
-        help=f"marker baseline path relative to --repo-root (default: {BASELINE_DEFAULT_PATH})",
+        "--allow-embedded-git-prefix",
+        action="append",
+        default=[],
+        metavar="REL_PATH",
+        help=(
+            "allow embedded git repositories under this relative path prefix; "
+            "can be passed multiple times"
+        ),
     )
     return parser.parse_args(argv)
 
@@ -539,16 +564,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     if args.command == "baseline":
-        return command_baseline(repo_root, args.include_third_party, args.baseline_file)
-    if args.command == "clean":
-        return command_clean(repo_root, json_output=args.json)
-    elif args.command == "baseline":
-        # baseline command doesn't support --json flag
         if args.json:
             print("error: --json is not supported for the 'baseline' command", file=sys.stderr)
             return 2
-        return command_baseline(repo_root, include_third_party=False, baseline_path=BASELINE_DEFAULT_PATH)
-    return command_scan(repo_root, json_output=args.json)
+        return command_baseline(repo_root, args.include_third_party, args.baseline_file)
+
+    if args.command == "clean":
+        return command_clean(
+            repo_root,
+            include_third_party=args.include_third_party,
+            baseline_path=args.baseline_file,
+            embedded_git_allow_prefixes=args.allow_embedded_git_prefix,
+            json_output=args.json,
+        )
+    return command_scan(
+        repo_root,
+        include_third_party=args.include_third_party,
+        baseline_path=args.baseline_file,
+        embedded_git_allow_prefixes=args.allow_embedded_git_prefix,
+        json_output=args.json,
+    )
 
 
 if __name__ == "__main__":

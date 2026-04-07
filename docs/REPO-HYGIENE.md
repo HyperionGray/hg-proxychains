@@ -1,6 +1,7 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
+`scripts/repo_hygiene.py` is the primary scanner/cleaner engine.
+`scripts/repo_maintenance.py` remains a compatibility wrapper and delegates to it.
 
 This repository includes a small maintenance utility at
 `scripts/repo_hygiene.py` for scheduled cleanups and local checks.
@@ -74,8 +75,21 @@ make repo-clean
 make repo-scan-json
 ```
 
-`scripts/repo_maintenance.py` is retained as a compatibility wrapper and now
+`scripts/repo_maintenance.py` is retained as a compatibility wrapper and
 delegates to `scripts/repo_hygiene.py`.
+
+### Embedded git allowlist
+
+If your workflow intentionally creates nested git repositories in a known
+workspace prefix (for example, a local scratch area), you can allow that prefix
+without suppressing all embedded-git detection:
+
+```bash
+python3 scripts/repo_hygiene.py scan --repo-root . \
+  --allow-embedded-git-prefix scratch
+```
+
+Pass `--allow-embedded-git-prefix` multiple times to allow multiple prefixes.
 
 ## Exit codes
 
