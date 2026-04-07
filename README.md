@@ -233,11 +233,12 @@ make maintenance
 # equivalent: python3 scripts/repo_hygiene.py scan --repo-root .
 ```
 
-For automatic cleanup of removable clutter (backup files, stray `__pycache__/` dirs, and known stale artifacts):
+For automatic cleanup of removable clutter (backup files, stray cache dirs, and known stale artifacts):
 
 ```bash
 make maintenance-fix
 # equivalent: python3 scripts/repo_hygiene.py clean --repo-root .
+# alias:      python3 scripts/repo_hygiene.py fix --repo-root .
 ```
 
 `maintenance*` targets focus on first-party code by default. For a full scan that
@@ -255,6 +256,7 @@ For focused first-party hygiene scans and stray cleanup:
 ```bash
 make repo-scan
 make repo-clean
+make repo-fix
 make repo-scan-json
 ```
 

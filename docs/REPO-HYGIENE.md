@@ -1,9 +1,11 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
+`scripts/repo_hygiene.py` is the primary scanner/cleaner. For legacy entry
+points, `scripts/repo_maintenance.py` remains available as a compatibility
+wrapper (`make maintenance` / `make maintenance-fix`).
 
-This repository includes a small maintenance utility at
-`scripts/repo_hygiene.py` for scheduled cleanups and local checks.
+This repository includes a maintenance utility at `scripts/repo_hygiene.py`
+for scheduled cleanups and local checks.
 
 ## What it checks
 
@@ -46,9 +48,11 @@ python3 scripts/repo_hygiene.py scan --repo-root . --json
 # Include third-party dependency tree explicitly
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
-# Remove untracked stray files/directories
+# Remove untracked stray files/directories and stale untracked artifacts
 python3 scripts/repo_hygiene.py clean --repo-root .
-python3 scripts/repo_hygiene.py scan --repo-root . --json
+
+# Alias for clean (identical behavior)
+python3 scripts/repo_hygiene.py fix --repo-root .
 ```
 
 JSON output for automation:
@@ -56,6 +60,7 @@ JSON output for automation:
 ```bash
 python3 scripts/repo_hygiene.py scan --repo-root . --json
 python3 scripts/repo_hygiene.py clean --repo-root . --json
+python3 scripts/repo_hygiene.py fix --repo-root . --json
 ```
 
 Optional deep scan including `third_party/FunkyDNS` unfinished markers:
@@ -71,10 +76,11 @@ make maintenance
 make maintenance-fix
 make repo-scan
 make repo-clean
+make repo-fix
 make repo-scan-json
 ```
 
-`scripts/repo_maintenance.py` is retained as a compatibility wrapper and now
+`scripts/repo_maintenance.py` is retained as a compatibility wrapper and
 delegates to `scripts/repo_hygiene.py`.
 
 ## Exit codes
@@ -82,12 +88,12 @@ delegates to `scripts/repo_hygiene.py`.
 - `0`: no issues remain after the command completes
 - `1`: blocking issues found
   - `scan`: unfinished markers, stray untracked files, or stale artifacts
-  - `clean`: unfinished markers or tracked stale artifacts (removable clutter is deleted)
+  - `clean`/`fix`: unfinished markers or tracked stale artifacts (removable clutter is deleted)
 - `2`: invalid invocation (for example, non-git directory)
 
 ## Baseline file
 
-By default, `scan`/`clean` load marker suppressions from:
+By default, `scan`/`clean`/`fix` load marker suppressions from:
 
 - `.repo-hygiene-baseline.json`
 
