@@ -21,6 +21,8 @@ This repository includes a small maintenance utility at
   - Python cache outputs (`__pycache__/`, `*.pyc`, `*.pyo`)
   - common metadata noise (`.DS_Store`, `Thumbs.db`)
   - known generated bundles (`egressd-starter.tar.gz`)
+  - optional user-provided stale artifact glob patterns (for example
+    `dist/*.tar.gz`)
 
 The scanner intentionally skips `third_party/FunkyDNS/` when checking
 unfinished markers by default, because that path is managed as an external
@@ -73,6 +75,16 @@ python3 scripts/repo_hygiene.py scan --repo-root . \
 ```
 
 `--stale-artifact` is repeatable and works for both `scan` and `clean`.
+
+Track families of generated artifacts with glob patterns:
+
+```bash
+python3 scripts/repo_hygiene.py clean --repo-root . \
+  --stale-artifact-glob "dist/release-*.tar.gz" \
+  --stale-artifact-glob "logs/*.log"
+```
+
+`--stale-artifact-glob` is repeatable and works for both `scan` and `clean`.
 
 Or through Make targets:
 

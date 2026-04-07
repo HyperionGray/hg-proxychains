@@ -137,6 +137,20 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         default=".repo-hygiene-baseline.json",
         help="Marker baseline path relative to --root (default: .repo-hygiene-baseline.json).",
     )
+    parser.add_argument(
+        "--stale-artifact",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help="Additional stale artifact path to track (repeatable).",
+    )
+    parser.add_argument(
+        "--stale-artifact-glob",
+        action="append",
+        default=[],
+        metavar="GLOB",
+        help="Additional stale artifact glob pattern to track (repeatable).",
+    )
     return parser.parse_args(argv)
 
 
@@ -157,6 +171,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     ]
     if args.include_third_party:
         cmd.append("--include-third-party")
+    for stale_path in args.stale_artifact:
+        cmd.extend(["--stale-artifact", stale_path])
+    for stale_glob in args.stale_artifact_glob:
+        cmd.extend(["--stale-artifact-glob", stale_glob])
     if args.json:
         cmd.append("--json")
 

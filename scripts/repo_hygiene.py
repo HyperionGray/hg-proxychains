@@ -35,9 +35,8 @@ STRAY_DIR_NAMES = {
     ".mypy_cache",
     ".ruff_cache",
 }
-STALE_ARTIFACT_PATHS = (
-    "egressd-starter.tar.gz",
-)
+DEFAULT_STALE_ARTIFACT_PATHS: frozenset[str] = frozenset({"egressd-starter.tar.gz"})
+DEFAULT_STALE_ARTIFACT_GLOBS: frozenset[str] = frozenset()
 UNFINISHED_SCAN_SUFFIXES = {
     ".py",
     ".sh",
@@ -56,7 +55,6 @@ UNFINISHED_SCAN_FILENAMES = {
 }
 BASELINE_DEFAULT_PATH = ".repo-hygiene-baseline.json"
 THIRD_PARTY_PREFIX = "third_party/"
-STALE_ARTIFACT_PATHS: frozenset[str] = frozenset(STALE_ARTIFACT_PATHS)
 # Add known stale tracked/untracked artifact paths here (e.g. generated bundles) as they arise.
 
 
@@ -231,13 +229,21 @@ def classify_stray_paths(
 def find_stale_artifacts(
     tracked_paths: Iterable[str],
     untracked_paths: Iterable[str],
-    stale_artifact_paths: Iterable[str] = STALE_ARTIFACT_PATHS,
+    stale_artifact_paths: Iterable[str] = DEFAULT_STALE_ARTIFACT_PATHS,
+    stale_artifact_globs: Iterable[str] = DEFAULT_STALE_ARTIFACT_GLOBS,
 ) -> tuple[list[str], list[str]]:
     tracked_set = set(tracked_paths)
     untracked_set = set(untracked_paths)
     stale_paths = set(stale_artifact_paths)
-    stale_tracked = sorted(path for path in stale_paths if path in tracked_set)
-    stale_untracked = sorted(path for path in stale_paths if path in untracked_set)
+    stale_globs = [pattern for pattern in stale_artifact_globs if pattern]
+
+    def is_stale(path: str) -> bool:
+        if path in stale_paths:
+            return True
+        return any(fnmatch.fnmatch(path, pattern) for pattern in stale_globs)
+
+    stale_tracked = sorted(path for path in tracked_set if is_stale(path))
+    stale_untracked = sorted(path for path in untracked_set if is_stale(path))
     return stale_tracked, stale_untracked
 
 
@@ -363,6 +369,7 @@ def gather_hygiene_state(
     include_third_party: bool,
     baseline_path: str,
     extra_stale_artifacts: Iterable[str] | None = None,
+    extra_stale_artifact_globs: Iterable[str] | None = None,
 ) -> tuple[list[MarkerFinding], list[str], list[str], list[str], list[str], int]:
     tracked = collect_git_paths(repo_root, ("ls-files",), include_third_party=include_third_party)
     untracked = collect_git_paths(
@@ -382,12 +389,15 @@ def gather_hygiene_state(
         load_marker_baseline(repo_root, baseline_path),
     )
     stray = classify_stray_paths(untracked, include_third_party=include_third_party)
-    stale_paths = set(STALE_ARTIFACT_PATHS)
+    stale_paths = set(DEFAULT_STALE_ARTIFACT_PATHS)
+    stale_globs = set(DEFAULT_STALE_ARTIFACT_GLOBS)
     stale_paths.update(path for path in (extra_stale_artifacts or []) if path)
+    stale_globs.update(pattern for pattern in (extra_stale_artifact_globs or []) if pattern)
     stale_tracked, stale_untracked = find_stale_artifacts(
         tracked,
         untracked,
         stale_artifact_paths=stale_paths,
+        stale_artifact_globs=stale_globs,
     )
     embedded_git_repos = discover_embedded_git_repos(repo_root, include_third_party=include_third_party)
     return findings, stray, stale_tracked, stale_untracked, embedded_git_repos, suppressed
@@ -399,6 +409,7 @@ def command_scan(
     include_third_party: bool,
     baseline_path: str,
     extra_stale_artifacts: Iterable[str] | None = None,
+    extra_stale_artifact_globs: Iterable[str] | None = None,
     json_output: bool = False,
 ) -> int:
     findings, stray, stale_tracked, stale_untracked, embedded_git_repos, suppressed = gather_hygiene_state(
@@ -406,6 +417,7 @@ def command_scan(
         include_third_party=include_third_party,
         baseline_path=baseline_path,
         extra_stale_artifacts=extra_stale_artifacts,
+        extra_stale_artifact_globs=extra_stale_artifact_globs,
     )
     report = build_scan_report(
         findings,
@@ -435,6 +447,7 @@ def command_clean(
     include_third_party: bool,
     baseline_path: str,
     extra_stale_artifacts: Iterable[str] | None = None,
+    extra_stale_artifact_globs: Iterable[str] | None = None,
     json_output: bool = False,
 ) -> int:
     findings, stray, stale_tracked, stale_untracked, embedded_git_repos, suppressed = gather_hygiene_state(
@@ -442,6 +455,7 @@ def command_clean(
         include_third_party=include_third_party,
         baseline_path=baseline_path,
         extra_stale_artifacts=extra_stale_artifacts,
+        extra_stale_artifact_globs=extra_stale_artifact_globs,
     )
     report = build_scan_report(
         findings,
@@ -537,6 +551,13 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         metavar="PATH",
         help="additional stale artifact path to track (repeatable)",
     )
+    parser.add_argument(
+        "--stale-artifact-glob",
+        action="append",
+        default=[],
+        metavar="GLOB",
+        help="additional stale artifact glob pattern to track (repeatable)",
+    )
     return parser.parse_args(argv)
 
 
@@ -558,6 +579,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             include_third_party=args.include_third_party,
             baseline_path=args.baseline_file,
             extra_stale_artifacts=args.stale_artifact,
+            extra_stale_artifact_globs=args.stale_artifact_glob,
             json_output=args.json,
         )
     return command_scan(
@@ -565,6 +587,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         include_third_party=args.include_third_party,
         baseline_path=args.baseline_file,
         extra_stale_artifacts=args.stale_artifact,
+        extra_stale_artifact_globs=args.stale_artifact_glob,
         json_output=args.json,
     )
 

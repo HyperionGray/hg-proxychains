@@ -233,11 +233,19 @@ make maintenance
 # equivalent: python3 scripts/repo_hygiene.py scan --repo-root .
 ```
 
-For automatic cleanup of removable clutter (backup files, stray `__pycache__/` dirs, and known stale artifacts):
+For automatic cleanup of removable clutter (backup files, stray `__pycache__/` dirs, known stale artifacts, and optional stale-artifact glob matches):
 
 ```bash
 make maintenance-fix
 # equivalent: python3 scripts/repo_hygiene.py clean --repo-root .
+```
+
+You can also target groups of generated artifacts during a run:
+
+```bash
+python3 scripts/repo_hygiene.py clean --repo-root . \
+  --stale-artifact-glob "dist/release-*.tar.gz" \
+  --stale-artifact-glob "logs/*.log"
 ```
 
 `maintenance*` targets focus on first-party code by default. For a full scan that

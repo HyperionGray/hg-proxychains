@@ -2,6 +2,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import repo_maintenance
@@ -66,6 +67,55 @@ class RepoMaintenanceTests(unittest.TestCase):
             found = repo_maintenance.discover_embedded_git_repos(root, include_third_party=False)
 
             self.assertEqual(found, [])
+
+    def test_parse_args_supports_repeatable_stale_artifact_flags(self) -> None:
+        args = repo_maintenance.parse_args(
+            [
+                "--root",
+                ".",
+                "--stale-artifact",
+                "dist/build.tar.gz",
+                "--stale-artifact",
+                "tmp/cache.db",
+                "--stale-artifact-glob",
+                "dist/release-*.tar.gz",
+                "--stale-artifact-glob",
+                "logs/*.log",
+            ]
+        )
+        self.assertEqual(args.stale_artifact, ["dist/build.tar.gz", "tmp/cache.db"])
+        self.assertEqual(args.stale_artifact_glob, ["dist/release-*.tar.gz", "logs/*.log"])
+
+    def test_main_forwards_stale_artifact_flags_to_hygiene_script(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            with patch.object(repo_maintenance.subprocess, "run") as mock_run:
+                mock_run.return_value.returncode = 0
+                rc = repo_maintenance.main(
+                    [
+                        "--root",
+                        str(root),
+                        "--no-include-third-party",
+                        "--stale-artifact",
+                        "dist/build.tar.gz",
+                        "--stale-artifact-glob",
+                        "dist/release-*.tar.gz",
+                        "--json",
+                    ]
+                )
+
+            self.assertEqual(rc, 0)
+            mock_run.assert_called_once()
+            cmd = mock_run.call_args.args[0]
+            self.assertIn("scan", cmd)
+            self.assertIn("--repo-root", cmd)
+            self.assertIn(str(root), cmd)
+            self.assertIn("--stale-artifact", cmd)
+            self.assertIn("dist/build.tar.gz", cmd)
+            self.assertIn("--stale-artifact-glob", cmd)
+            self.assertIn("dist/release-*.tar.gz", cmd)
+            self.assertIn("--json", cmd)
+            self.assertNotIn("--include-third-party", cmd)
 
 
 if __name__ == "__main__":

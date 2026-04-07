@@ -78,6 +78,15 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(stale_tracked, ["dist/build.tar.gz"])
         self.assertEqual(stale_untracked, ["dist/build.tar.gz"])
 
+    def test_find_stale_artifacts_supports_glob_patterns(self) -> None:
+        stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(
+            tracked_paths=["README.md", "dist/release-1.tar.gz", "build/cache.db"],
+            untracked_paths=["tmp/output.tmp", "dist/release-2.tar.gz", "logs/build.log"],
+            stale_artifact_globs=["dist/release-*.tar.gz", "logs/*.log"],
+        )
+        self.assertEqual(stale_tracked, ["dist/release-1.tar.gz"])
+        self.assertEqual(stale_untracked, ["dist/release-2.tar.gz", "logs/build.log"])
+
     def test_find_unfinished_markers_ignores_skipped_paths(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -166,7 +175,7 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
 
-    def test_parse_args_supports_stale_artifact_repeatable_flag(self) -> None:
+    def test_parse_args_supports_repeatable_stale_artifact_flags(self) -> None:
         args = repo_hygiene.parse_args(
             [
                 "scan",
@@ -176,9 +185,14 @@ class RepoHygieneTests(unittest.TestCase):
                 "dist/build.tar.gz",
                 "--stale-artifact",
                 "tmp/cache.db",
+                "--stale-artifact-glob",
+                "dist/release-*.tar.gz",
+                "--stale-artifact-glob",
+                "logs/*.log",
             ]
         )
         self.assertEqual(args.stale_artifact, ["dist/build.tar.gz", "tmp/cache.db"])
+        self.assertEqual(args.stale_artifact_glob, ["dist/release-*.tar.gz", "logs/*.log"])
 
     def test_main_passes_expected_arguments_to_scan(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -195,6 +209,8 @@ class RepoHygieneTests(unittest.TestCase):
                         "custom-baseline.json",
                         "--stale-artifact",
                         "dist/build.tar.gz",
+                        "--stale-artifact-glob",
+                        "dist/release-*.tar.gz",
                         "--json",
                     ]
                 )
@@ -204,6 +220,7 @@ class RepoHygieneTests(unittest.TestCase):
             self.assertTrue(kwargs["include_third_party"])
             self.assertEqual(kwargs["baseline_path"], "custom-baseline.json")
             self.assertEqual(kwargs["extra_stale_artifacts"], ["dist/build.tar.gz"])
+            self.assertEqual(kwargs["extra_stale_artifact_globs"], ["dist/release-*.tar.gz"])
             self.assertTrue(kwargs["json_output"])
 
     def test_main_rejects_json_for_baseline_command(self) -> None:
