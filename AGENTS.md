@@ -87,3 +87,42 @@
   ],
   "precedence_note": "Rules in ascending order of precedence; later rules override earlier ones; project/subdirectory rules override parent/personal rules."
 }
+
+## Cursor Cloud specific instructions
+
+### Overview
+
+egressd is a fail-closed container egress enforcement system using chained HTTP CONNECT proxies. It is a pure Python project with Docker/Compose-based smoke tests.
+
+### Running lint and tests (host-only, no containers)
+
+- Activate the venv: `source /workspace/.venv/bin/activate`
+- `make pycheck` -- syntax-checks all Python entry points
+- `make test` -- runs unit tests (95/98 pass; 3 pre-existing failures on main)
+- `make check` -- combined pycheck + test
+
+### Running the smoke harness (full stack)
+
+The Makefile defaults to `podman-compose`, but the Cloud VM has Docker. Override with:
+```
+make smoke COMPOSE="docker compose"
+```
+Or equivalently: `docker compose up --build`
+
+Tear down: `docker compose down -v`
+
+### Docker-in-Docker gotchas
+
+The Cloud Agent VM runs inside a Firecracker container. Docker must use `fuse-overlayfs` storage driver (not overlay2), which is configured in `/etc/docker/daemon.json`. The iptables must be set to legacy mode. The `start.sh` script starts the Docker daemon but the fuse-overlayfs and iptables-legacy setup must be done once via the install script.
+
+### Health endpoints (when smoke stack is running)
+
+- `curl http://localhost:9191/health` -- detailed health
+- `curl http://localhost:9191/ready` -- 200 when forwarding-ready
+- `curl http://localhost:9191/live` -- liveness probe
+- `curl -sk https://localhost:18443/healthz` -- FunkyDNS DoH health
+
+### Known issues
+
+- The FunkyDNS submodule at its pinned commit does not support `--no-system-resolver`, `--no-hosts-file`, hosts-file resolution via env vars, or resolv.conf search-domain expansion. Zone file fallbacks were added for `hosts.smoke.internal` and `corp.test` to work around this.
+- The `printer` single-label search-domain resolution test in the client still fails (NXDOMAIN) because search-domain expansion requires FunkyDNS to read resolv.conf, which it does not.
