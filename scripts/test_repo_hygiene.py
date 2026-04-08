@@ -9,6 +9,97 @@ import repo_hygiene
 
 
 class RepoHygieneTests(unittest.TestCase):
+    def _make_git_repo_root(self) -> Path:
+        root = Path(tempfile.mkdtemp())
+        (root / ".git").mkdir()
+        self.addCleanup(lambda: __import__("shutil").rmtree(root, ignore_errors=True))
+        return root
+
+    def test_parse_args_supports_no_include_third_party(self) -> None:
+        args = repo_hygiene.parse_args(["scan", "--repo-root", ".", "--no-include-third-party"])
+        self.assertEqual(args.command, "scan")
+        self.assertFalse(args.include_third_party)
+
+    @patch("repo_hygiene.command_scan", return_value=0)
+    def test_main_dispatches_scan_with_all_cli_options(self, command_scan) -> None:
+        repo_root = self._make_git_repo_root()
+        resolved_repo_root = repo_root.resolve()
+
+        rc = repo_hygiene.main(
+            [
+                "scan",
+                "--repo-root",
+                str(repo_root),
+                "--include-third-party",
+                "--baseline-file",
+                "baseline.json",
+                "--json",
+            ]
+        )
+
+        self.assertEqual(rc, 0)
+        command_scan.assert_called_once_with(
+            resolved_repo_root,
+            include_third_party=True,
+            baseline_path="baseline.json",
+            json_output=True,
+        )
+
+    @patch("repo_hygiene.command_clean", return_value=0)
+    def test_main_dispatches_clean_with_all_cli_options(self, command_clean) -> None:
+        repo_root = self._make_git_repo_root()
+        resolved_repo_root = repo_root.resolve()
+
+        rc = repo_hygiene.main(
+            [
+                "clean",
+                "--repo-root",
+                str(repo_root),
+                "--include-third-party",
+                "--baseline-file",
+                "baseline.json",
+                "--json",
+            ]
+        )
+
+        self.assertEqual(rc, 0)
+        command_clean.assert_called_once_with(
+            resolved_repo_root,
+            include_third_party=True,
+            baseline_path="baseline.json",
+            json_output=True,
+        )
+
+    @patch("repo_hygiene.command_baseline", return_value=0)
+    def test_main_dispatches_baseline_and_rejects_json(self, command_baseline) -> None:
+        repo_root = self._make_git_repo_root()
+        resolved_repo_root = repo_root.resolve()
+
+        rc = repo_hygiene.main(
+            [
+                "baseline",
+                "--repo-root",
+                str(repo_root),
+                "--include-third-party",
+                "--baseline-file",
+                "baseline.json",
+            ]
+        )
+        self.assertEqual(rc, 0)
+        command_baseline.assert_called_once_with(resolved_repo_root, True, "baseline.json")
+
+        command_baseline.reset_mock()
+        rc = repo_hygiene.main(
+            [
+                "baseline",
+                "--repo-root",
+                str(repo_root),
+                "--json",
+            ]
+        )
+        self.assertEqual(rc, 2)
+        command_baseline.assert_not_called()
+
     def test_should_skip_for_unfinished(self) -> None:
         self.assertTrue(repo_hygiene.should_skip_for_unfinished("third_party/FunkyDNS/dns_server/doh.py"))
         self.assertFalse(
