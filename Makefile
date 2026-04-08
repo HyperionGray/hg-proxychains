@@ -3,7 +3,7 @@ PODMAN ?= podman
 PYTHON ?= python3
 EGRESSD_IMAGE ?= localhost/hg-proxychains-egressd-validate:latest
 
-.PHONY: deps smoke down logs health ready pycheck unittest test check preflight validate-config validate-image repo-scan repo-scan-json repo-clean maintenance maintenance-json maintenance-fix maintenance-all maintenance-all-json maintenance-baseline bundle clean
+.PHONY: deps smoke down logs health ready pycheck unittest test check preflight validate-config validate-image repo-scan repo-scan-json repo-clean maintenance maintenance-json maintenance-fix maintenance-markdown maintenance-markdown-json maintenance-all maintenance-all-json maintenance-baseline bundle clean
 
 deps:
 	scripts/bootstrap-third-party.sh
@@ -53,6 +53,12 @@ maintenance:
 
 maintenance-fix:
 	$(PYTHON) scripts/repo_maintenance.py --no-include-third-party --fix
+
+maintenance-markdown:
+	$(PYTHON) scripts/repo_maintenance.py --no-include-third-party --include-markdown
+
+maintenance-markdown-json:
+	$(PYTHON) scripts/repo_maintenance.py --no-include-third-party --include-markdown --json
 
 repo-scan-json:
 	$(PYTHON) scripts/repo_hygiene.py scan --repo-root . --no-include-third-party --json

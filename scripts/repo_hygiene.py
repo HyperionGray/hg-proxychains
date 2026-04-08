@@ -35,9 +35,6 @@ STRAY_DIR_NAMES = {
     ".mypy_cache",
     ".ruff_cache",
 }
-STALE_ARTIFACT_PATHS = (
-    "egressd-starter.tar.gz",
-)
 UNFINISHED_SCAN_SUFFIXES = {
     ".py",
     ".sh",
@@ -54,9 +51,14 @@ UNFINISHED_SCAN_FILENAMES = {
     "Dockerfile",
     "Makefile",
 }
+UNFINISHED_TEXT_SUFFIXES = {
+    ".md",
+    ".markdown",
+    ".rst",
+    ".txt",
+}
 BASELINE_DEFAULT_PATH = ".repo-hygiene-baseline.json"
-THIRD_PARTY_PREFIX = "third_party/"
-STALE_ARTIFACT_PATHS: frozenset[str] = frozenset()
+STALE_ARTIFACT_PATHS: frozenset[str] = frozenset({"egressd-starter.tar.gz"})
 # Add known stale tracked/untracked artifact paths here (e.g. generated bundles) as they arise.
 
 
@@ -125,8 +127,10 @@ def find_unfinished_markers(
     tracked_paths: Iterable[str],
     include_third_party: bool = False,
     excluded_paths: set[str] | None = None,
+    scan_suffixes: set[str] | None = None,
 ) -> list[MarkerFinding]:
     excluded = excluded_paths or set()
+    allowed_suffixes = scan_suffixes or UNFINISHED_SCAN_SUFFIXES
     findings: list[MarkerFinding] = []
     for rel_path in tracked_paths:
         if rel_path in excluded:
@@ -134,7 +138,7 @@ def find_unfinished_markers(
         if should_skip_for_unfinished(rel_path, include_third_party=include_third_party):
             continue
         path_obj = Path(rel_path)
-        if path_obj.suffix.lower() not in UNFINISHED_SCAN_SUFFIXES and path_obj.name not in UNFINISHED_SCAN_FILENAMES:
+        if path_obj.suffix.lower() not in allowed_suffixes and path_obj.name not in UNFINISHED_SCAN_FILENAMES:
             continue
         abs_path = repo_root / rel_path
         if not abs_path.is_file() or not is_text_file(abs_path):
@@ -360,6 +364,7 @@ def gather_hygiene_state(
     *,
     include_third_party: bool,
     baseline_path: str,
+    include_markdown: bool,
 ) -> tuple[list[MarkerFinding], list[str], list[str], list[str], list[str], int]:
     tracked = collect_git_paths(repo_root, ("ls-files",), include_third_party=include_third_party)
     untracked = collect_git_paths(
@@ -368,11 +373,15 @@ def gather_hygiene_state(
         include_third_party=include_third_party,
     )
     baseline_rel_path = Path(baseline_path).as_posix()
+    scan_suffixes = set(UNFINISHED_SCAN_SUFFIXES)
+    if include_markdown:
+        scan_suffixes.update(UNFINISHED_TEXT_SUFFIXES)
     findings = find_unfinished_markers(
         repo_root,
         tracked,
         include_third_party=include_third_party,
         excluded_paths={baseline_rel_path},
+        scan_suffixes=scan_suffixes,
     )
     findings, suppressed = apply_marker_baseline(
         findings,
@@ -389,12 +398,14 @@ def command_scan(
     *,
     include_third_party: bool,
     baseline_path: str,
+    include_markdown: bool,
     json_output: bool = False,
 ) -> int:
     findings, stray, stale_tracked, stale_untracked, embedded_git_repos, suppressed = gather_hygiene_state(
         repo_root,
         include_third_party=include_third_party,
         baseline_path=baseline_path,
+        include_markdown=include_markdown,
     )
     report = build_scan_report(
         findings,
@@ -423,12 +434,14 @@ def command_clean(
     *,
     include_third_party: bool,
     baseline_path: str,
+    include_markdown: bool,
     json_output: bool = False,
 ) -> int:
     findings, stray, stale_tracked, stale_untracked, embedded_git_repos, suppressed = gather_hygiene_state(
         repo_root,
         include_third_party=include_third_party,
         baseline_path=baseline_path,
+        include_markdown=include_markdown,
     )
     report = build_scan_report(
         findings,
@@ -462,14 +475,23 @@ def command_clean(
     return 1 if findings or stale_tracked or embedded_git_repos or cleanup_incomplete else 0
 
 
-def command_baseline(repo_root: Path, include_third_party: bool, baseline_path: str) -> int:
+def command_baseline(
+    repo_root: Path,
+    include_third_party: bool,
+    baseline_path: str,
+    include_markdown: bool,
+) -> int:
     tracked = collect_git_paths(repo_root, ("ls-files",), include_third_party=include_third_party)
     baseline_rel_path = Path(baseline_path).as_posix()
+    scan_suffixes = set(UNFINISHED_SCAN_SUFFIXES)
+    if include_markdown:
+        scan_suffixes.update(UNFINISHED_TEXT_SUFFIXES)
     findings = find_unfinished_markers(
         repo_root,
         tracked,
         include_third_party=include_third_party,
         excluded_paths={baseline_rel_path},
+        scan_suffixes=scan_suffixes,
     )
     payload = {
         "unfinished_markers": [
@@ -518,15 +540,10 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         help="emit machine-readable JSON output",
     )
     parser.add_argument(
-        "--include-third-party",
-        action="store_true",
+        "--include-markdown",
+        action=argparse.BooleanOptionalAction,
         default=False,
-        help="include all of third_party/ (e.g. third_party/FunkyDNS) in marker and stray-file scanning (default: false)",
-    )
-    parser.add_argument(
-        "--baseline-file",
-        default=BASELINE_DEFAULT_PATH,
-        help=f"marker baseline path relative to --repo-root (default: {BASELINE_DEFAULT_PATH})",
+        help="include markdown/text files when scanning for unfinished markers (default: false)",
     )
     return parser.parse_args(argv)
 
@@ -539,16 +556,30 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     if args.command == "baseline":
-        return command_baseline(repo_root, args.include_third_party, args.baseline_file)
-    if args.command == "clean":
-        return command_clean(repo_root, json_output=args.json)
-    elif args.command == "baseline":
-        # baseline command doesn't support --json flag
         if args.json:
             print("error: --json is not supported for the 'baseline' command", file=sys.stderr)
             return 2
-        return command_baseline(repo_root, include_third_party=False, baseline_path=BASELINE_DEFAULT_PATH)
-    return command_scan(repo_root, json_output=args.json)
+        return command_baseline(
+            repo_root,
+            args.include_third_party,
+            args.baseline_file,
+            args.include_markdown,
+        )
+    if args.command == "clean":
+        return command_clean(
+            repo_root,
+            include_third_party=args.include_third_party,
+            baseline_path=args.baseline_file,
+            include_markdown=args.include_markdown,
+            json_output=args.json,
+        )
+    return command_scan(
+        repo_root,
+        include_third_party=args.include_third_party,
+        baseline_path=args.baseline_file,
+        include_markdown=args.include_markdown,
+        json_output=args.json,
+    )
 
 
 if __name__ == "__main__":

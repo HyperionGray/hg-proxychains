@@ -137,6 +137,12 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         default=".repo-hygiene-baseline.json",
         help="Marker baseline path relative to --root (default: .repo-hygiene-baseline.json).",
     )
+    parser.add_argument(
+        "--include-markdown",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Include markdown/text files when scanning unfinished markers (default: false).",
+    )
     return parser.parse_args(argv)
 
 
@@ -157,6 +163,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     ]
     if args.include_third_party:
         cmd.append("--include-third-party")
+    if args.include_markdown:
+        cmd.append("--include-markdown")
     if args.json:
         cmd.append("--json")
 

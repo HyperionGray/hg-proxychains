@@ -157,6 +157,25 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
 
+    def test_find_unfinished_markers_can_include_markdown_suffixes(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            py_file = root / "src.py"
+            md_file = root / "docs.md"
+            py_file.write_text("# TO" "DO: source marker\n", encoding="utf-8")
+            md_file.write_text("<!-- TO" "DO: docs marker -->\n", encoding="utf-8")
+
+            default_findings = repo_hygiene.find_unfinished_markers(root, ["src.py", "docs.md"])
+            markdown_findings = repo_hygiene.find_unfinished_markers(
+                root,
+                ["src.py", "docs.md"],
+                scan_suffixes=set(repo_hygiene.UNFINISHED_SCAN_SUFFIXES)
+                | set(repo_hygiene.UNFINISHED_TEXT_SUFFIXES),
+            )
+
+        self.assertEqual([f.path for f in default_findings], ["src.py"])
+        self.assertEqual([f.path for f in markdown_findings], ["src.py", "docs.md"])
+
 
 if __name__ == "__main__":
     unittest.main()

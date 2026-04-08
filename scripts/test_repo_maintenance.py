@@ -2,6 +2,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import repo_maintenance
@@ -66,6 +67,24 @@ class RepoMaintenanceTests(unittest.TestCase):
             found = repo_maintenance.discover_embedded_git_repos(root, include_third_party=False)
 
             self.assertEqual(found, [])
+
+    def test_main_forwards_include_markdown_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            with patch("repo_maintenance.subprocess.run") as run:
+                run.return_value.returncode = 0
+                rc = repo_maintenance.main(
+                    [
+                        "--root",
+                        str(root),
+                        "--no-include-third-party",
+                        "--include-markdown",
+                    ]
+                )
+        self.assertEqual(rc, 0)
+        invoked_cmd = run.call_args.args[0]
+        self.assertIn("--include-markdown", invoked_cmd)
+        self.assertNotIn("--include-third-party", invoked_cmd)
 
 
 if __name__ == "__main__":
