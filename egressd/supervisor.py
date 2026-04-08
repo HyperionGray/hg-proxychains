@@ -847,11 +847,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             if STOP_EVENT.is_set():
                 break
         except (OSError, ValueError, RuntimeError) as exc:
-        except Exception as exc:
             processes["pproxy"] = None
             set_state({"pproxy": "error"})
             refresh_ready_state(cfg)
             if STOP_EVENT.is_set():
+                break
             logging.exception("supervisor loop error")
             logging.exception("supervisor loop error: %s", exc)
 
