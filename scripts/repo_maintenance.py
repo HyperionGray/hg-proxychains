@@ -137,6 +137,12 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         default=".repo-hygiene-baseline.json",
         help="Marker baseline path relative to --root (default: .repo-hygiene-baseline.json).",
     )
+    parser.add_argument(
+        "--exclude-glob",
+        action="append",
+        default=[],
+        help="Exclude paths matching shell-style glob (repeatable).",
+    )
     return parser.parse_args(argv)
 
 
@@ -159,6 +165,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         cmd.append("--include-third-party")
     if args.json:
         cmd.append("--json")
+    for pattern in args.exclude_glob:
+        cmd.extend(["--exclude-glob", pattern])
 
     proc = subprocess.run(cmd, check=False)
     return proc.returncode

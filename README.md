@@ -271,6 +271,13 @@ make maintenance-all
 make maintenance-all-json
 ```
 
+For scheduled jobs with known-noisy paths, add one or more exclusion globs:
+
+```bash
+python3 scripts/repo_hygiene.py scan --repo-root . --exclude-glob "third_party/FunkyDNS/docs/*"
+python3 scripts/repo_hygiene.py clean --repo-root . --exclude-glob "scratch/*"
+```
+
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
 
 For focused first-party hygiene scans and stray cleanup:

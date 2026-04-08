@@ -1,6 +1,8 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
+`scripts/repo_hygiene.py` is the primary scanner/cleaner used by this
+repository's maintenance automation. `scripts/repo_maintenance.py` remains a
+compatibility wrapper (`make maintenance` / `make maintenance-fix`).
 
 This repository includes a small maintenance utility at
 `scripts/repo_hygiene.py` for scheduled cleanups and local checks.
@@ -48,7 +50,10 @@ python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
 # Remove untracked stray files/directories
 python3 scripts/repo_hygiene.py clean --repo-root .
-python3 scripts/repo_hygiene.py scan --repo-root . --json
+
+# Exclude known paths from checks (repeatable)
+python3 scripts/repo_hygiene.py scan --repo-root . --exclude-glob "third_party/*"
+python3 scripts/repo_hygiene.py clean --repo-root . --exclude-glob "scratch/"
 ```
 
 JSON output for automation:
@@ -63,6 +68,10 @@ Optional deep scan including `third_party/FunkyDNS` unfinished markers:
 ```bash
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 ```
+
+Exclude patterns use shell-style glob matching and apply to tracked-marker
+checks, untracked clutter checks, stale-artifact checks, and embedded git repo
+discovery. Use multiple `--exclude-glob` flags when needed.
 
 Or through Make targets:
 
@@ -84,6 +93,7 @@ delegates to `scripts/repo_hygiene.py`.
   - `scan`: unfinished markers, stray untracked files, or stale artifacts
   - `clean`: unfinished markers or tracked stale artifacts (removable clutter is deleted)
 - `2`: invalid invocation (for example, non-git directory)
+- `2`: invalid invocation flags (for example, `baseline --json`)
 
 ## Baseline file
 

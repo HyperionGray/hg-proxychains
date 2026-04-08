@@ -11,9 +11,9 @@ Primary documentation has moved to:
 - Known stale artifacts (currently `egressd-starter.tar.gz`)
 - Embedded git repositories outside the allowed third-party submodule path
 
-By default, marker scanning includes tracked files in `third_party/FunkyDNS` when that repository is present.
-For day-to-day repo automation, prefer the first-party-only mode (`--no-include-third-party`)
-to avoid noise from external dependency internals.
+By default, marker scanning is first-party focused (`--no-include-third-party`).
+Use `--include-third-party` when you intentionally want to include tracked files
+under `third_party/FunkyDNS`.
 
 ## Commands
 
@@ -23,6 +23,9 @@ python3 scripts/repo_hygiene.py scan --repo-root .
 
 # JSON output for automation
 python3 scripts/repo_hygiene.py scan --repo-root . --json
+
+# Exclude noisy/generated paths from all checks (repeatable)
+python3 scripts/repo_hygiene.py scan --repo-root . --exclude-glob 'tmp/*' --exclude-glob 'scratch/'
 
 # Include third_party marker scan explicitly
 python3 scripts/repo_maintenance.py --include-third-party

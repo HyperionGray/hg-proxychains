@@ -157,6 +157,37 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
 
+    def test_filter_excluded_paths_by_glob(self) -> None:
+        paths = [
+            "scripts/repo_hygiene.py",
+            "scripts/repo_maintenance.py",
+            "docs/REPO-HYGIENE.md",
+        ]
+        filtered = repo_hygiene.filter_excluded_paths(paths, ["scripts/*"])
+        self.assertEqual(filtered, ["docs/REPO-HYGIENE.md"])
+
+    def test_path_matches_any_glob_directory_suffix(self) -> None:
+        self.assertTrue(repo_hygiene.path_matches_any_glob("scratch/tmp/file.txt", ["scratch/"]))
+        self.assertFalse(repo_hygiene.path_matches_any_glob("docs/file.txt", ["scratch/"]))
+
+    def test_parse_args_supports_exclude_glob_repetition(self) -> None:
+        args = repo_hygiene.parse_args(["scan", "--exclude-glob", "scripts/*", "--exclude-glob", "docs/*"])
+        self.assertEqual(args.exclude_glob, ["scripts/*", "docs/*"])
+
+    def test_main_rejects_json_for_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            rc = repo_hygiene.main(
+                [
+                    "baseline",
+                    "--repo-root",
+                    str(root),
+                    "--json",
+                ]
+            )
+        self.assertEqual(rc, 2)
+
 
 if __name__ == "__main__":
     unittest.main()
