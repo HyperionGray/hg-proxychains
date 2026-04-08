@@ -9,6 +9,39 @@ import repo_hygiene
 
 
 class RepoHygieneTests(unittest.TestCase):
+    def test_parse_args_supports_baseline_and_third_party_flags(self) -> None:
+        args = repo_hygiene.parse_args(
+            ["clean", "--repo-root", "/tmp/repo", "--include-third-party", "--baseline-file", "hygiene.json"]
+        )
+        self.assertEqual(args.command, "clean")
+        self.assertEqual(args.repo_root, "/tmp/repo")
+        self.assertTrue(args.include_third_party)
+        self.assertEqual(args.baseline_file, "hygiene.json")
+
+    def test_main_routes_clean_options_to_command_clean(self) -> None:
+        with patch("repo_hygiene.command_clean", return_value=0) as command_clean:
+            exit_code = repo_hygiene.main(
+                [
+                    "clean",
+                    "--repo-root",
+                    ".",
+                    "--include-third-party",
+                    "--baseline-file",
+                    "baseline.custom.json",
+                    "--json",
+                ]
+            )
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(command_clean.call_count, 1)
+        kwargs = command_clean.call_args.kwargs
+        self.assertTrue(kwargs["include_third_party"])
+        self.assertEqual(kwargs["baseline_path"], "baseline.custom.json")
+        self.assertTrue(kwargs["json_output"])
+
+    def test_main_rejects_json_for_baseline_command(self) -> None:
+        exit_code = repo_hygiene.main(["baseline", "--repo-root", ".", "--json"])
+        self.assertEqual(exit_code, 2)
+
     def test_should_skip_for_unfinished(self) -> None:
         self.assertTrue(repo_hygiene.should_skip_for_unfinished("third_party/FunkyDNS/dns_server/doh.py"))
         self.assertFalse(
