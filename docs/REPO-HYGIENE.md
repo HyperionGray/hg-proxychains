@@ -1,9 +1,7 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
-
-This repository includes a small maintenance utility at
-`scripts/repo_hygiene.py` for scheduled cleanups and local checks.
+`scripts/repo_hygiene.py` is the canonical hygiene engine for this repository.
+`scripts/repo_maintenance.py` is a compatibility wrapper that delegates to it.
 
 ## What it checks
 
@@ -46,9 +44,15 @@ python3 scripts/repo_hygiene.py scan --repo-root . --json
 # Include third-party dependency tree explicitly
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
+# Limit scanning to first-party files explicitly
+python3 scripts/repo_hygiene.py scan --repo-root . --no-include-third-party
+
 # Remove untracked stray files/directories
 python3 scripts/repo_hygiene.py clean --repo-root .
 python3 scripts/repo_hygiene.py scan --repo-root . --json
+
+# Write/update unfinished-marker baseline
+python3 scripts/repo_hygiene.py baseline --repo-root . --include-third-party
 ```
 
 JSON output for automation:
@@ -84,6 +88,7 @@ delegates to `scripts/repo_hygiene.py`.
   - `scan`: unfinished markers, stray untracked files, or stale artifacts
   - `clean`: unfinished markers or tracked stale artifacts (removable clutter is deleted)
 - `2`: invalid invocation (for example, non-git directory)
+  - `baseline --json` is rejected and returns `2`
 
 ## Baseline file
 
@@ -99,3 +104,12 @@ The baseline currently suppresses marker findings only (not stray files).
 
 `scripts/repo_maintenance.py` remains as a compatibility wrapper and delegates
 to `repo_hygiene.py`.
+
+## Next task plan
+
+1. Add a `--strict-baseline` mode to fail when suppressed markers disappear from
+   baseline (keeps baseline tidy over time).
+2. Add a machine-readable report for deleted paths grouped by category
+   (`stray`, `stale_untracked`) to simplify automation trend tracking.
+3. Add end-to-end Makefile target tests that execute `repo_maintenance.py` and
+   `repo_hygiene.py` in a temporary git repository.
