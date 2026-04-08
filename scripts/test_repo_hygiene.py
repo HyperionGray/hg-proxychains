@@ -157,6 +157,38 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
 
+    def test_parse_args_supports_boolean_optional_include_third_party(self) -> None:
+        args = repo_hygiene.parse_args(["scan", "--no-include-third-party"])
+        self.assertFalse(args.include_third_party)
+        args_enabled = repo_hygiene.parse_args(["scan", "--include-third-party"])
+        self.assertTrue(args_enabled.include_third_party)
+
+    def test_main_clean_propagates_cli_flags(self) -> None:
+        with (
+            patch("repo_hygiene.command_clean", return_value=0) as command_clean,
+            patch("repo_hygiene.Path.resolve", return_value=Path("/tmp/repo")),
+            patch("repo_hygiene.Path.exists", return_value=True),
+        ):
+            rc = repo_hygiene.main(
+                [
+                    "clean",
+                    "--repo-root",
+                    ".",
+                    "--include-third-party",
+                    "--baseline-file",
+                    "custom-baseline.json",
+                    "--json",
+                ]
+            )
+
+        self.assertEqual(rc, 0)
+        command_clean.assert_called_once_with(
+            Path("/tmp/repo"),
+            include_third_party=True,
+            baseline_path="custom-baseline.json",
+            json_output=True,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
