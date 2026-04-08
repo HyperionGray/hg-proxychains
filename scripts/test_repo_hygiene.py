@@ -157,6 +157,97 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
 
+    def test_parse_args_supports_boolean_optional_include_third_party(self) -> None:
+        args = repo_hygiene.parse_args(["scan", "--no-include-third-party"])
+        self.assertFalse(args.include_third_party)
+        self.assertEqual(args.command, "scan")
+
+        args_enabled = repo_hygiene.parse_args(["scan", "--include-third-party"])
+        self.assertTrue(args_enabled.include_third_party)
+
+    @patch("repo_hygiene.command_scan")
+    @patch("repo_hygiene.command_clean")
+    @patch("repo_hygiene.command_baseline")
+    def test_main_dispatches_commands_with_cli_options(
+        self,
+        mock_baseline,
+        mock_clean,
+        mock_scan,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+
+            mock_scan.return_value = 0
+            rc_scan = repo_hygiene.main(
+                [
+                    "scan",
+                    "--repo-root",
+                    str(root),
+                    "--include-third-party",
+                    "--baseline-file",
+                    "custom-baseline.json",
+                    "--json",
+                ]
+            )
+            self.assertEqual(rc_scan, 0)
+            mock_scan.assert_called_once()
+            scan_kwargs = mock_scan.call_args.kwargs
+            self.assertTrue(scan_kwargs["include_third_party"])
+            self.assertEqual(scan_kwargs["baseline_path"], "custom-baseline.json")
+            self.assertTrue(scan_kwargs["json_output"])
+
+            mock_clean.return_value = 0
+            rc_clean = repo_hygiene.main(
+                [
+                    "clean",
+                    "--repo-root",
+                    str(root),
+                    "--no-include-third-party",
+                    "--baseline-file",
+                    ".repo-hygiene-baseline.json",
+                ]
+            )
+            self.assertEqual(rc_clean, 0)
+            mock_clean.assert_called_once()
+            clean_kwargs = mock_clean.call_args.kwargs
+            self.assertFalse(clean_kwargs["include_third_party"])
+            self.assertEqual(clean_kwargs["baseline_path"], ".repo-hygiene-baseline.json")
+            self.assertFalse(clean_kwargs["json_output"])
+
+            mock_baseline.return_value = 0
+            rc_baseline = repo_hygiene.main(
+                [
+                    "baseline",
+                    "--repo-root",
+                    str(root),
+                    "--include-third-party",
+                ]
+            )
+            self.assertEqual(rc_baseline, 0)
+            mock_baseline.assert_called_once()
+            baseline_kwargs = mock_baseline.call_args.kwargs
+            self.assertTrue(baseline_kwargs["include_third_party"])
+            self.assertEqual(baseline_kwargs["baseline_path"], ".repo-hygiene-baseline.json")
+
+    @patch("repo_hygiene.command_baseline")
+    def test_main_rejects_json_for_baseline(self, mock_baseline) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+
+            rc = repo_hygiene.main(
+                [
+                    "baseline",
+                    "--repo-root",
+                    str(root),
+                    "--json",
+                ]
+            )
+
+            self.assertEqual(rc, 2)
+            mock_baseline.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
