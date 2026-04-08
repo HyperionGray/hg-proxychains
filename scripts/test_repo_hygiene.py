@@ -69,6 +69,41 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
         self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
 
+    def test_find_stale_artifacts_includes_third_party_only_when_enabled(self) -> None:
+        tracked = [
+            "README.md",
+            "third_party/FunkyDNS/dnsconvo.txt",
+            "third_party/FunkyDNS/bfg-1.15.0.jar",
+        ]
+        untracked = [
+            "third_party/FunkyDNS/archive/funkydns.py~",
+        ]
+
+        stale_tracked_default, stale_untracked_default = repo_hygiene.find_stale_artifacts(
+            tracked_paths=tracked,
+            untracked_paths=untracked,
+            include_third_party=False,
+        )
+        self.assertEqual(stale_tracked_default, [])
+        self.assertEqual(stale_untracked_default, [])
+
+        stale_tracked_all, stale_untracked_all = repo_hygiene.find_stale_artifacts(
+            tracked_paths=tracked,
+            untracked_paths=untracked,
+            include_third_party=True,
+        )
+        self.assertEqual(
+            stale_tracked_all,
+            [
+                "third_party/FunkyDNS/bfg-1.15.0.jar",
+                "third_party/FunkyDNS/dnsconvo.txt",
+            ],
+        )
+        self.assertEqual(
+            stale_untracked_all,
+            ["third_party/FunkyDNS/archive/funkydns.py~"],
+        )
+
     def test_find_unfinished_markers_ignores_skipped_paths(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

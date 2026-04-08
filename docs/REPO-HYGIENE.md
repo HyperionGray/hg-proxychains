@@ -21,6 +21,7 @@ This repository includes a small maintenance utility at
   - Python cache outputs (`__pycache__/`, `*.pyc`, `*.pyo`)
   - common metadata noise (`.DS_Store`, `Thumbs.db`)
   - known generated bundles (`egressd-starter.tar.gz`)
+  - optional third-party stale artifacts (enabled only with `--include-third-party`)
 
 The scanner intentionally skips `third_party/FunkyDNS/` when checking
 unfinished markers by default, because that path is managed as an external
@@ -28,6 +29,17 @@ dependency.
 
 When you do want full-repo scanning (including nested third-party git state),
 use `--include-third-party`.
+
+When `--include-third-party` is enabled, the stale-artifact registry also
+includes known FunkyDNS residue files such as:
+
+- `third_party/FunkyDNS/.bish-index`
+- `third_party/FunkyDNS/archive/.bish-index`
+- `third_party/FunkyDNS/bfg-1.15.0.jar`
+- `third_party/FunkyDNS/dnsconvo.txt`
+- `third_party/FunkyDNS/fastdns_payload.js2`
+- `third_party/FunkyDNS/archive/funkydns.py~`
+- `third_party/FunkyDNS/archive/funkydns.py.backup`
 
 Known upstream unfinished markers can be recorded in a baseline file so
 scheduled jobs can fail only on new findings.

@@ -35,8 +35,21 @@ STRAY_DIR_NAMES = {
     ".mypy_cache",
     ".ruff_cache",
 }
-STALE_ARTIFACT_PATHS = (
-    "egressd-starter.tar.gz",
+FIRST_PARTY_STALE_ARTIFACT_PATHS: frozenset[str] = frozenset(
+    {
+        "egressd-starter.tar.gz",
+    }
+)
+THIRD_PARTY_STALE_ARTIFACT_PATHS: frozenset[str] = frozenset(
+    {
+        "third_party/FunkyDNS/.bish-index",
+        "third_party/FunkyDNS/archive/.bish-index",
+        "third_party/FunkyDNS/bfg-1.15.0.jar",
+        "third_party/FunkyDNS/dnsconvo.txt",
+        "third_party/FunkyDNS/fastdns_payload.js2",
+        "third_party/FunkyDNS/archive/funkydns.py~",
+        "third_party/FunkyDNS/archive/funkydns.py.backup",
+    }
 )
 UNFINISHED_SCAN_SUFFIXES = {
     ".py",
@@ -56,8 +69,13 @@ UNFINISHED_SCAN_FILENAMES = {
 }
 BASELINE_DEFAULT_PATH = ".repo-hygiene-baseline.json"
 THIRD_PARTY_PREFIX = "third_party/"
-STALE_ARTIFACT_PATHS: frozenset[str] = frozenset()
-# Add known stale tracked/untracked artifact paths here (e.g. generated bundles) as they arise.
+
+
+def stale_artifact_paths(include_third_party: bool = False) -> frozenset[str]:
+    """Return stale artifact registry for the selected scan scope."""
+    if include_third_party:
+        return FIRST_PARTY_STALE_ARTIFACT_PATHS | THIRD_PARTY_STALE_ARTIFACT_PATHS
+    return FIRST_PARTY_STALE_ARTIFACT_PATHS
 
 
 @dataclass(frozen=True)
@@ -231,11 +249,13 @@ def classify_stray_paths(
 def find_stale_artifacts(
     tracked_paths: Iterable[str],
     untracked_paths: Iterable[str],
+    include_third_party: bool = False,
 ) -> tuple[list[str], list[str]]:
+    candidates = stale_artifact_paths(include_third_party=include_third_party)
     tracked_set = set(tracked_paths)
     untracked_set = set(untracked_paths)
-    stale_tracked = sorted(path for path in STALE_ARTIFACT_PATHS if path in tracked_set)
-    stale_untracked = sorted(path for path in STALE_ARTIFACT_PATHS if path in untracked_set)
+    stale_tracked = sorted(path for path in candidates if path in tracked_set)
+    stale_untracked = sorted(path for path in candidates if path in untracked_set)
     return stale_tracked, stale_untracked
 
 
@@ -379,7 +399,11 @@ def gather_hygiene_state(
         load_marker_baseline(repo_root, baseline_path),
     )
     stray = classify_stray_paths(untracked, include_third_party=include_third_party)
-    stale_tracked, stale_untracked = find_stale_artifacts(tracked, untracked)
+    stale_tracked, stale_untracked = find_stale_artifacts(
+        tracked,
+        untracked,
+        include_third_party=include_third_party,
+    )
     embedded_git_repos = discover_embedded_git_repos(repo_root, include_third_party=include_third_party)
     return findings, stray, stale_tracked, stale_untracked, embedded_git_repos, suppressed
 
@@ -517,17 +541,6 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         action="store_true",
         help="emit machine-readable JSON output",
     )
-    parser.add_argument(
-        "--include-third-party",
-        action="store_true",
-        default=False,
-        help="include all of third_party/ (e.g. third_party/FunkyDNS) in marker and stray-file scanning (default: false)",
-    )
-    parser.add_argument(
-        "--baseline-file",
-        default=BASELINE_DEFAULT_PATH,
-        help=f"marker baseline path relative to --repo-root (default: {BASELINE_DEFAULT_PATH})",
-    )
     return parser.parse_args(argv)
 
 
@@ -539,16 +552,27 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     if args.command == "baseline":
-        return command_baseline(repo_root, args.include_third_party, args.baseline_file)
-    if args.command == "clean":
-        return command_clean(repo_root, json_output=args.json)
-    elif args.command == "baseline":
-        # baseline command doesn't support --json flag
         if args.json:
             print("error: --json is not supported for the 'baseline' command", file=sys.stderr)
             return 2
-        return command_baseline(repo_root, include_third_party=False, baseline_path=BASELINE_DEFAULT_PATH)
-    return command_scan(repo_root, json_output=args.json)
+        return command_baseline(
+            repo_root,
+            include_third_party=args.include_third_party,
+            baseline_path=args.baseline_file,
+        )
+    if args.command == "clean":
+        return command_clean(
+            repo_root,
+            include_third_party=args.include_third_party,
+            baseline_path=args.baseline_file,
+            json_output=args.json,
+        )
+    return command_scan(
+        repo_root,
+        include_third_party=args.include_third_party,
+        baseline_path=args.baseline_file,
+        json_output=args.json,
+    )
 
 
 if __name__ == "__main__":
