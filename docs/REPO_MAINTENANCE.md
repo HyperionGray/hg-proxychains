@@ -11,9 +11,8 @@ Primary documentation has moved to:
 - Known stale artifacts (currently `egressd-starter.tar.gz`)
 - Embedded git repositories outside the allowed third-party submodule path
 
-By default, marker scanning includes tracked files in `third_party/FunkyDNS` when that repository is present.
-For day-to-day repo automation, prefer the first-party-only mode (`--no-include-third-party`)
-to avoid noise from external dependency internals.
+By default, marker scanning skips `third_party/FunkyDNS` so day-to-day automation
+stays focused on first-party code. Use `--include-third-party` for full scans.
 
 ## Commands
 

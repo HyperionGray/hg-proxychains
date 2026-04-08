@@ -3,6 +3,9 @@
 //
 // Run egressd pointing at this file:
 //   python3 supervisor.py --config config.simple.example.json5
+//
+// You can also skip the config file entirely and provide proxies via env:
+//   EGRESSD_PROXIES="http://proxy1:3128,http://proxy2:3128" python3 supervisor.py
 {
   proxies: [
     "http://proxy1:3128",

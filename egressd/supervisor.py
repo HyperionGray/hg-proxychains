@@ -70,8 +70,61 @@ def configure_logging(cfg: Dict[str, Any]) -> None:
 
 
 def load_cfg(path: str = CFG_PATH) -> Dict[str, Any]:
-    raw = pyjson5.decode(Path(path).read_text(encoding="utf-8"))
-    return normalize_cfg(raw)
+    cfg_path = Path(path)
+    if cfg_path.is_file():
+        raw = pyjson5.decode(cfg_path.read_text(encoding="utf-8"))
+        return normalize_cfg(raw)
+
+    env_cfg = _load_cfg_from_environment()
+    if env_cfg is not None:
+        return env_cfg
+
+    raise FileNotFoundError(
+        f"config not found at {path}; provide a config file or set EGRESSD_PROXIES"
+    )
+
+
+def _parse_env_proxies(raw_value: str) -> List[str]:
+    value = raw_value.strip()
+    if not value:
+        raise ValueError("EGRESSD_PROXIES is empty")
+
+    candidates: Any
+    if value.startswith("["):
+        try:
+            candidates = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise ValueError("EGRESSD_PROXIES JSON array is invalid") from exc
+        if not isinstance(candidates, list):
+            raise ValueError("EGRESSD_PROXIES JSON value must be an array")
+    else:
+        # Accept either CSV or newline-delimited values.
+        chunks = value.splitlines() if "\n" in value else [value]
+        candidates = []
+        for chunk in chunks:
+            candidates.extend(part.strip() for part in chunk.split(","))
+
+    proxies: List[str] = []
+    for item in candidates:
+        if not isinstance(item, str):
+            raise ValueError("EGRESSD_PROXIES entries must be strings")
+        candidate = item.strip()
+        if not candidate:
+            continue
+        proxies.append(candidate)
+
+    if not proxies:
+        raise ValueError("EGRESSD_PROXIES resolved to an empty proxy list")
+
+    return proxies
+
+
+def _load_cfg_from_environment() -> Optional[Dict[str, Any]]:
+    raw_proxies = os.environ.get("EGRESSD_PROXIES")
+    if raw_proxies is None:
+        return None
+    proxies = _parse_env_proxies(raw_proxies)
+    return normalize_cfg({"proxies": proxies})
 
 
 def _as_bool(value: Any, default: bool = False) -> bool:

@@ -88,6 +88,18 @@ accepted.  See `egressd/config.simple.example.json5` for this minimal
 format and `egressd/config.host.example.json5` for a fully-annotated host
 deployment example.
 
+For ephemeral/container workflows, you can also supply the chain without a
+config file via `EGRESSD_PROXIES`:
+
+```bash
+EGRESSD_PROXIES="http://proxy1:3128,http://proxy2:3128" \
+python3 egressd/supervisor.py --check-config
+```
+
+`EGRESSD_PROXIES` accepts either a comma-separated URL list or a JSON array
+string and is merged into normalized defaults as `chain.hops` when `--config`
+is omitted or points to a missing file.
+
 ### 1. Initialize FunkyDNS submodule
 
 Configure authenticated GitHub access, then initialize the private submodule:

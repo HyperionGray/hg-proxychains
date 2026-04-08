@@ -5,6 +5,7 @@ import time
 import types
 import unittest
 from copy import deepcopy
+from tempfile import TemporaryDirectory
 from pathlib import Path
 from unittest.mock import patch
 
@@ -184,6 +185,40 @@ class SupervisorTests(unittest.TestCase):
         readiness = supervisor.compute_readiness(state, cfg, now=now)
         self.assertTrue(readiness["ready"])
         self.assertEqual([], readiness["reasons"])
+
+    def test_load_cfg_uses_egressd_proxies_when_file_missing(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "EGRESSD_PROXIES": "http://proxy1:3128,http://proxy2:3128",
+            },
+            clear=False,
+        ):
+            cfg = supervisor.load_cfg("/path/does/not/exist.json5")
+        self.assertEqual(
+            cfg["chain"]["hops"],
+            [{"url": "http://proxy1:3128"}, {"url": "http://proxy2:3128"}],
+        )
+
+    def test_load_cfg_prefers_file_when_file_exists(self) -> None:
+        with TemporaryDirectory() as td:
+            cfg_path = Path(td) / "config.json5"
+            cfg_path.write_text(
+                '{"proxies":["http://from-file:3128"]}',
+                encoding="utf-8",
+            )
+            with patch.dict(
+                os.environ,
+                {"EGRESSD_PROXIES": "http://from-env:3128"},
+                clear=False,
+            ):
+                cfg = supervisor.load_cfg(str(cfg_path))
+        self.assertEqual(cfg["chain"]["hops"], [{"url": "http://from-file:3128"}])
+
+    def test_load_cfg_errors_when_missing_file_and_no_env_fallback(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(FileNotFoundError):
+                supervisor.load_cfg("/path/does/not/exist.json5")
 
 
 if __name__ == "__main__":
