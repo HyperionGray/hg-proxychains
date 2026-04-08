@@ -96,8 +96,8 @@ EGRESSD_PROXIES="http://proxy1:3128,http://proxy2:3128" \
 python3 egressd/supervisor.py --check-config
 ```
 
-`EGRESSD_PROXIES` accepts either a comma-separated URL list or a JSON array
-string and is merged into normalized defaults as `chain.hops` when `--config`
+`EGRESSD_PROXIES` accepts a comma-separated URL list, newline-delimited URLs,
+or a JSON array string, and is merged into normalized defaults as `chain.hops` when `--config`
 is omitted or points to a missing file.
 
 ### 1. Initialize FunkyDNS submodule

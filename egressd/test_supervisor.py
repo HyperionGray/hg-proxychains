@@ -220,6 +220,18 @@ class SupervisorTests(unittest.TestCase):
             with self.assertRaises(FileNotFoundError):
                 supervisor.load_cfg("/path/does/not/exist.json5")
 
+    def test_parse_env_proxies_accepts_json_array(self) -> None:
+        proxies = supervisor._parse_env_proxies('["http://proxy1:3128", "http://proxy2:3128"]')
+        self.assertEqual(proxies, ["http://proxy1:3128", "http://proxy2:3128"])
+
+    def test_parse_env_proxies_accepts_newline_delimited_values(self) -> None:
+        proxies = supervisor._parse_env_proxies("http://proxy1:3128\nhttp://proxy2:3128")
+        self.assertEqual(proxies, ["http://proxy1:3128", "http://proxy2:3128"])
+
+    def test_parse_env_proxies_rejects_non_string_json_entry(self) -> None:
+        with self.assertRaises(ValueError):
+            supervisor._parse_env_proxies('["http://proxy1:3128", 42]')
+
 
 if __name__ == "__main__":
     unittest.main()
