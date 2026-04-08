@@ -1,0 +1,2 @@
+# Zone fallback for corp.test (FunkyDNS submodule lacks resolv.conf search-domain support).
+printer.corp.test A 198.51.100.42

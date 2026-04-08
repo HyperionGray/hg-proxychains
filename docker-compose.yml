@@ -17,8 +17,6 @@ services:
         "53",
         "--no-doh",
         "--no-dot",
-        "--no-system-resolver",
-        "--no-hosts-file",
       ]
     environment:
       - ZONES_DIR=/opt/funkydns-smoke/upstream-zones
@@ -75,6 +73,16 @@ services:
           "CMD",
           "python3",
           "/opt/funkydns-smoke/check_resolution.py",
+          "--protocol",
+          "dns",
+          "--dns-server",
+          "127.0.0.1",
+          "--name",
+          "smoke.test",
+          "--record-type",
+          "A",
+          "--expect",
+          "203.0.113.10",
           "--quiet",
         ]
       interval: 10s

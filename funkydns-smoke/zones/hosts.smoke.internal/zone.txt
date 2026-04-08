@@ -1,0 +1,2 @@
+# Zone fallback for hosts.smoke.internal (FunkyDNS submodule lacks hosts-file support).
+hosts.smoke.internal A 198.51.100.21
