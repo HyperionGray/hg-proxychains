@@ -9,6 +9,34 @@ import repo_hygiene
 
 
 class RepoHygieneTests(unittest.TestCase):
+    def test_parse_args_handles_boolean_optional_and_baseline(self) -> None:
+        args = repo_hygiene.parse_args(
+            [
+                "scan",
+                "--repo-root",
+                "/tmp/repo",
+                "--include-third-party",
+                "--baseline-file",
+                "custom-baseline.json",
+                "--json",
+            ]
+        )
+        self.assertEqual(args.command, "scan")
+        self.assertEqual(args.repo_root, "/tmp/repo")
+        self.assertTrue(args.include_third_party)
+        self.assertEqual(args.baseline_file, "custom-baseline.json")
+        self.assertTrue(args.json)
+
+        args_no_third_party = repo_hygiene.parse_args(
+            [
+                "scan",
+                "--repo-root",
+                "/tmp/repo",
+                "--no-include-third-party",
+            ]
+        )
+        self.assertFalse(args_no_third_party.include_third_party)
+
     def test_should_skip_for_unfinished(self) -> None:
         self.assertTrue(repo_hygiene.should_skip_for_unfinished("third_party/FunkyDNS/dns_server/doh.py"))
         self.assertFalse(
@@ -156,6 +184,94 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_main_dispatches_scan_with_cli_flags(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_scan", return_value=7) as mocked_scan:
+                rc = repo_hygiene.main(
+                    [
+                        "scan",
+                        "--repo-root",
+                        str(root),
+                        "--include-third-party",
+                        "--baseline-file",
+                        "scan-baseline.json",
+                        "--json",
+                    ]
+                )
+
+        self.assertEqual(rc, 7)
+        mocked_scan.assert_called_once_with(
+            root.resolve(),
+            include_third_party=True,
+            baseline_path="scan-baseline.json",
+            json_output=True,
+        )
+
+    def test_main_dispatches_clean_with_cli_flags(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_clean", return_value=3) as mocked_clean:
+                rc = repo_hygiene.main(
+                    [
+                        "clean",
+                        "--repo-root",
+                        str(root),
+                        "--no-include-third-party",
+                        "--baseline-file",
+                        "clean-baseline.json",
+                    ]
+                )
+
+        self.assertEqual(rc, 3)
+        mocked_clean.assert_called_once_with(
+            root.resolve(),
+            include_third_party=False,
+            baseline_path="clean-baseline.json",
+            json_output=False,
+        )
+
+    def test_main_dispatches_baseline_with_cli_flags(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_baseline", return_value=0) as mocked_baseline:
+                rc = repo_hygiene.main(
+                    [
+                        "baseline",
+                        "--repo-root",
+                        str(root),
+                        "--include-third-party",
+                        "--baseline-file",
+                        "baseline-out.json",
+                    ]
+                )
+
+        self.assertEqual(rc, 0)
+        mocked_baseline.assert_called_once_with(
+            root.resolve(),
+            include_third_party=True,
+            baseline_path="baseline-out.json",
+        )
+
+    def test_main_rejects_json_with_baseline_command(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_baseline") as mocked_baseline:
+                rc = repo_hygiene.main(
+                    [
+                        "baseline",
+                        "--repo-root",
+                        str(root),
+                        "--json",
+                    ]
+                )
+        self.assertEqual(rc, 2)
+        mocked_baseline.assert_not_called()
 
 
 if __name__ == "__main__":

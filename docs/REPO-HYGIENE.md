@@ -1,9 +1,10 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
-
-This repository includes a small maintenance utility at
+This repository includes a maintenance utility at
 `scripts/repo_hygiene.py` for scheduled cleanups and local checks.
+
+`scripts/repo_maintenance.py` remains available as a compatibility wrapper
+for legacy invocations and delegates to `repo_hygiene.py`.
 
 ## What it checks
 
@@ -46,6 +47,9 @@ python3 scripts/repo_hygiene.py scan --repo-root . --json
 # Include third-party dependency tree explicitly
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
+# Exclude third-party dependency tree explicitly (default behavior)
+python3 scripts/repo_hygiene.py scan --repo-root . --no-include-third-party
+
 # Remove untracked stray files/directories
 python3 scripts/repo_hygiene.py clean --repo-root .
 python3 scripts/repo_hygiene.py scan --repo-root . --json
@@ -64,6 +68,14 @@ Optional deep scan including `third_party/FunkyDNS` unfinished markers:
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 ```
 
+Write/update the marker baseline file:
+
+```bash
+python3 scripts/repo_hygiene.py baseline --repo-root . --include-third-party
+```
+
+Note: `baseline` does not support `--json`.
+
 Or through Make targets:
 
 ```bash
@@ -73,9 +85,6 @@ make repo-scan
 make repo-clean
 make repo-scan-json
 ```
-
-`scripts/repo_maintenance.py` is retained as a compatibility wrapper and now
-delegates to `scripts/repo_hygiene.py`.
 
 ## Exit codes
 
