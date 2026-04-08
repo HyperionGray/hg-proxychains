@@ -157,6 +157,53 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
 
+    def test_main_scan_forwards_include_third_party_and_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_scan", return_value=0) as mock_scan:
+                rc = repo_hygiene.main(
+                    [
+                        "scan",
+                        "--repo-root",
+                        str(root),
+                        "--include-third-party",
+                        "--baseline-file",
+                        "custom-baseline.json",
+                        "--json",
+                    ]
+                )
+        self.assertEqual(rc, 0)
+        mock_scan.assert_called_once()
+        args, kwargs = mock_scan.call_args
+        self.assertEqual(args[0], root.resolve())
+        self.assertTrue(kwargs["include_third_party"])
+        self.assertEqual(kwargs["baseline_path"], "custom-baseline.json")
+        self.assertTrue(kwargs["json_output"])
+
+    def test_main_clean_forwards_include_third_party_and_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_clean", return_value=0) as mock_clean:
+                rc = repo_hygiene.main(
+                    [
+                        "clean",
+                        "--repo-root",
+                        str(root),
+                        "--include-third-party",
+                        "--baseline-file",
+                        "custom-baseline.json",
+                    ]
+                )
+        self.assertEqual(rc, 0)
+        mock_clean.assert_called_once()
+        args, kwargs = mock_clean.call_args
+        self.assertEqual(args[0], root.resolve())
+        self.assertTrue(kwargs["include_third_party"])
+        self.assertEqual(kwargs["baseline_path"], "custom-baseline.json")
+        self.assertFalse(kwargs["json_output"])
+
 
 if __name__ == "__main__":
     unittest.main()
