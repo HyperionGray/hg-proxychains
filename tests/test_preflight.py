@@ -269,6 +269,42 @@ class NormalizeCfgTests(unittest.TestCase):
             [{"url": "http://proxy1:3128"}, {"url": "http://proxy2:3128"}],
         )
 
+    def test_chain_hops_compact_pproxy_string_splits_into_multiple_hops(self) -> None:
+        """A single pproxy relay string is expanded into distinct hop entries."""
+        raw = {"chain": {"hops": "http://proxy1:3128__http://proxy2:3128"}}
+        cfg = preflight.normalize_cfg(raw)
+        self.assertEqual(
+            cfg["chain"]["hops"],
+            [{"url": "http://proxy1:3128"}, {"url": "http://proxy2:3128"}],
+        )
+
+    def test_chain_hops_csv_string_splits_into_multiple_hops(self) -> None:
+        """CSV shorthand for hops is normalized to canonical dict entries."""
+        raw = {"chain": {"hops": "http://proxy1:3128, http://proxy2:3128"}}
+        cfg = preflight.normalize_cfg(raw)
+        self.assertEqual(
+            cfg["chain"]["hops"],
+            [{"url": "http://proxy1:3128"}, {"url": "http://proxy2:3128"}],
+        )
+
+    def test_proxies_entry_can_embed_multiple_hops_in_one_string(self) -> None:
+        """Top-level proxies supports compact strings and plain single URLs together."""
+        raw = {
+            "proxies": [
+                "http://proxy1:3128__http://proxy2:3128",
+                "http://proxy3:3128",
+            ]
+        }
+        cfg = preflight.normalize_cfg(raw)
+        self.assertEqual(
+            cfg["chain"]["hops"],
+            [
+                {"url": "http://proxy1:3128"},
+                {"url": "http://proxy2:3128"},
+                {"url": "http://proxy3:3128"},
+            ],
+        )
+
     def test_dict_hops_left_unchanged(self) -> None:
         """Canonical ``{"url": ...}`` hops are not double-wrapped."""
         raw = {"chain": {"hops": [{"url": "http://proxy1:3128"}]}}

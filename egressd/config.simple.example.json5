@@ -7,5 +7,8 @@
   proxies: [
     "http://proxy1:3128",
     "http://proxy2:3128",
+    // Compact forms are also accepted:
+    // "http://proxy1:3128__http://proxy2:3128"
+    // "http://proxy1:3128, http://proxy2:3128"
   ],
 }

@@ -12,6 +12,7 @@ defaults already filled in.
 import copy
 import json
 import os
+import re
 import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -26,6 +27,41 @@ _DEFAULT_CANARY_TARGET = "example.com:443"
 _DEFAULT_ALLOWED_PORTS = [80, 443]
 _DEFAULT_HEALTH_BIND = "127.0.0.1"
 _DEFAULT_HEALTH_PORT = 9191
+
+
+def _split_hop_url_string(raw: str) -> List[str]:
+    """Split a compact hop string into individual proxy URLs.
+
+    Supported separators:
+    - ``__`` (pproxy relay separator)
+    - ``,``
+    - newlines
+    """
+    text = raw.strip()
+    if not text:
+        return []
+    parts = re.split(r"(?:__|,|\r?\n)+", text)
+    return [part.strip() for part in parts if part.strip()]
+
+
+def _normalize_hops(raw_hops: Any) -> Any:
+    """Normalize hop shorthand forms to ``[{\"url\": ...}, ...]`` when possible."""
+    if isinstance(raw_hops, str):
+        return [{"url": url} for url in _split_hop_url_string(raw_hops)]
+
+    if isinstance(raw_hops, (list, tuple)):
+        normalized: List[Any] = []
+        for hop in raw_hops:
+            if isinstance(hop, dict):
+                normalized.append(hop)
+                continue
+            if isinstance(hop, str):
+                normalized.extend({"url": url} for url in _split_hop_url_string(hop))
+                continue
+            normalized.append(hop)
+        return normalized
+
+    return raw_hops
 
 
 def normalize_cfg(raw: Dict[str, Any]) -> Dict[str, Any]:
@@ -54,11 +90,10 @@ def normalize_cfg(raw: Dict[str, Any]) -> Dict[str, Any]:
             cfg["chain"]["hops"] = proxies
 
     # Normalize hops: accept plain URL strings as well as {"url": ...} dicts.
+    # Also support compact string forms (CSV, newline-separated, pproxy "__").
     chain_cfg = cfg.setdefault("chain", {})
     hops = chain_cfg.get("hops", [])
-    chain_cfg["hops"] = [
-        hop if isinstance(hop, dict) else {"url": hop} for hop in hops
-    ]
+    chain_cfg["hops"] = _normalize_hops(hops)
 
     # Listener defaults.
     listener = cfg.setdefault("listener", {})

@@ -88,6 +88,11 @@ accepted.  See `egressd/config.simple.example.json5` for this minimal
 format and `egressd/config.host.example.json5` for a fully-annotated host
 deployment example.
 
+For convenience, hop lists also accept compact string forms:
+
+- pproxy relay syntax: `"http://proxy1:3128__http://proxy2:3128"`
+- CSV syntax: `"http://proxy1:3128, http://proxy2:3128"`
+
 ### 1. Initialize FunkyDNS submodule
 
 Configure authenticated GitHub access, then initialize the private submodule:

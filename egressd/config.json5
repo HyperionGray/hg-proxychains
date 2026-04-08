@@ -5,6 +5,8 @@
     "http://proxy1:3128",
     "http://proxy2:3128",
   ],
+  // Compact shorthand also works:
+  // chain: { hops: "http://proxy1:3128__http://proxy2:3128" },
 
   // Optional overrides (all of these are already set to their default values).
   // Remove or leave this section out entirely for the simplest setup.
