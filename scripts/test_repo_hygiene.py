@@ -9,6 +9,32 @@ import repo_hygiene
 
 
 class RepoHygieneTests(unittest.TestCase):
+    def test_parse_args_defaults(self) -> None:
+        args = repo_hygiene.parse_args([])
+        self.assertEqual(args.command, "scan")
+        self.assertEqual(args.repo_root, ".")
+        self.assertFalse(args.include_third_party)
+        self.assertEqual(args.baseline_file, repo_hygiene.BASELINE_DEFAULT_PATH)
+        self.assertFalse(args.json)
+
+    def test_parse_args_clean_with_flags(self) -> None:
+        args = repo_hygiene.parse_args(
+            [
+                "clean",
+                "--repo-root",
+                "repo",
+                "--include-third-party",
+                "--baseline-file",
+                "custom-baseline.json",
+                "--json",
+            ]
+        )
+        self.assertEqual(args.command, "clean")
+        self.assertEqual(args.repo_root, "repo")
+        self.assertTrue(args.include_third_party)
+        self.assertEqual(args.baseline_file, "custom-baseline.json")
+        self.assertTrue(args.json)
+
     def test_should_skip_for_unfinished(self) -> None:
         self.assertTrue(repo_hygiene.should_skip_for_unfinished("third_party/FunkyDNS/dns_server/doh.py"))
         self.assertFalse(
