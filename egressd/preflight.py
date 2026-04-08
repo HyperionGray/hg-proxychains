@@ -28,6 +28,42 @@ _DEFAULT_HEALTH_BIND = "127.0.0.1"
 _DEFAULT_HEALTH_PORT = 9191
 
 
+def _parse_hop_input(value: Any) -> List[Any]:
+    """Normalize hop input to a list.
+
+    Supports:
+    - list/tuple input
+    - a single dict hop object
+    - a single URL string
+    - comma-separated URL strings
+    - JSON array strings
+    """
+    if isinstance(value, list):
+        return list(value)
+    if isinstance(value, tuple):
+        return list(value)
+    if isinstance(value, dict):
+        return [value]
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return []
+        if raw.startswith("["):
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError:
+                return [raw]
+            if isinstance(parsed, list):
+                return parsed
+            return [parsed]
+        if "," in raw:
+            return [item.strip() for item in raw.split(",") if item.strip()]
+        return [raw]
+    if value is None:
+        return []
+    return [value]
+
+
 def normalize_cfg(raw: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize a raw user config to the full internal format.
 
@@ -46,16 +82,19 @@ def normalize_cfg(raw: Dict[str, Any]) -> Dict[str, Any]:
     """
     cfg: Dict[str, Any] = copy.deepcopy(raw)
 
-    # Support top-level ``proxies`` as an alias for ``chain.hops``.
+    # Support top-level ``proxy``/``proxies`` as aliases for ``chain.hops``.
+    cfg.setdefault("chain", {})
+    alias_hops: List[Any] = []
+    if "proxy" in cfg:
+        alias_hops.extend(_parse_hop_input(cfg.pop("proxy")))
     if "proxies" in cfg:
-        proxies = cfg.pop("proxies")
-        cfg.setdefault("chain", {})
-        if "hops" not in cfg["chain"]:
-            cfg["chain"]["hops"] = proxies
+        alias_hops.extend(_parse_hop_input(cfg.pop("proxies")))
+    if alias_hops and "hops" not in cfg["chain"]:
+        cfg["chain"]["hops"] = alias_hops
 
     # Normalize hops: accept plain URL strings as well as {"url": ...} dicts.
     chain_cfg = cfg.setdefault("chain", {})
-    hops = chain_cfg.get("hops", [])
+    hops = _parse_hop_input(chain_cfg.get("hops", []))
     chain_cfg["hops"] = [
         hop if isinstance(hop, dict) else {"url": hop} for hop in hops
     ]
@@ -181,6 +220,9 @@ def run_preflight(cfg: Dict[str, Any], *, skip_binary_checks: Optional[bool] = N
             hop_url = hop.get("url") if isinstance(hop, dict) else None
             if not hop_url:
                 errors.append(f"chain.hops[{idx}] is missing url")
+                continue
+            if not isinstance(hop_url, str):
+                errors.append(f"chain.hops[{idx}].url must be a string")
                 continue
             _validate_hop_url(hop_url, idx, errors)
 

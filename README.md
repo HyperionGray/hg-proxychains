@@ -69,7 +69,7 @@ known breakpoints, see `docs/USER-FLOW-REVIEW.md`.
 
 ## Minimal config
 
-The only required setting is your list of proxies.  Everything else uses
+The only required setting is your proxy chain.  Everything else uses
 safe, sensible defaults (fail-closed, DoH-only DNS, health endpoints on
 port 9191, etc.):
 
@@ -87,6 +87,20 @@ Plain URL strings and the canonical `{"url": "..."}` dict form are both
 accepted.  See `egressd/config.simple.example.json5` for this minimal
 format and `egressd/config.host.example.json5` for a fully-annotated host
 deployment example.
+
+You can use any of these equivalent shorthand styles:
+
+```json5
+// Single-hop shorthand
+{ proxy: "http://proxy1:3128" }
+
+// Multi-hop shorthand as CSV
+{ proxies: "http://proxy1:3128, http://proxy2:3128" }
+
+// Explicit chain.hops can also be a single string or JSON array string
+{ chain: { hops: "http://proxy1:3128" } }
+{ chain: { hops: "[\"http://proxy1:3128\",\"http://proxy2:3128\"]" } }
+```
 
 ### 1. Initialize FunkyDNS submodule
 

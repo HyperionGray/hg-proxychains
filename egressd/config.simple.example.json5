@@ -1,11 +1,14 @@
-// Minimal egressd config -- just list your proxy chain.
+// Minimal egressd config -- just set your proxy chain.
 // All other settings are optional and use safe, sensible defaults.
 //
 // Run egressd pointing at this file:
 //   python3 supervisor.py --config config.simple.example.json5
 {
-  proxies: [
-    "http://proxy1:3128",
-    "http://proxy2:3128",
-  ],
+  // Use a single proxy:
+  proxy: "http://proxy1:3128",
+
+  // Or multiple proxies (list, CSV string, and JSON array string all work):
+  // proxies: ["http://proxy1:3128", "http://proxy2:3128"],
+  // proxies: "http://proxy1:3128, http://proxy2:3128",
+  // proxies: '["http://proxy1:3128", "http://proxy2:3128"]',
 }
