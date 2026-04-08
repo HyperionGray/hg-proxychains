@@ -1,3 +1,5 @@
+import contextlib
+import io
 import sys
 import tempfile
 import unittest
@@ -89,14 +91,15 @@ class RepoHygieneTests(unittest.TestCase):
         command_baseline.assert_called_once_with(resolved_repo_root, True, "baseline.json")
 
         command_baseline.reset_mock()
-        rc = repo_hygiene.main(
-            [
-                "baseline",
-                "--repo-root",
-                str(repo_root),
-                "--json",
-            ]
-        )
+        with io.StringIO() as stderr_buf, contextlib.redirect_stderr(stderr_buf):
+            rc = repo_hygiene.main(
+                [
+                    "baseline",
+                    "--repo-root",
+                    str(repo_root),
+                    "--json",
+                ]
+            )
         self.assertEqual(rc, 2)
         command_baseline.assert_not_called()
 
