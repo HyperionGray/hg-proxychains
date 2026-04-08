@@ -26,6 +26,7 @@ The design goal is intentionally boring:
 │   ├── BRINGUP-CHECKLIST.md
 │   ├── FUNKYDNS-REVIEW.md
 │   ├── HOST-DEPLOYMENT.md
+│   ├── REPO-HYGIENE.md
 │   ├── REPO_MAINTENANCE.md
 │   └── USER-FLOW-REVIEW.md
 ├── egressd/
@@ -230,14 +231,14 @@ Run repository maintenance checks (unfinished markers, backup files, stale artif
 
 ```bash
 make maintenance
-# equivalent: python3 scripts/repo_hygiene.py scan --repo-root .
+# equivalent: python3 scripts/repo_hygiene.py scan --repo-root . --no-include-third-party
 ```
 
 For automatic cleanup of removable clutter (backup files, stray `__pycache__/` dirs, and known stale artifacts):
 
 ```bash
 make maintenance-fix
-# equivalent: python3 scripts/repo_hygiene.py clean --repo-root .
+# equivalent: python3 scripts/repo_hygiene.py clean --repo-root . --no-include-third-party
 ```
 
 `maintenance*` targets focus on first-party code by default. For a full scan that
@@ -249,6 +250,14 @@ make maintenance-all-json
 ```
 
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
+
+If you also want to catch unfinished markers in docs/runbooks, use markdown-aware
+mode:
+
+```bash
+make maintenance-markdown
+make maintenance-markdown-json
+```
 
 For focused first-party hygiene scans and stray cleanup:
 

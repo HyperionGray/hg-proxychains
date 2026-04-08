@@ -1,13 +1,11 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
-
-This repository includes a small maintenance utility at
-`scripts/repo_hygiene.py` for scheduled cleanups and local checks.
+`scripts/repo_hygiene.py` is the primary maintenance scanner/cleaner.
+`scripts/repo_maintenance.py` is a compatibility wrapper that delegates to it.
 
 ## What it checks
 
-- Unfinished markers in tracked files:
+- Unfinished markers in tracked code/config files:
   - `TODO`
   - `FIXME`
   - `STUB`
@@ -15,6 +13,8 @@ This repository includes a small maintenance utility at
   - `XXX`
   - `WIP`
   - `UNFINISHED`
+- Optional unfinished-marker scanning in documentation/text files when
+  `--include-markdown` is enabled (`.md`, `.markdown`, `.rst`, `.txt`)
 - Common untracked stray artifacts:
   - editor backups (`*~`, `*.bak`, `*.orig`, `*.rej`)
   - temporary files (`*.tmp`)
@@ -37,25 +37,28 @@ scheduled jobs can fail only on new findings.
 From repo root:
 
 ```bash
-# Text report
-python3 scripts/repo_hygiene.py scan --repo-root .
+# Text report (first-party scan by default)
+python3 scripts/repo_hygiene.py scan --repo-root . --no-include-third-party
 
 # JSON report for automation
-python3 scripts/repo_hygiene.py scan --repo-root . --json
+python3 scripts/repo_hygiene.py scan --repo-root . --no-include-third-party --json
 
 # Include third-party dependency tree explicitly
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
+# Also scan docs/text for unfinished markers
+python3 scripts/repo_hygiene.py scan --repo-root . --include-markdown
+
 # Remove untracked stray files/directories
-python3 scripts/repo_hygiene.py clean --repo-root .
-python3 scripts/repo_hygiene.py scan --repo-root . --json
+python3 scripts/repo_hygiene.py clean --repo-root . --no-include-third-party
 ```
 
 JSON output for automation:
 
 ```bash
-python3 scripts/repo_hygiene.py scan --repo-root . --json
-python3 scripts/repo_hygiene.py clean --repo-root . --json
+python3 scripts/repo_hygiene.py scan --repo-root . --no-include-third-party --json
+python3 scripts/repo_hygiene.py clean --repo-root . --no-include-third-party --json
+python3 scripts/repo_hygiene.py scan --repo-root . --no-include-third-party --include-markdown --json
 ```
 
 Optional deep scan including `third_party/FunkyDNS` unfinished markers:
@@ -69,13 +72,12 @@ Or through Make targets:
 ```bash
 make maintenance
 make maintenance-fix
+make maintenance-markdown
+make maintenance-markdown-json
 make repo-scan
 make repo-clean
 make repo-scan-json
 ```
-
-`scripts/repo_maintenance.py` is retained as a compatibility wrapper and now
-delegates to `scripts/repo_hygiene.py`.
 
 ## Exit codes
 
