@@ -1,9 +1,11 @@
 import json
 import os
 import sys
+import tempfile
 import time
 import types
 import unittest
+from io import StringIO
 from copy import deepcopy
 from pathlib import Path
 from unittest.mock import patch
@@ -184,6 +186,40 @@ class SupervisorTests(unittest.TestCase):
         readiness = supervisor.compute_readiness(state, cfg, now=now)
         self.assertTrue(readiness["ready"])
         self.assertEqual([], readiness["reasons"])
+
+    def test_parse_args_supports_print_effective_config_flag(self) -> None:
+        args = supervisor.parse_args(["--print-effective-config"])
+        self.assertTrue(args.print_effective_config)
+
+    def test_main_prints_normalized_effective_config_and_exits(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            cfg_path = Path(td) / "cfg.json"
+            cfg_path.write_text(
+                json.dumps(
+                    {
+                        "proxies": ["http://proxy1:3128", "http://proxy2:3128"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            stdout = StringIO()
+            with (
+                patch("sys.stdout", stdout),
+                patch("supervisor.configure_logging") as configure_logging,
+                patch("supervisor.pyjson5.decode", side_effect=json.loads),
+            ):
+                rc = supervisor.main(["--config", str(cfg_path), "--print-effective-config"])
+
+        self.assertEqual(0, rc)
+        configure_logging.assert_not_called()
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual("0.0.0.0", payload["listener"]["bind"])
+        self.assertEqual(15001, payload["listener"]["port"])
+        self.assertEqual(
+            [{"url": "http://proxy1:3128"}, {"url": "http://proxy2:3128"}],
+            payload["chain"]["hops"],
+        )
+        self.assertIn("supervisor", payload)
 
 
 if __name__ == "__main__":

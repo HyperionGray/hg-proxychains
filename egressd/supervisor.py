@@ -755,6 +755,11 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="Validate config and exit with a JSON preflight report.",
     )
+    parser.add_argument(
+        "--print-effective-config",
+        action="store_true",
+        help="Print normalized runtime config (with defaults applied) and exit.",
+    )
     return parser.parse_args(argv)
 
 
@@ -764,6 +769,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parse_args(argv)
     cfg = load_cfg(args.config)
     RUNTIME_CFG = cfg
+    if args.print_effective_config:
+        print(json.dumps(cfg, indent=2, sort_keys=True))
+        return 0
+
     configure_logging(cfg)
 
     preflight_report = run_preflight(cfg)

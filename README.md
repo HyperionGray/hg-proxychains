@@ -213,6 +213,8 @@ Useful checks:
 ```bash
 make preflight
 make validate-config
+# print normalized runtime config with defaults applied
+python3 egressd/supervisor.py --config egressd/config.simple.example.json5 --print-effective-config
 ```
 
 ## What to tweak first
