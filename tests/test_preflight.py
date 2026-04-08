@@ -10,7 +10,7 @@ Crucially they also cover the fail-closed / leak-prevention logic:
   otherwise traffic could leak through a misconfigured chain.
 
 normalize_cfg tests verify that the simplified user-facing format (e.g.
-top-level ``proxies`` list, plain URL strings as hops) is expanded to the
+top-level ``proxy`` / ``proxies`` shorthand, plain URL strings as hops) is expanded to the
 full internal format with all defaults applied.
 """
 import copy
@@ -250,6 +250,13 @@ class PreflightBinaryCheckTests(unittest.TestCase):
 class NormalizeCfgTests(unittest.TestCase):
     """Tests for normalize_cfg: simple user-facing format to internal format."""
 
+    def test_top_level_proxy_becomes_single_chain_hop(self) -> None:
+        """Top-level ``proxy`` shorthand creates a one-hop ``chain.hops`` list."""
+        raw = {"proxy": "http://proxy1:3128"}
+        cfg = preflight.normalize_cfg(raw)
+        self.assertNotIn("proxy", cfg)
+        self.assertEqual(cfg["chain"]["hops"], [{"url": "http://proxy1:3128"}])
+
     def test_top_level_proxies_becomes_chain_hops(self) -> None:
         """Top-level ``proxies`` list is moved into ``chain.hops``."""
         raw = {"proxies": ["http://proxy1:3128", "http://proxy2:3128"]}
@@ -324,6 +331,24 @@ class NormalizeCfgTests(unittest.TestCase):
         }
         cfg = preflight.normalize_cfg(raw)
         self.assertEqual(cfg["chain"]["hops"], [{"url": "http://from-hops:3128"}])
+
+    def test_proxies_take_precedence_over_proxy_shorthand(self) -> None:
+        """When both shorthand forms are present, explicit ``proxies`` wins."""
+        raw = {
+            "proxy": "http://single:3128",
+            "proxies": ["http://list-proxy:3128"],
+        }
+        cfg = preflight.normalize_cfg(raw)
+        self.assertEqual(cfg["chain"]["hops"], [{"url": "http://list-proxy:3128"}])
+
+    def test_chain_hops_take_precedence_over_proxy_shorthand(self) -> None:
+        """Canonical ``chain.hops`` must win over shorthand aliases."""
+        raw = {
+            "proxy": "http://single:3128",
+            "chain": {"hops": [{"url": "http://canonical:3128"}]},
+        }
+        cfg = preflight.normalize_cfg(raw)
+        self.assertEqual(cfg["chain"]["hops"], [{"url": "http://canonical:3128"}])
 
 
 if __name__ == "__main__":
