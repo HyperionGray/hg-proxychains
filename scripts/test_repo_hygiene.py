@@ -9,6 +9,16 @@ import repo_hygiene
 
 
 class RepoHygieneTests(unittest.TestCase):
+    def test_filter_excluded_paths_with_globs(self) -> None:
+        paths = [
+            "a.py",
+            "docs/generated/index.md",
+            "docs/generated/api.json",
+            "scripts/tool.py",
+        ]
+        filtered = repo_hygiene.filter_excluded_paths(paths, ["docs/generated/*", "*.json"])
+        self.assertEqual(filtered, ["a.py", "scripts/tool.py"])
+
     def test_should_skip_for_unfinished(self) -> None:
         self.assertTrue(repo_hygiene.should_skip_for_unfinished("third_party/FunkyDNS/dns_server/doh.py"))
         self.assertFalse(
@@ -156,6 +166,64 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_discover_embedded_git_repos_respects_exclude_globs(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            keep_git = root / "scratch" / ".git"
+            keep_git.mkdir(parents=True, exist_ok=True)
+            skip_git = root / "vendor" / "tmp" / ".git"
+            skip_git.mkdir(parents=True, exist_ok=True)
+
+            found = repo_hygiene.discover_embedded_git_repos(
+                root,
+                include_third_party=True,
+                exclude_globs=["vendor/**"],
+            )
+
+        self.assertEqual(found, ["scratch"])
+
+    def test_parse_args_accepts_exclude_and_boolean_optional(self) -> None:
+        args = repo_hygiene.parse_args(
+            [
+                "scan",
+                "--no-include-third-party",
+                "--exclude-glob",
+                "docs/generated/*",
+                "--exclude-glob",
+                "*.tmp",
+            ]
+        )
+        self.assertEqual(args.command, "scan")
+        self.assertFalse(args.include_third_party)
+        self.assertEqual(args.exclude_glob, ["docs/generated/*", "*.tmp"])
+
+    def test_main_passes_cli_options_to_scan(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_scan", return_value=0) as mock_scan:
+                rc = repo_hygiene.main(
+                    [
+                        "scan",
+                        "--repo-root",
+                        str(root),
+                        "--include-third-party",
+                        "--baseline-file",
+                        "custom-baseline.json",
+                        "--exclude-glob",
+                        "docs/generated/*",
+                    ]
+                )
+        self.assertEqual(rc, 0)
+        mock_scan.assert_called_once_with(
+            root.resolve(),
+            include_third_party=True,
+            baseline_path="custom-baseline.json",
+            exclude_globs=["docs/generated/*"],
+            json_output=False,
+        )
 
 
 if __name__ == "__main__":
