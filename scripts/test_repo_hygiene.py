@@ -9,6 +9,13 @@ import repo_hygiene
 
 
 class RepoHygieneTests(unittest.TestCase):
+    def test_parse_args_include_third_party_boolean_optional(self) -> None:
+        args = repo_hygiene.parse_args(["scan", "--include-third-party"])
+        self.assertTrue(args.include_third_party)
+
+        args = repo_hygiene.parse_args(["scan", "--no-include-third-party"])
+        self.assertFalse(args.include_third_party)
+
     def test_should_skip_for_unfinished(self) -> None:
         self.assertTrue(repo_hygiene.should_skip_for_unfinished("third_party/FunkyDNS/dns_server/doh.py"))
         self.assertFalse(
@@ -156,6 +163,43 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_main_clean_passes_include_third_party_and_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+
+            with patch.object(repo_hygiene, "command_clean", return_value=7) as mocked_clean:
+                rc = repo_hygiene.main(
+                    [
+                        "clean",
+                        "--repo-root",
+                        td,
+                        "--include-third-party",
+                        "--baseline-file",
+                        "custom-baseline.json",
+                        "--json",
+                    ]
+                )
+
+        self.assertEqual(rc, 7)
+        mocked_clean.assert_called_once_with(
+            root.resolve(),
+            include_third_party=True,
+            baseline_path="custom-baseline.json",
+            json_output=True,
+        )
+
+    def test_main_rejects_json_for_baseline_command(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+
+            with patch.object(repo_hygiene, "command_baseline", return_value=0) as mocked_baseline:
+                rc = repo_hygiene.main(["baseline", "--repo-root", td, "--json"])
+
+        self.assertEqual(rc, 2)
+        mocked_baseline.assert_not_called()
 
 
 if __name__ == "__main__":
