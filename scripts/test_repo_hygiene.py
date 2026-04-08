@@ -9,6 +9,17 @@ import repo_hygiene
 
 
 class RepoHygieneTests(unittest.TestCase):
+    def test_parse_args_supports_include_third_party_toggle(self) -> None:
+        args = repo_hygiene.parse_args(["scan", "--include-third-party"])
+        self.assertTrue(args.include_third_party)
+
+        args = repo_hygiene.parse_args(["scan", "--no-include-third-party"])
+        self.assertFalse(args.include_third_party)
+
+    def test_parse_args_accepts_custom_baseline_file(self) -> None:
+        args = repo_hygiene.parse_args(["scan", "--baseline-file", "custom-baseline.json"])
+        self.assertEqual(args.baseline_file, "custom-baseline.json")
+
     def test_should_skip_for_unfinished(self) -> None:
         self.assertTrue(repo_hygiene.should_skip_for_unfinished("third_party/FunkyDNS/dns_server/doh.py"))
         self.assertFalse(
