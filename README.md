@@ -249,6 +249,13 @@ make maintenance-all-json
 ```
 
 For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
+If you want both console output and a persisted JSON artifact, pass
+`--report-file`:
+
+```bash
+python3 scripts/repo_hygiene.py scan --repo-root . --json --report-file reports/repo-hygiene.json
+python3 scripts/repo_hygiene.py clean --repo-root . --report-file reports/repo-hygiene-clean.json
+```
 
 For focused first-party hygiene scans and stray cleanup:
 

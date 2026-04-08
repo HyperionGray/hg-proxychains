@@ -1,3 +1,4 @@
+import json
 import sys
 import tempfile
 import unittest
@@ -156,6 +157,71 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_command_scan_can_write_report_file(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            with patch.object(
+                repo_hygiene,
+                "gather_hygiene_state",
+                return_value=([], [], [], [], [], 0),
+            ):
+                rc = repo_hygiene.command_scan(
+                    root,
+                    include_third_party=False,
+                    baseline_path=".repo-hygiene-baseline.json",
+                    report_file="reports/hygiene.json",
+                )
+
+            self.assertEqual(rc, 0)
+            payload = json.loads((root / "reports" / "hygiene.json").read_text(encoding="utf-8"))
+            self.assertEqual(payload["summary"]["total_issues"], 0)
+
+    def test_main_clean_forwards_cli_flags(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_clean", return_value=7) as command_clean:
+                rc = repo_hygiene.main(
+                    [
+                        "clean",
+                        "--repo-root",
+                        str(root),
+                        "--include-third-party",
+                        "--baseline-file",
+                        "custom-baseline.json",
+                        "--json",
+                        "--report-file",
+                        "tmp/report.json",
+                    ]
+                )
+
+            self.assertEqual(rc, 7)
+            command_clean.assert_called_once_with(
+                root.resolve(),
+                include_third_party=True,
+                baseline_path="custom-baseline.json",
+                json_output=True,
+                report_file="tmp/report.json",
+            )
+
+    def test_main_baseline_rejects_report_file(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_baseline") as command_baseline:
+                rc = repo_hygiene.main(
+                    [
+                        "baseline",
+                        "--repo-root",
+                        str(root),
+                        "--report-file",
+                        "tmp/report.json",
+                    ]
+                )
+
+            self.assertEqual(rc, 2)
+            command_baseline.assert_not_called()
 
 
 if __name__ == "__main__":

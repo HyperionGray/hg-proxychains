@@ -5,6 +5,8 @@
 This repository includes a small maintenance utility at
 `scripts/repo_hygiene.py` for scheduled cleanups and local checks.
 
+First task in every cleanup loop: clean up this directory.
+
 ## What it checks
 
 - Unfinished markers in tracked files:
@@ -43,6 +45,9 @@ python3 scripts/repo_hygiene.py scan --repo-root .
 # JSON report for automation
 python3 scripts/repo_hygiene.py scan --repo-root . --json
 
+# Always write a machine-readable report file (scan/clean only)
+python3 scripts/repo_hygiene.py scan --repo-root . --report-file reports/repo-hygiene.json
+
 # Include third-party dependency tree explicitly
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
@@ -56,6 +61,13 @@ JSON output for automation:
 ```bash
 python3 scripts/repo_hygiene.py scan --repo-root . --json
 python3 scripts/repo_hygiene.py clean --repo-root . --json
+```
+
+Persisted JSON report file (helpful for cron jobs and artifact collection):
+
+```bash
+python3 scripts/repo_hygiene.py scan --repo-root . --report-file reports/repo-hygiene.json
+python3 scripts/repo_hygiene.py clean --repo-root . --report-file reports/repo-hygiene-clean.json
 ```
 
 Optional deep scan including `third_party/FunkyDNS` unfinished markers:
@@ -83,7 +95,7 @@ delegates to `scripts/repo_hygiene.py`.
 - `1`: blocking issues found
   - `scan`: unfinished markers, stray untracked files, or stale artifacts
   - `clean`: unfinished markers or tracked stale artifacts (removable clutter is deleted)
-- `2`: invalid invocation (for example, non-git directory)
+- `2`: invalid invocation (for example, non-git directory, or unsupported flags for `baseline`)
 
 ## Baseline file
 
