@@ -122,9 +122,10 @@ class RepoHygieneTests(unittest.TestCase):
             nested_file.parent.mkdir(parents=True, exist_ok=True)
             nested_file.write_bytes(b"x")
 
-            deleted = repo_hygiene.delete_paths(root, ["tmp/__pycache__/x.pyc"])
+            deleted, failed = repo_hygiene.delete_paths(root, ["tmp/__pycache__/x.pyc"])
 
-            self.assertEqual(deleted, 1)
+            self.assertEqual(deleted, ["tmp/__pycache__/x.pyc"])
+            self.assertEqual(failed, [])
             self.assertFalse((root / "tmp").exists())
 
     def test_apply_marker_baseline_suppresses_known_findings(self) -> None:
@@ -156,6 +157,73 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_parse_args_supports_include_third_party_flag(self) -> None:
+        args = repo_hygiene.parse_args(["scan", "--include-third-party"])
+        self.assertTrue(args.include_third_party)
+
+    def test_main_scan_passes_runtime_flags_through(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_scan", return_value=0) as command_scan:
+                exit_code = repo_hygiene.main(
+                    [
+                        "scan",
+                        "--repo-root",
+                        str(root),
+                        "--include-third-party",
+                        "--baseline-file",
+                        "custom-baseline.json",
+                        "--json",
+                    ]
+                )
+        self.assertEqual(exit_code, 0)
+        command_scan.assert_called_once_with(
+            root.resolve(),
+            include_third_party=True,
+            baseline_path="custom-baseline.json",
+            json_output=True,
+        )
+
+    def test_main_clean_passes_runtime_flags_through(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_clean", return_value=0) as command_clean:
+                exit_code = repo_hygiene.main(
+                    [
+                        "clean",
+                        "--repo-root",
+                        str(root),
+                        "--no-include-third-party",
+                        "--baseline-file",
+                        "baseline.json",
+                    ]
+                )
+        self.assertEqual(exit_code, 0)
+        command_clean.assert_called_once_with(
+            root.resolve(),
+            include_third_party=False,
+            baseline_path="baseline.json",
+            json_output=False,
+        )
+
+    def test_main_baseline_rejects_json_output(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_baseline") as command_baseline:
+                exit_code = repo_hygiene.main(
+                    [
+                        "baseline",
+                        "--repo-root",
+                        str(root),
+                        "--json",
+                    ]
+                )
+        self.assertEqual(exit_code, 2)
+        command_baseline.assert_not_called()
 
 
 if __name__ == "__main__":

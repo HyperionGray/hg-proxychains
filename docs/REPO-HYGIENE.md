@@ -1,9 +1,10 @@
 # Repo hygiene
 
-`scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
+`scripts/repo_hygiene.py` is the primary hygiene scanner/cleaner used by
+scheduled automation and local maintenance checks.
 
-This repository includes a small maintenance utility at
-`scripts/repo_hygiene.py` for scheduled cleanups and local checks.
+This repository includes a maintenance utility at `scripts/repo_hygiene.py`
+for scheduled cleanups and local checks.
 
 ## What it checks
 
@@ -74,7 +75,7 @@ make repo-clean
 make repo-scan-json
 ```
 
-`scripts/repo_maintenance.py` is retained as a compatibility wrapper and now
+`scripts/repo_maintenance.py` is retained as a compatibility wrapper and
 delegates to `scripts/repo_hygiene.py`.
 
 ## Exit codes
@@ -82,7 +83,7 @@ delegates to `scripts/repo_hygiene.py`.
 - `0`: no issues remain after the command completes
 - `1`: blocking issues found
   - `scan`: unfinished markers, stray untracked files, or stale artifacts
-  - `clean`: unfinished markers or tracked stale artifacts (removable clutter is deleted)
+  - `clean`: unfinished markers, tracked stale artifacts, embedded git repos, or failed deletions (removable clutter is deleted when possible)
 - `2`: invalid invocation (for example, non-git directory)
 
 ## Baseline file
@@ -94,6 +95,15 @@ By default, `scan`/`clean` load marker suppressions from:
 Override with `--baseline-file <path>`.
 
 The baseline currently suppresses marker findings only (not stray files).
+
+## Clean command JSON details
+
+`clean --json` includes a `clean` object with explicit path-level results:
+
+- `requested_paths`: all removable paths targeted for deletion
+- `deleted_paths`: paths successfully removed
+- `failed_paths`: paths that could not be removed
+- `requested_count`, `deleted_count`, `failed_count`: summary counts
 
 ## Legacy script
 

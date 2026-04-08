@@ -35,9 +35,6 @@ STRAY_DIR_NAMES = {
     ".mypy_cache",
     ".ruff_cache",
 }
-STALE_ARTIFACT_PATHS = (
-    "egressd-starter.tar.gz",
-)
 UNFINISHED_SCAN_SUFFIXES = {
     ".py",
     ".sh",
@@ -56,8 +53,8 @@ UNFINISHED_SCAN_FILENAMES = {
 }
 BASELINE_DEFAULT_PATH = ".repo-hygiene-baseline.json"
 THIRD_PARTY_PREFIX = "third_party/"
-STALE_ARTIFACT_PATHS: frozenset[str] = frozenset()
-# Add known stale tracked/untracked artifact paths here (e.g. generated bundles) as they arise.
+STALE_ARTIFACT_PATHS: frozenset[str] = frozenset({"egressd-starter.tar.gz"})
+# Add known stale tracked/untracked artifact paths here as they arise.
 
 
 @dataclass(frozen=True)
@@ -263,23 +260,25 @@ def prune_empty_parents(repo_root: Path, start_path: Path) -> None:
         parent = parent.parent
 
 
-def delete_paths(repo_root: Path, relative_paths: Iterable[str]) -> int:
-    deleted = 0
+def delete_paths(repo_root: Path, relative_paths: Iterable[str]) -> tuple[list[str], list[str]]:
+    deleted: list[str] = []
+    failed: list[str] = []
     for rel_path in sorted(set(relative_paths)):
         abs_path = repo_root / rel_path
         try:
             if abs_path.is_dir():
                 shutil.rmtree(abs_path)
-                deleted += 1
+                deleted.append(rel_path)
             elif abs_path.exists():
                 abs_path.unlink()
-                deleted += 1
+                deleted.append(rel_path)
             else:
                 continue
             prune_empty_parents(repo_root, abs_path)
         except OSError as exc:
             print(f"warn: failed to delete {rel_path}: {exc}", file=sys.stderr)
-    return deleted
+            failed.append(rel_path)
+    return deleted, failed
 
 
 def build_scan_report(
@@ -439,10 +438,14 @@ def command_clean(
         suppressed_markers=suppressed,
     )
     removable_paths = sorted(set(stray) | set(stale_untracked))
-    deleted = delete_paths(repo_root, removable_paths)
+    deleted_paths, failed_paths = delete_paths(repo_root, removable_paths)
     report["clean"] = {
-        "deleted_paths": deleted,
-        "requested_paths": len(removable_paths),
+        "requested_paths": removable_paths,
+        "deleted_paths": deleted_paths,
+        "failed_paths": failed_paths,
+        "requested_count": len(removable_paths),
+        "deleted_count": len(deleted_paths),
+        "failed_count": len(failed_paths),
     }
 
     if json_output:
@@ -456,9 +459,15 @@ def command_clean(
             embedded_git_repos,
             suppressed_markers=suppressed,
         )
-        print(f"deleted removable paths: {deleted}")
+        print(f"deleted removable paths: {len(deleted_paths)}")
+        for rel_path in deleted_paths:
+            print(f"  - {rel_path}")
+        if failed_paths:
+            print(f"failed removable paths: {len(failed_paths)}")
+            for rel_path in failed_paths:
+                print(f"  - {rel_path}")
 
-    cleanup_incomplete = deleted != len(removable_paths)
+    cleanup_incomplete = bool(failed_paths)
     return 1 if findings or stale_tracked or embedded_git_repos or cleanup_incomplete else 0
 
 
@@ -517,17 +526,6 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         action="store_true",
         help="emit machine-readable JSON output",
     )
-    parser.add_argument(
-        "--include-third-party",
-        action="store_true",
-        default=False,
-        help="include all of third_party/ (e.g. third_party/FunkyDNS) in marker and stray-file scanning (default: false)",
-    )
-    parser.add_argument(
-        "--baseline-file",
-        default=BASELINE_DEFAULT_PATH,
-        help=f"marker baseline path relative to --repo-root (default: {BASELINE_DEFAULT_PATH})",
-    )
     return parser.parse_args(argv)
 
 
@@ -538,17 +536,28 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"error: {repo_root} is not a git repository", file=sys.stderr)
         return 2
 
-    if args.command == "baseline":
-        return command_baseline(repo_root, args.include_third_party, args.baseline_file)
     if args.command == "clean":
-        return command_clean(repo_root, json_output=args.json)
-    elif args.command == "baseline":
-        # baseline command doesn't support --json flag
+        return command_clean(
+            repo_root,
+            include_third_party=args.include_third_party,
+            baseline_path=args.baseline_file,
+            json_output=args.json,
+        )
+    if args.command == "baseline":
         if args.json:
             print("error: --json is not supported for the 'baseline' command", file=sys.stderr)
             return 2
-        return command_baseline(repo_root, include_third_party=False, baseline_path=BASELINE_DEFAULT_PATH)
-    return command_scan(repo_root, json_output=args.json)
+        return command_baseline(
+            repo_root,
+            include_third_party=args.include_third_party,
+            baseline_path=args.baseline_file,
+        )
+    return command_scan(
+        repo_root,
+        include_third_party=args.include_third_party,
+        baseline_path=args.baseline_file,
+        json_output=args.json,
+    )
 
 
 if __name__ == "__main__":
