@@ -4,8 +4,9 @@
 // Run egressd pointing at this file:
 //   python3 supervisor.py --config config.simple.example.json5
 {
-  proxies: [
-    "http://proxy1:3128",
-    "http://proxy2:3128",
-  ],
+  // Single-hop shorthand:
+  // proxy: "http://proxy1:3128",
+  //
+  // Multi-hop shorthand:
+  proxies: ["http://proxy1:3128", "http://proxy2:3128"],
 }

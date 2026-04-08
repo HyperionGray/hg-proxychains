@@ -31,11 +31,14 @@ _DEFAULT_HEALTH_PORT = 9191
 def normalize_cfg(raw: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize a raw user config to the full internal format.
 
-    Supports a simplified top-level ``proxies`` key as a shorthand for
-    ``chain.hops``.  Each entry in ``proxies`` (or ``chain.hops``) may be
-    a plain URL string or the canonical ``{"url": "..."}`` dict form.  All
-    sections and fields that the user omits receive sensible defaults so
-    that the minimal useful config is just::
+    Supports simplified top-level proxy keys as shorthand for ``chain.hops``:
+    - ``proxy`` for a single hop
+    - ``proxies`` for one or more hops
+
+    Each entry in these keys (or in ``chain.hops``) may be a plain URL
+    string or the canonical ``{"url": "..."}`` dict form.  All sections and
+    fields that the user omits receive sensible defaults so that the minimal
+    useful config is just::
 
         {
           proxies: [
@@ -45,6 +48,13 @@ def normalize_cfg(raw: Dict[str, Any]) -> Dict[str, Any]:
         }
     """
     cfg: Dict[str, Any] = copy.deepcopy(raw)
+
+    # Support a top-level single-hop ``proxy`` alias.
+    if "proxy" in cfg and "proxies" not in cfg:
+        proxy = cfg.pop("proxy")
+        cfg["proxies"] = [proxy]
+    else:
+        cfg.pop("proxy", None)
 
     # Support top-level ``proxies`` as an alias for ``chain.hops``.
     if "proxies" in cfg:

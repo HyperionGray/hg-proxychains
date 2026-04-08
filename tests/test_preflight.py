@@ -250,6 +250,13 @@ class PreflightBinaryCheckTests(unittest.TestCase):
 class NormalizeCfgTests(unittest.TestCase):
     """Tests for normalize_cfg: simple user-facing format to internal format."""
 
+    def test_top_level_proxy_becomes_single_chain_hop(self) -> None:
+        """Top-level ``proxy`` string is converted into a one-entry ``chain.hops`` list."""
+        raw = {"proxy": "http://proxy1:3128"}
+        cfg = preflight.normalize_cfg(raw)
+        self.assertNotIn("proxy", cfg)
+        self.assertEqual(cfg["chain"]["hops"], [{"url": "http://proxy1:3128"}])
+
     def test_top_level_proxies_becomes_chain_hops(self) -> None:
         """Top-level ``proxies`` list is moved into ``chain.hops``."""
         raw = {"proxies": ["http://proxy1:3128", "http://proxy2:3128"]}
@@ -309,12 +316,31 @@ class NormalizeCfgTests(unittest.TestCase):
         report = preflight.run_preflight(cfg, skip_binary_checks=True)
         self.assertTrue(report["ok"], f"Expected ok=True; errors: {report['errors']}")
 
+    def test_single_proxy_config_passes_preflight(self) -> None:
+        """A config with only ``proxy`` normalizes to a valid preflight state."""
+        raw = {"proxy": "http://proxy1:3128"}
+        cfg = preflight.normalize_cfg(raw)
+        report = preflight.run_preflight(cfg, skip_binary_checks=True)
+        self.assertTrue(report["ok"], f"Expected ok=True; errors: {report['errors']}")
+
     def test_raw_config_is_not_mutated(self) -> None:
         """normalize_cfg must not modify the input dict."""
         raw = {"proxies": ["http://proxy1:3128"]}
         original = copy.deepcopy(raw)
         preflight.normalize_cfg(raw)
         self.assertEqual(raw, original)
+
+    def test_proxies_wins_when_both_proxy_and_proxies_present(self) -> None:
+        """When both aliases are set, ``proxies`` is used and ``proxy`` is ignored."""
+        raw = {
+            "proxy": "http://single:3128",
+            "proxies": ["http://list-1:3128", "http://list-2:3128"],
+        }
+        cfg = preflight.normalize_cfg(raw)
+        self.assertEqual(
+            cfg["chain"]["hops"],
+            [{"url": "http://list-1:3128"}, {"url": "http://list-2:3128"}],
+        )
 
     def test_proxies_not_overwritten_when_hops_already_set(self) -> None:
         """If both ``proxies`` and ``chain.hops`` are present, ``chain.hops`` wins."""

@@ -69,9 +69,16 @@ known breakpoints, see `docs/USER-FLOW-REVIEW.md`.
 
 ## Minimal config
 
-The only required setting is your list of proxies.  Everything else uses
-safe, sensible defaults (fail-closed, DoH-only DNS, health endpoints on
-port 9191, etc.):
+The only required setting is your proxy chain. Everything else uses safe,
+sensible defaults (fail-closed, DoH-only DNS, health endpoints on port 9191,
+etc.). You can use either a single `proxy` string or a `proxies` list:
+
+```json5
+// egressd/config.json5
+{
+  proxy: "http://proxy1:3128",
+}
+```
 
 ```json5
 // egressd/config.json5
