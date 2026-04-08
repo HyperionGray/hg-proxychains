@@ -26,7 +26,7 @@ The design goal is intentionally boring:
 │   ├── BRINGUP-CHECKLIST.md
 │   ├── FUNKYDNS-REVIEW.md
 │   ├── HOST-DEPLOYMENT.md
-│   ├── REPO_MAINTENANCE.md
+│   ├── REPO-HYGIENE.md
 │   └── USER-FLOW-REVIEW.md
 ├── egressd/
 │   ├── Dockerfile
