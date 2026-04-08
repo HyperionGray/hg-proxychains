@@ -119,6 +119,13 @@ class PreflightHopTests(unittest.TestCase):
         report = preflight.run_preflight(cfg, skip_binary_checks=True)
         self.assertFalse(report["ok"])
 
+    def test_hop_with_non_string_url_fails(self) -> None:
+        cfg = _base_cfg()
+        cfg["chain"]["hops"] = [{"url": 12345}]
+        report = preflight.run_preflight(cfg, skip_binary_checks=True)
+        self.assertFalse(report["ok"])
+        self.assertTrue(any("must be a string" in e for e in report["errors"]))
+
 
 class PreflightFailClosedLeakPreventionTests(unittest.TestCase):
     """
@@ -260,6 +267,27 @@ class NormalizeCfgTests(unittest.TestCase):
             [{"url": "http://proxy1:3128"}, {"url": "http://proxy2:3128"}],
         )
 
+    def test_top_level_proxies_accepts_single_string(self) -> None:
+        raw = {"proxies": "http://proxy1:3128"}
+        cfg = preflight.normalize_cfg(raw)
+        self.assertEqual(cfg["chain"]["hops"], [{"url": "http://proxy1:3128"}])
+
+    def test_top_level_proxies_accepts_csv_string(self) -> None:
+        raw = {"proxies": "http://proxy1:3128,http://proxy2:3128"}
+        cfg = preflight.normalize_cfg(raw)
+        self.assertEqual(
+            cfg["chain"]["hops"],
+            [{"url": "http://proxy1:3128"}, {"url": "http://proxy2:3128"}],
+        )
+
+    def test_top_level_proxies_accepts_json_array_string(self) -> None:
+        raw = {"proxies": '["http://proxy1:3128", "http://proxy2:3128"]'}
+        cfg = preflight.normalize_cfg(raw)
+        self.assertEqual(
+            cfg["chain"]["hops"],
+            [{"url": "http://proxy1:3128"}, {"url": "http://proxy2:3128"}],
+        )
+
     def test_string_hops_converted_to_url_dicts(self) -> None:
         """Plain URL strings in ``chain.hops`` are wrapped in ``{"url": ...}``."""
         raw = {"chain": {"hops": ["http://proxy1:3128", "http://proxy2:3128"]}}
@@ -268,6 +296,11 @@ class NormalizeCfgTests(unittest.TestCase):
             cfg["chain"]["hops"],
             [{"url": "http://proxy1:3128"}, {"url": "http://proxy2:3128"}],
         )
+
+    def test_chain_hops_single_string_converted_to_url_dict(self) -> None:
+        raw = {"chain": {"hops": "http://proxy1:3128"}}
+        cfg = preflight.normalize_cfg(raw)
+        self.assertEqual(cfg["chain"]["hops"], [{"url": "http://proxy1:3128"}])
 
     def test_dict_hops_left_unchanged(self) -> None:
         """Canonical ``{"url": ...}`` hops are not double-wrapped."""

@@ -88,6 +88,16 @@ accepted.  See `egressd/config.simple.example.json5` for this minimal
 format and `egressd/config.host.example.json5` for a fully-annotated host
 deployment example.
 
+You can also provide a single proxy as a string (for `proxies` or
+`chain.hops`), or use CSV / JSON-array string shorthand when wiring values
+from environment templating systems:
+
+```json5
+{
+  proxies: "http://proxy1:3128,http://proxy2:3128"
+}
+```
+
 ### 1. Initialize FunkyDNS submodule
 
 Configure authenticated GitHub access, then initialize the private submodule:

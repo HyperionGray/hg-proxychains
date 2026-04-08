@@ -28,6 +28,63 @@ _DEFAULT_HEALTH_BIND = "127.0.0.1"
 _DEFAULT_HEALTH_PORT = 9191
 
 
+def _expand_hop_entries(value: Any) -> List[Any]:
+    """Parse hop shorthand values into a normalized list of entries.
+
+    Supported shorthand forms:
+    - single URL string: ``"http://proxy1:3128"``
+    - CSV string: ``"http://p1:3128,http://p2:3128"``
+    - JSON array string: ``'["http://p1:3128","http://p2:3128"]'``
+    - canonical list/tuple values
+    """
+    parsed: Any = value
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return []
+        if raw.startswith("["):
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError:
+                parsed = [part.strip() for part in raw.split(",")]
+        elif "," in raw:
+            parsed = [part.strip() for part in raw.split(",")]
+        else:
+            parsed = [raw]
+
+    if isinstance(parsed, dict):
+        parsed = [parsed]
+    elif not isinstance(parsed, (list, tuple)):
+        parsed = [parsed]
+
+    entries: List[Any] = []
+    for item in parsed:
+        if item is None:
+            continue
+        if isinstance(item, str):
+            candidate = item.strip()
+            if not candidate:
+                continue
+            if "," in candidate:
+                entries.extend(part.strip() for part in candidate.split(",") if part.strip())
+            else:
+                entries.append(candidate)
+        else:
+            entries.append(item)
+    return entries
+
+
+def _normalize_hops(value: Any) -> List[Dict[str, Any]]:
+    """Return canonical ``chain.hops`` entries."""
+    normalized: List[Dict[str, Any]] = []
+    for hop in _expand_hop_entries(value):
+        if isinstance(hop, dict):
+            normalized.append(hop)
+        else:
+            normalized.append({"url": hop})
+    return normalized
+
+
 def normalize_cfg(raw: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize a raw user config to the full internal format.
 
@@ -55,10 +112,7 @@ def normalize_cfg(raw: Dict[str, Any]) -> Dict[str, Any]:
 
     # Normalize hops: accept plain URL strings as well as {"url": ...} dicts.
     chain_cfg = cfg.setdefault("chain", {})
-    hops = chain_cfg.get("hops", [])
-    chain_cfg["hops"] = [
-        hop if isinstance(hop, dict) else {"url": hop} for hop in hops
-    ]
+    chain_cfg["hops"] = _normalize_hops(chain_cfg.get("hops", []))
 
     # Listener defaults.
     listener = cfg.setdefault("listener", {})
@@ -114,6 +168,9 @@ def _check_binary_exists(binary: str) -> bool:
 
 
 def _validate_hop_url(url: str, idx: int, errors: List[str]) -> None:
+    if not isinstance(url, str):
+        errors.append(f"chain.hops[{idx}].url must be a string, got: {type(url).__name__}")
+        return
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"}:
         errors.append(f"chain.hops[{idx}].url has unsupported scheme: {parsed.scheme or '<empty>'}")
