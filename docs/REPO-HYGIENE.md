@@ -64,6 +64,13 @@ Optional deep scan including `third_party/FunkyDNS` unfinished markers:
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 ```
 
+Exclude known paths or globs from all checks (unfinished markers, stray files,
+stale artifacts, and embedded git repos):
+
+```bash
+python3 scripts/repo_hygiene.py scan --repo-root . --exclude-path "tmp/**" --exclude-path "scratch"
+```
+
 Or through Make targets:
 
 ```bash
@@ -94,6 +101,8 @@ By default, `scan`/`clean` load marker suppressions from:
 Override with `--baseline-file <path>`.
 
 The baseline currently suppresses marker findings only (not stray files).
+Explicit exclusions supplied with `--exclude-path` apply to marker, stray,
+stale-artifact, and embedded-git checks.
 
 ## Legacy script
 

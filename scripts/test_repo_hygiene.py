@@ -2,7 +2,6 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import repo_hygiene
@@ -68,6 +67,15 @@ class RepoHygieneTests(unittest.TestCase):
         )
         self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
         self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
+
+    def test_find_stale_artifacts_honors_excluded_path_patterns(self) -> None:
+        stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(
+            tracked_paths=["README.md", "egressd-starter.tar.gz"],
+            untracked_paths=["tmp/output.tmp", "egressd-starter.tar.gz"],
+            excluded_path_patterns=("egressd-starter.tar.gz",),
+        )
+        self.assertEqual(stale_tracked, [])
+        self.assertEqual(stale_untracked, [])
 
     def test_find_unfinished_markers_ignores_skipped_paths(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -156,6 +164,28 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_exclude_path_patterns_skip_findings_and_stray_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            skipped_file = root / "generated" / "script.py"
+            kept_file = root / "src.py"
+            skipped_file.parent.mkdir(parents=True, exist_ok=True)
+            skipped_file.write_text("# TO" "DO: generated marker\n", encoding="utf-8")
+            kept_file.write_text("# TO" "DO: keep marker\n", encoding="utf-8")
+
+            findings = repo_hygiene.find_unfinished_markers(
+                root,
+                ["generated/script.py", "src.py"],
+                excluded_path_patterns=("generated/*",),
+            )
+            self.assertEqual([finding.path for finding in findings], ["src.py"])
+
+            stray = repo_hygiene.classify_stray_paths(
+                ["generated/tmp.tmp", "tmp/output.tmp"],
+                excluded_path_patterns=("generated/*",),
+            )
+            self.assertEqual(stray, ["tmp/output.tmp"])
 
 
 if __name__ == "__main__":
