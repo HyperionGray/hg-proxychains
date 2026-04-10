@@ -861,7 +861,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             refresh_ready_state(cfg)
             if STOP_EVENT.is_set():
                 break
-            logging.exception("supervisor loop error: %s", exc)
+            logging.exception("supervisor loop error")
 
         if STOP_EVENT.is_set():
             break
