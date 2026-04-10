@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """
-Preflight validation for egressd configuration.
+Preflight validation and config normalization for egressd.
 
 This module performs static checks so operator mistakes are caught
-before the supervisor tries to launch long-running services.
+before the supervisor tries to launch long-running services.  It also
+normalizes the raw user config into the full internal format so that
+every downstream consumer can rely on well-known keys with sensible
+defaults already filled in.
 """
 
+import copy
 import json
 import os
 import shutil
@@ -15,10 +19,90 @@ from urllib.parse import urlparse
 
 import pyjson5
 
+# Defaults applied by normalize_cfg when the user omits a section.
+_DEFAULT_LISTENER_BIND = "0.0.0.0"
+_DEFAULT_LISTENER_PORT = 15001
+_DEFAULT_CANARY_TARGET = "example.com:443"
+_DEFAULT_ALLOWED_PORTS = [80, 443]
+_DEFAULT_HEALTH_BIND = "127.0.0.1"
+_DEFAULT_HEALTH_PORT = 9191
+
+
+def normalize_cfg(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize a raw user config to the full internal format.
+
+    Supports a simplified top-level ``proxies`` key as a shorthand for
+    ``chain.hops``.  Each entry in ``proxies`` (or ``chain.hops``) may be
+    a plain URL string or the canonical ``{"url": "..."}`` dict form.  All
+    sections and fields that the user omits receive sensible defaults so
+    that the minimal useful config is just::
+
+        {
+          proxies: [
+            "http://proxy1:3128",
+            "http://proxy2:3128",
+          ]
+        }
+    """
+    cfg: Dict[str, Any] = copy.deepcopy(raw)
+
+    # Support top-level ``proxies`` as an alias for ``chain.hops``.
+    if "proxies" in cfg:
+        proxies = cfg.pop("proxies")
+        cfg.setdefault("chain", {})
+        if "hops" not in cfg["chain"]:
+            cfg["chain"]["hops"] = proxies
+
+    # Normalize hops: accept plain URL strings as well as {"url": ...} dicts.
+    # Leave other non-dict values untouched so preflight validation can
+    # report them as invalid instead of treating them as URL values.
+    chain_cfg = cfg.setdefault("chain", {})
+    hops = chain_cfg.get("hops", [])
+    chain_cfg["hops"] = [
+        hop if isinstance(hop, dict) else {"url": hop} if isinstance(hop, str) else hop
+        for hop in hops
+    ]
+
+    # Listener defaults.
+    listener = cfg.setdefault("listener", {})
+    listener.setdefault("bind", _DEFAULT_LISTENER_BIND)
+    listener.setdefault("port", _DEFAULT_LISTENER_PORT)
+
+    # Chain defaults.
+    chain_cfg.setdefault("fail_closed", True)
+    chain_cfg.setdefault("canary_target", _DEFAULT_CANARY_TARGET)
+    chain_cfg.setdefault("allowed_ports", list(_DEFAULT_ALLOWED_PORTS))
+    chain_cfg.setdefault("connect_timeout_ms", 5000)
+    chain_cfg.setdefault("idle_timeout_ms", 60000)
+
+    # DNS defaults.
+    dns = cfg.setdefault("dns", {})
+    dns.setdefault("launch_funkydns", False)
+
+    # Logging defaults.
+    log_cfg = cfg.setdefault("logging", {})
+    log_cfg.setdefault("level", "INFO")
+    log_cfg.setdefault("json", True)
+    log_cfg.setdefault("chain_visual", False)
+
+    # Supervisor defaults.
+    sup = cfg.setdefault("supervisor", {})
+    sup.setdefault("pproxy_bin", "pproxy")
+    sup.setdefault("funkydns_bin", "funkydns")
+    sup.setdefault("health_bind", _DEFAULT_HEALTH_BIND)
+    sup.setdefault("health_port", _DEFAULT_HEALTH_PORT)
+    sup.setdefault("hop_check_interval_s", 5)
+    sup.setdefault("require_all_hops_healthy", True)
+    sup.setdefault("ready_grace_period_s", 15)
+    sup.setdefault("max_hop_status_age_s", 20)
+
+    return cfg
+
 
 def load_cfg(path: str) -> Dict[str, Any]:
-    """Load json5 config from disk."""
-    return pyjson5.decode(Path(path).read_text(encoding="utf-8"))
+    """Load and normalize a json5 config from disk."""
+    raw = pyjson5.decode(Path(path).read_text(encoding="utf-8"))
+    return normalize_cfg(raw)
 
 
 def _is_valid_port(value: Any) -> bool:
