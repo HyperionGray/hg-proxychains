@@ -54,10 +54,13 @@ def normalize_cfg(raw: Dict[str, Any]) -> Dict[str, Any]:
             cfg["chain"]["hops"] = proxies
 
     # Normalize hops: accept plain URL strings as well as {"url": ...} dicts.
+    # Leave other non-dict values untouched so preflight validation can
+    # report them as invalid instead of treating them as URL values.
     chain_cfg = cfg.setdefault("chain", {})
     hops = chain_cfg.get("hops", [])
     chain_cfg["hops"] = [
-        hop if isinstance(hop, dict) else {"url": hop} for hop in hops
+        hop if isinstance(hop, dict) else {"url": hop} if isinstance(hop, str) else hop
+        for hop in hops
     ]
 
     # Listener defaults.
