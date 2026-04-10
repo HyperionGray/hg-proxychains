@@ -12,6 +12,7 @@ using Python's socketserver so the tests run without any external service. The
 mock proxy demonstrates both usable and denying responses so readiness is tied
 to successful forwarding instead of mere reachability.
 """
+import base64
 import json
 import socket
 import socketserver
@@ -30,6 +31,14 @@ if "pyjson5" not in sys.modules:
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "egressd"))
 
 import supervisor  # noqa: E402
+
+HEADER_TERMINATOR = b"\r\n\r\n"
+# Keep three bytes of overlap so a four-byte terminator split across recv() calls
+# is still detectable in the rolling scan window.
+HEADER_TERMINATOR_OVERLAP = len(HEADER_TERMINATOR) - 1
+# Cap captured request size to bound helper memory use if a client misbehaves.
+MAX_REQUEST_BYTES = 65536
+RECV_BUFFER_SIZE = 4096
 
 
 # ---------------------------------------------------------------------------
@@ -79,9 +88,61 @@ class _ConnectRefusedHandler(socketserver.BaseRequestHandler):
         self.request.close()
 
 
+class _RecordingTCPServer(socketserver.TCPServer):
+    allow_reuse_address = True
+
+
+class _RecordingConnectHandler(socketserver.BaseRequestHandler):
+    """Captures the raw CONNECT request before returning a canned response."""
+
+    def handle(self) -> None:
+        try:
+            self.request.settimeout(self.server.request_timeout_s)
+            request = bytearray()
+            while True:
+                chunk = self.request.recv(RECV_BUFFER_SIZE)
+                if not chunk:
+                    break
+                request.extend(chunk)
+                scan_window_size = len(chunk) + HEADER_TERMINATOR_OVERLAP
+                scan_start_index = max(
+                    0, len(request) - scan_window_size
+                )
+                tail_window = bytes(request[scan_start_index:])
+                if (
+                    HEADER_TERMINATOR in tail_window
+                    or len(request) >= self.server.max_request_bytes
+                ):
+                    break
+            with self.server.requests_lock:
+                # Keep malformed bytes inspectable in assertion output.
+                self.server.requests.append(
+                    request.decode("utf-8", errors="backslashreplace")
+                )
+            self.request.sendall(self.server.response_bytes)
+        except OSError:
+            pass
+
+
 def _start_mock_proxy(handler_class) -> tuple[socketserver.TCPServer, int]:
     """Start a mock proxy on an OS-assigned port; return (server, port)."""
     server = socketserver.TCPServer(("127.0.0.1", 0), handler_class)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, port
+
+
+def _start_recording_proxy(
+    response_bytes: bytes = b"HTTP/1.1 200 Connection Established\r\n\r\n",
+    request_timeout_s: float = 3.0,
+) -> tuple[_RecordingTCPServer, int]:
+    server = _RecordingTCPServer(("127.0.0.1", 0), _RecordingConnectHandler)
+    server.requests = []
+    server.requests_lock = threading.Lock()
+    server.request_timeout_s = request_timeout_s
+    server.max_request_bytes = MAX_REQUEST_BYTES
+    server.response_bytes = response_bytes
     port = server.server_address[1]
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -146,13 +207,22 @@ class CheckHopConnectivityTests(unittest.TestCase):
         cls._auth_server, cls._auth_port = _start_mock_proxy(_ConnectAuthRequiredHandler)
         cls._forbid_server, cls._forbid_port = _start_mock_proxy(_ConnectForbiddenHandler)
         cls._close_server, cls._close_port = _start_mock_proxy(_ConnectRefusedHandler)
+        cls._recording_server, cls._recording_port = _start_recording_proxy()
 
     @classmethod
     def tearDownClass(cls) -> None:
         cls._accept_server.shutdown()
+        cls._accept_server.server_close()
         cls._auth_server.shutdown()
-        cls._forbid_server.shutdown()
+        cls._auth_server.server_close()
         cls._close_server.shutdown()
+        cls._close_server.server_close()
+        cls._recording_server.shutdown()
+        cls._recording_server.server_close()
+
+    def setUp(self) -> None:
+        with self._recording_server.requests_lock:
+            self._recording_server.requests.clear()
 
     def test_proxy_responding_200_is_ok(self) -> None:
         """
@@ -234,6 +304,34 @@ class CheckHopConnectivityTests(unittest.TestCase):
         )
         self.assertIn("proxy", result)
         self.assertIn("127.0.0.1", result["proxy"])
+
+    def test_connect_request_includes_target_and_proxy_headers(self) -> None:
+        result = supervisor.check_hop_connectivity(
+            f"http://127.0.0.1:{self._recording_port}",
+            "example.com:443",
+            timeout=3.0,
+        )
+
+        self.assertTrue(result["ok"], f"Expected ok=True; result: {result}")
+        self.assertEqual(len(self._recording_server.requests), 1)
+        request = self._recording_server.requests[0]
+        self.assertIn("CONNECT example.com:443 HTTP/1.1\r\n", request)
+        self.assertIn("Host: example.com:443\r\n", request)
+        self.assertIn("Proxy-Connection: keep-alive\r\n", request)
+        self.assertTrue(request.endswith("\r\n\r\n"))
+
+    def test_connect_request_includes_proxy_authorization_when_configured(self) -> None:
+        result = supervisor.check_hop_connectivity(
+            f"http://alice:s3cr3t@127.0.0.1:{self._recording_port}",
+            "example.com:443",
+            timeout=3.0,
+        )
+
+        self.assertTrue(result["ok"], f"Expected ok=True; result: {result}")
+        self.assertEqual(len(self._recording_server.requests), 1)
+        request = self._recording_server.requests[0]
+        token = base64.b64encode(b"alice:s3cr3t").decode("ascii")
+        self.assertIn(f"Proxy-Authorization: Basic {token}\r\n", request)
 
     @staticmethod
     def _find_free_port() -> int:
