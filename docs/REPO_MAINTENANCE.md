@@ -3,7 +3,7 @@
 `scripts/repo_maintenance.py` is now a compatibility wrapper.
 
 Use `scripts/repo_hygiene.py` directly for all maintenance checks and cleanup.
-Primary documentation has moved to:
+Primary documentation has moved to `docs/REPO-HYGIENE.md`.
 
 - Unfinished markers in tracked files (`TODO`, `FIXME`, `STUB`, `TBD`, `XXX`, `UNFINISHED`)
 - Backup files (`*~`, `*.bak`, `*.orig`, `*.old`, `*.tmp`)
@@ -25,10 +25,10 @@ python3 scripts/repo_hygiene.py scan --repo-root .
 python3 scripts/repo_hygiene.py scan --repo-root . --json
 
 # Include third_party marker scan explicitly
-python3 scripts/repo_maintenance.py --include-third-party
+python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
 # Remove backup files + stray cache dirs + stale artifacts while scanning
-python3 scripts/repo_maintenance.py --fix
+python3 scripts/repo_hygiene.py clean --repo-root .
 ```
 
 Makefile wrappers:
@@ -45,8 +45,12 @@ make maintenance-all-json
 
 ## Notes
 
-- `--fix` removes backup files, stray `__pycache__/` directories, and known stale artifacts.
+- Use `clean` (not `scan`) to remove backup files, stray `__pycache__/`
+  directories, and known stale artifacts.
+- `--stale-artifact <path>` can be supplied repeatedly on `scan` or `clean`
+  to track extra generated files for a run.
 - Unfinished markers are reported but not modified automatically.
-- Embedded git repositories are reported but never auto-removed by `--fix`.
-- Without `--fix`, exit code is `1` when any issues are found.
-- With `--fix`, exit code reflects post-fix state (`0` when only removable clutter was found and removed; `1` if issues remain).
+- Embedded git repositories are reported but never auto-removed by `clean`.
+- `scan` exits `1` when issues are found.
+- `clean` exits `0` only when removable clutter is deleted and no blocking
+  issues remain; otherwise it exits `1`.

@@ -69,6 +69,15 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(stale_tracked, ["egressd-starter.tar.gz"])
         self.assertEqual(stale_untracked, ["egressd-starter.tar.gz"])
 
+    def test_find_stale_artifacts_supports_custom_paths(self) -> None:
+        stale_tracked, stale_untracked = repo_hygiene.find_stale_artifacts(
+            tracked_paths=["README.md", "dist/build.tar.gz"],
+            untracked_paths=["tmp/output.tmp", "dist/build.tar.gz"],
+            stale_artifact_paths=["dist/build.tar.gz"],
+        )
+        self.assertEqual(stale_tracked, ["dist/build.tar.gz"])
+        self.assertEqual(stale_untracked, ["dist/build.tar.gz"])
+
     def test_find_unfinished_markers_ignores_skipped_paths(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -156,6 +165,60 @@ class RepoHygieneTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].path, "src.py")
+
+    def test_parse_args_supports_stale_artifact_repeatable_flag(self) -> None:
+        args = repo_hygiene.parse_args(
+            [
+                "scan",
+                "--repo-root",
+                ".",
+                "--stale-artifact",
+                "dist/build.tar.gz",
+                "--stale-artifact",
+                "tmp/cache.db",
+            ]
+        )
+        self.assertEqual(args.stale_artifact, ["dist/build.tar.gz", "tmp/cache.db"])
+
+    def test_main_passes_expected_arguments_to_scan(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            with patch.object(repo_hygiene, "command_scan", return_value=0) as mock_scan:
+                rc = repo_hygiene.main(
+                    [
+                        "scan",
+                        "--repo-root",
+                        str(root),
+                        "--include-third-party",
+                        "--baseline-file",
+                        "custom-baseline.json",
+                        "--stale-artifact",
+                        "dist/build.tar.gz",
+                        "--json",
+                    ]
+                )
+            self.assertEqual(rc, 0)
+            mock_scan.assert_called_once()
+            _, kwargs = mock_scan.call_args
+            self.assertTrue(kwargs["include_third_party"])
+            self.assertEqual(kwargs["baseline_path"], "custom-baseline.json")
+            self.assertEqual(kwargs["extra_stale_artifacts"], ["dist/build.tar.gz"])
+            self.assertTrue(kwargs["json_output"])
+
+    def test_main_rejects_json_for_baseline_command(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            rc = repo_hygiene.main(
+                [
+                    "baseline",
+                    "--repo-root",
+                    str(root),
+                    "--json",
+                ]
+            )
+        self.assertEqual(rc, 2)
 
 
 if __name__ == "__main__":
