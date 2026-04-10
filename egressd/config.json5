@@ -6,8 +6,8 @@
     "http://proxy2:3128",
   ],
 
-  // Optional overrides (all of these are already set to their default values).
-  // Remove or leave this section out entirely for the simplest setup.
+  // Optional overrides for the chain behavior.
+  // Remove or leave this section out entirely for the simplest setup; the values shown here are examples, not defaults.
   chain: {
     canary_target: "exitserver:9999",
     allowed_ports: [80, 443, 9999],
