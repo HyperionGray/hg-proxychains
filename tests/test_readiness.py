@@ -52,6 +52,20 @@ class ReadinessReportTests(unittest.TestCase):
         self.assertIn("hop_checks_missing", report["reasons"])
         self.assertIn("hop_checks_never_ran", report["reasons"])
 
+    def test_not_ready_when_chain_probe_failed(self) -> None:
+        state = {
+            "pproxy": "running",
+            "funkydns": "disabled",
+            "hops": {
+                "hop_0": {"ok": True},
+                "chain": {"ok": False},
+            },
+            "hops_last_update": 100,
+        }
+        report = build_readiness_report(state, stale_after_s=30, now=105)
+        self.assertFalse(report["ready"])
+        self.assertIn("chain_down", report["reasons"])
+
 
 if __name__ == "__main__":
     unittest.main()

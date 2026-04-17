@@ -50,8 +50,12 @@ class _ConnectAcceptHandler(socketserver.BaseRequestHandler):
 
     def handle(self) -> None:
         try:
-            self.request.recv(4096)
-            self.request.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+            self.request.settimeout(1.0)
+            while True:
+                data = self.request.recv(4096)
+                if not data:
+                    break
+                self.request.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
         except OSError:
             pass
 
@@ -394,10 +398,11 @@ class CollectHopStatusesTests(unittest.TestCase):
         self.assertFalse(statuses["hop_1"]["ok"])
         self.assertIn("error", statuses["hop_1"])
 
-    def test_empty_hops_returns_empty_dict(self) -> None:
+    def test_empty_hops_returns_chain_failure_only(self) -> None:
         cfg = {"chain": {"hops": [], "canary_target": "example.com:443"}}
         statuses = supervisor.collect_hop_statuses(cfg, "example.com:443")
-        self.assertEqual(statuses, {})
+        self.assertEqual(set(statuses.keys()), {"chain"})
+        self.assertFalse(statuses["chain"]["ok"])
 
     def test_hop_keys_are_hop_0_hop_1_etc(self) -> None:
         """Hop status keys must be 'hop_0', 'hop_1', ... matching config order."""
@@ -412,7 +417,83 @@ class CollectHopStatusesTests(unittest.TestCase):
         self.assertIn("hop_0", statuses)
         self.assertIn("hop_1", statuses)
         self.assertIn("hop_2", statuses)
-        self.assertEqual(len(statuses), 3)
+        self.assertIn("chain", statuses)
+        self.assertEqual(len(statuses), 4)
+
+
+class NativeGatewayPolicyTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.cfg = {
+            "listener": {"bind": "127.0.0.1", "port": 0},
+            "chain": {
+                "fail_closed": True,
+                "allowed_ports": [443],
+                "connect_timeout_ms": 1000,
+                "idle_timeout_ms": 1000,
+            },
+        }
+
+    def _make_server(self, *, ready: bool = True):
+        def dial_target(target: str, timeout_s: float):
+            raise AssertionError(f"dial_target should not run for this test: {target=} {timeout_s=}")
+
+        server = supervisor.build_gateway_server(
+            "127.0.0.1",
+            0,
+            self.cfg,
+            dial_target=dial_target,
+            is_ready=lambda: ready,
+        )
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        return server, thread
+
+    def _send_request(self, server, request: bytes) -> bytes:
+        with socket.create_connection(server.server_address, timeout=3) as sock:
+            sock.sendall(request)
+            return sock.recv(4096)
+
+    def test_gateway_rejects_plain_http_methods(self) -> None:
+        server, thread = self._make_server()
+        try:
+            response = self._send_request(
+                server,
+                b"GET / HTTP/1.1\r\nHost: example.com\r\n\r\n",
+            )
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+        self.assertIn(b"405 Method Not Allowed", response)
+        self.assertIn(b"only CONNECT is supported", response)
+
+    def test_gateway_rejects_disallowed_ports_when_fail_closed(self) -> None:
+        server, thread = self._make_server()
+        try:
+            response = self._send_request(
+                server,
+                b"CONNECT example.com:80 HTTP/1.1\r\nHost: example.com:80\r\n\r\n",
+            )
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+        self.assertIn(b"403 Forbidden", response)
+        self.assertIn(b"target port is not allowed", response)
+
+    def test_gateway_rejects_when_chain_not_ready(self) -> None:
+        server, thread = self._make_server(ready=False)
+        try:
+            response = self._send_request(
+                server,
+                b"CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n\r\n",
+            )
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+        self.assertIn(b"503 Service Unavailable", response)
+        self.assertIn(b"proxy chain is not ready", response)
 
 
 if __name__ == "__main__":

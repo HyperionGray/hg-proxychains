@@ -242,9 +242,18 @@ class PreflightBinaryCheckTests(unittest.TestCase):
     def test_nonexistent_pproxy_path_fails_when_binary_checks_enabled(self) -> None:
         cfg = _base_cfg()
         cfg.setdefault("supervisor", {})["pproxy_bin"] = "/nonexistent/path/to/pproxy"
+        cfg["supervisor"]["gateway_mode"] = "pproxy"
         report = preflight.run_preflight(cfg, skip_binary_checks=False)
         self.assertFalse(report["ok"])
         self.assertTrue(any("pproxy_bin" in e for e in report["errors"]))
+
+    def test_nonexistent_pproxy_path_warns_in_native_mode(self) -> None:
+        cfg = _base_cfg()
+        cfg.setdefault("supervisor", {})["pproxy_bin"] = "/nonexistent/path/to/pproxy"
+        cfg["supervisor"]["gateway_mode"] = "native"
+        report = preflight.run_preflight(cfg, skip_binary_checks=False)
+        self.assertTrue(report["ok"])
+        self.assertTrue(any("pproxy fallback is unavailable" in w for w in report["warnings"]))
 
 
 class NormalizeCfgTests(unittest.TestCase):

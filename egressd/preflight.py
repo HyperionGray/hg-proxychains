@@ -91,6 +91,7 @@ def normalize_cfg(raw: Dict[str, Any]) -> Dict[str, Any]:
     sup.setdefault("funkydns_bin", "funkydns")
     sup.setdefault("health_bind", _DEFAULT_HEALTH_BIND)
     sup.setdefault("health_port", _DEFAULT_HEALTH_PORT)
+    sup.setdefault("gateway_mode", "native")
     sup.setdefault("hop_check_interval_s", 5)
     sup.setdefault("require_all_hops_healthy", True)
     sup.setdefault("ready_grace_period_s", 15)
@@ -201,11 +202,20 @@ def run_preflight(cfg: Dict[str, Any], *, skip_binary_checks: Optional[bool] = N
         warnings.append("chain.canary_target is empty; hop probes will be less useful")
 
     supervisor_cfg = cfg.get("supervisor", {})
+    gateway_mode = str(supervisor_cfg.get("gateway_mode", "native")).strip().lower()
+    if gateway_mode not in {"native", "pproxy"}:
+        errors.append("supervisor.gateway_mode must be either 'native' or 'pproxy'")
+
     pproxy_bin = str(supervisor_cfg.get("pproxy_bin", "pproxy"))
     if skip_binary_checks:
         warnings.append("binary checks skipped by EGRESSD_PREFLIGHT_SKIP_BIN_CHECKS")
-    elif not _check_binary_exists(pproxy_bin):
+    elif gateway_mode == "pproxy" and not _check_binary_exists(pproxy_bin):
         errors.append(f"supervisor.pproxy_bin is not executable or not on PATH: {pproxy_bin}")
+    elif gateway_mode == "native" and not _check_binary_exists(pproxy_bin):
+        warnings.append(
+            "supervisor.pproxy_bin is not executable or not on PATH; "
+            "native gateway mode can still run, but pproxy fallback is unavailable"
+        )
 
     dns_cfg = cfg.get("dns", {})
     if bool(dns_cfg.get("launch_funkydns", False)):

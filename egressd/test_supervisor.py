@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import sys
@@ -184,6 +185,12 @@ class SupervisorTests(unittest.TestCase):
         readiness = supervisor.compute_readiness(state, cfg, now=now)
         self.assertTrue(readiness["ready"])
         self.assertEqual([], readiness["reasons"])
+
+    def test_parse_proxy_url_supports_basic_auth(self) -> None:
+        host, port, auth = supervisor.parse_proxy_url("http://alice:s3cr3t@proxy1:3128")
+        self.assertEqual(("proxy1", 3128), (host, port))
+        token = base64.b64encode(b"alice:s3cr3t").decode("ascii")
+        self.assertEqual(f"Proxy-Authorization: Basic {token}\r\n", auth)
 
 
 if __name__ == "__main__":

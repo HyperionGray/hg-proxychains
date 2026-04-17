@@ -15,12 +15,20 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 import pyjson5
 
 from chain import build_relay_string
+from connect_gateway import (
+    ChainConnectError,
+    ChainConnectResult,
+    build_gateway_server,
+    dial_through_chain,
+    parse_proxy_url,
+    probe_chain,
+)
 from preflight import normalize_cfg, report_to_json, run_preflight
 from readiness import build_readiness_report
 
@@ -42,6 +50,7 @@ STATE: Dict[str, Any] = {
 
 PROCESS_TERM_TIMEOUT_S = 3
 PROCESS_KILL_TIMEOUT_S = 1
+GATEWAY_THREAD_JOIN_TIMEOUT_S = 2
 
 
 class JsonFormatter(logging.Formatter):
@@ -198,15 +207,6 @@ def _start_logged_process(name: str, argv: List[str]) -> subprocess.Popen:
     return proc
 
 
-def start_pproxy(cfg: Dict[str, Any]) -> subprocess.Popen:
-    pproxy_bin = str(cfg.get("supervisor", {}).get("pproxy_bin", "pproxy"))
-    listener_host = cfg["listener"]["bind"]
-    listener_port = cfg["listener"]["port"]
-    relay = build_relay_string(cfg["chain"])
-    argv = [pproxy_bin, "-l", f"http://{listener_host}:{listener_port}", "-r", relay]
-    return _start_logged_process("pproxy", argv)
-
-
 def start_funkydns(cfg: Dict[str, Any]) -> Optional[subprocess.Popen]:
     dns_cfg = cfg.get("dns", {})
     if not bool(dns_cfg.get("launch_funkydns", False)):
@@ -216,6 +216,43 @@ def start_funkydns(cfg: Dict[str, Any]) -> Optional[subprocess.Popen]:
     doh_upstream = encode_funkydns_upstreams(dns_cfg.get("doh_upstreams", dns_cfg.get("doh_upstream")))
     argv = [fn_bin, "server", "--dns-port", dns_port, "--doh-port", "443", "--upstream", doh_upstream]
     return _start_logged_process("funkydns", argv)
+
+
+def start_pproxy(cfg: Dict[str, Any]) -> subprocess.Popen:
+    pproxy_bin = str(cfg.get("supervisor", {}).get("pproxy_bin", "pproxy"))
+    listener_host = cfg["listener"]["bind"]
+    listener_port = cfg["listener"]["port"]
+    relay = build_relay_string(cfg["chain"])
+    argv = [pproxy_bin, "-l", f"http://{listener_host}:{listener_port}", "-r", relay]
+    return _start_logged_process("pproxy", argv)
+
+
+def _build_native_gateway(cfg: Dict[str, Any]):
+    listener_host = cfg["listener"]["bind"]
+    listener_port = int(cfg["listener"]["port"])
+
+    def _dial_target(target: str, timeout_s: float) -> socket.socket:
+        hops = cfg.get("chain", {}).get("hops", [])
+        return dial_through_chain(hops, target, timeout=timeout_s)
+
+    server = build_gateway_server(
+        listener_host,
+        listener_port,
+        cfg,
+        dial_target=_dial_target,
+        is_ready=lambda: evaluate_readiness(cfg)[0],
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, thread
+
+
+def start_gateway_listener(cfg: Dict[str, Any]):
+    gateway_mode = str(cfg.get("supervisor", {}).get("gateway_mode", "native")).strip().lower()
+    if gateway_mode == "pproxy":
+        proc = start_pproxy(cfg)
+        return proc, None
+    return _build_native_gateway(cfg)
 
 
 def parse_proxy_url(url: str) -> Tuple[str, int, Optional[str]]:
@@ -320,6 +357,67 @@ def check_hop_connectivity(hop_url: str, target: str, timeout: float = 3.0) -> D
                 logging.debug("Failed to close socket during cleanup")
 
 
+def _chain_probe_to_status(result: ChainConnectResult) -> Dict[str, Any]:
+    status: Dict[str, Any] = {
+        "ok": result.ok,
+        "reachable": result.reachable,
+        "proxy": result.proxy_label,
+        "status_line": result.status_line,
+        "status_code": result.status_code,
+        "elapsed_ms": result.elapsed_ms,
+        "checked_at": result.checked_at,
+        "final_target": result.target,
+    }
+    if result.error:
+        status["error"] = result.error
+    return status
+
+
+def check_chain_connectivity(cfg: Dict[str, Any], target: str, timeout: Optional[float] = None) -> Dict[str, Any]:
+    timeout_s = timeout
+    if timeout_s is None:
+        timeout_s = max(0.1, int(cfg.get("chain", {}).get("connect_timeout_ms", 3000)) / 1000.0)
+
+    hops = cfg.get("chain", {}).get("hops", [])
+    if not hops:
+        checked_at = int(time.time())
+        return {
+            "ok": False,
+            "reachable": False,
+            "proxy": "<missing>",
+            "error": "missing hop url",
+            "elapsed_ms": 0,
+            "checked_at": checked_at,
+            "final_target": target,
+        }
+    if not target:
+        checked_at = int(time.time())
+        return {
+            "ok": False,
+            "reachable": False,
+            "proxy": "<missing>",
+            "error": "missing chain.canary_target",
+            "elapsed_ms": 0,
+            "checked_at": checked_at,
+            "final_target": target,
+        }
+
+    try:
+        result = probe_chain(hops, target, timeout=timeout_s)
+    except ChainConnectError as exc:
+        checked_at = int(time.time())
+        return {
+            "ok": False,
+            "reachable": False,
+            "proxy": exc.proxy_label,
+            "error": str(exc),
+            "elapsed_ms": exc.elapsed_ms,
+            "checked_at": checked_at,
+            "final_target": target,
+        }
+    return _chain_probe_to_status(result)
+
+
 def collect_hop_statuses(cfg: Dict[str, Any], target: str) -> Dict[str, Any]:
     timeout_s = max(0.1, int(cfg.get("chain", {}).get("connect_timeout_ms", 3000)) / 1000.0)
     checked_at = int(time.time())
@@ -346,6 +444,7 @@ def collect_hop_statuses(cfg: Dict[str, Any], target: str) -> Dict[str, Any]:
             }
             continue
         statuses[hop_key] = check_hop_connectivity(hop_url, target, timeout=timeout_s)
+    statuses["chain"] = check_chain_connectivity(cfg, target, timeout=timeout_s)
     return statuses
 
 
@@ -394,11 +493,17 @@ def _compute_relaxed_readiness(
             reasons.append("hop_checks_stale")
 
     healthy_hops = 0
-    for hop_status in hop_checks.values():
+    for hop_name, hop_status in hop_checks.items():
+        if hop_name == "chain":
+            continue
         if bool(hop_status.get("ok", False)):
             healthy_hops += 1
 
-    if hop_checks and healthy_hops == 0:
+    chain_status = hop_checks.get("chain")
+    if chain_status and not bool(chain_status.get("ok", False)):
+        reasons.append("chain_probe_failed")
+
+    if any(name.startswith("hop_") for name in hop_checks) and healthy_hops == 0:
         reasons.append("all_hops_unhealthy")
 
     return {
@@ -445,6 +550,8 @@ def compute_readiness(
     )
     reasons = list(report["reasons"])
     observed_hops = snapshot.get("hops", {})
+    if "chain_down" in reasons and "chain_probe_failed" not in reasons:
+        reasons.append("chain_probe_failed")
     if expected_hops and len(observed_hops) < expected_hops:
         reasons.append(f"hop_checks_incomplete:{len(observed_hops)}/{expected_hops}")
     report["reasons"] = reasons
@@ -476,6 +583,8 @@ def _summarize_readiness(report: Dict[str, Any], state: Dict[str, Any], cfg: Dic
         if stale_age is None:
             return "hop probe data stale"
         return f"hop probe data stale ({stale_age}s old)"
+    if "chain_probe_failed" in reasons:
+        return "proxy chain is unhealthy"
     if any(reason.startswith("hop_checks_incomplete:") for reason in reasons):
         return "hop probes incomplete"
     if any(reason.endswith("_down") for reason in reasons):
@@ -523,6 +632,10 @@ def _compute_startup_gate(state: Dict[str, Any], cfg: Dict[str, Any], now: Optio
     hop_states = snapshot.get("hops", {})
     if len(hop_states) < expected_hops:
         return False, "hop probes incomplete"
+
+    chain_status = hop_states.get("chain", {})
+    if not bool(chain_status.get("ok", False)):
+        return False, "proxy chain is unhealthy"
 
     require_all_hops = _as_bool(
         cfg.get("supervisor", {}).get("require_all_hops_healthy"),
@@ -584,7 +697,8 @@ def _extract_hop_label(hop: Any) -> str:
 
 def _all_hops_ok(hops: List[Any], hop_statuses: Dict[str, Any]) -> bool:
     """Return True only when every hop in *hops* has a passing status entry."""
-    return bool(hops) and all(
+    chain_ok = bool(hop_statuses.get("chain", {}).get("ok", False))
+    return bool(hops) and chain_ok and all(
         bool(hop_statuses.get(f"hop_{idx}", {}).get("ok", False))
         for idx in range(len(hops))
     )
@@ -638,6 +752,15 @@ def format_chain_visual(cfg: Dict[str, Any], hop_statuses: Optional[Dict[str, An
             else:
                 err_msg = status.get("error") or status.get("status_line") or "unreachable"
                 lines.append(f"[egressd]   hop_{idx}: {label:<30} FAIL {str(err_msg).splitlines()[0]}")
+        chain_status = hop_statuses.get("chain")
+        if chain_status:
+            if bool(chain_status.get("ok", False)):
+                timing = chain_status.get("elapsed_ms")
+                timing_text = f"{timing}ms" if timing is not None else "ok"
+                lines.append(f"[egressd]   chain: {'end-to-end':<30} OK   {timing_text}")
+            else:
+                err_msg = chain_status.get("error") or chain_status.get("status_line") or "unreachable"
+                lines.append(f"[egressd]   chain: {'end-to-end':<30} FAIL {str(err_msg).splitlines()[0]}")
 
     return "\n".join(lines)
 

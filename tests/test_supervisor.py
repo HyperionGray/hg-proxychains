@@ -58,12 +58,34 @@ class SupervisorValidationTests(unittest.TestCase):
             "hops": {
                 "hop_0": {"ok": False},
                 "hop_1": {"ok": True},
+                "chain": {"ok": True},
             },
             "hops_last_update": 100,
         }
         readiness = supervisor.compute_readiness(state, cfg, now=105)
         self.assertTrue(readiness["ready"])
         self.assertEqual([], readiness["reasons"])
+
+    def test_check_chain_connectivity_handles_missing_hops(self):
+        result = supervisor.check_chain_connectivity({"chain": {"hops": []}}, "example.com:443")
+        self.assertFalse(result["ok"])
+        self.assertIn("missing hop url", result["error"])
+
+    def test_compute_readiness_requires_healthy_chain_probe(self):
+        cfg = self.base_cfg()
+        state = {
+            "pproxy": "running",
+            "funkydns": "disabled",
+            "hops": {
+                "hop_0": {"ok": True},
+                "hop_1": {"ok": True},
+                "chain": {"ok": False, "error": "HTTP/1.1 502 Bad Gateway"},
+            },
+            "hops_last_update": 100,
+        }
+        readiness = supervisor.compute_readiness(state, cfg, now=105)
+        self.assertFalse(readiness["ready"])
+        self.assertIn("chain_probe_failed", readiness["reasons"])
 
 
 class ChainVisualTests(unittest.TestCase):
@@ -89,6 +111,7 @@ class ChainVisualTests(unittest.TestCase):
         statuses = {
             "hop_0": {"ok": True, "elapsed_ms": 42},
             "hop_1": {"ok": True, "elapsed_ms": 38},
+            "chain": {"ok": True, "elapsed_ms": 80},
         }
         visual = supervisor.format_chain_visual(self._cfg(), statuses)
         self.assertIn("-<>-OK", visual)
@@ -138,7 +161,10 @@ class ChainVisualTests(unittest.TestCase):
     def test_single_hop_chain(self):
         """A single-hop chain produces exactly one hop label and no '-XX-'."""
         cfg = {"chain": {"hops": [{"url": "http://solo:3128"}], "canary_target": "t:80"}}
-        statuses = {"hop_0": {"ok": True, "elapsed_ms": 10}}
+        statuses = {
+            "hop_0": {"ok": True, "elapsed_ms": 10},
+            "chain": {"ok": True, "elapsed_ms": 10},
+        }
         visual = supervisor.format_chain_visual(cfg, statuses)
         self.assertIn("solo:3128", visual)
         self.assertIn("-<>-OK", visual)

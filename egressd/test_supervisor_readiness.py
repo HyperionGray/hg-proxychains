@@ -128,6 +128,23 @@ class ReadinessTests(unittest.TestCase):
         self.assertFalse(readiness["ready"])
         self.assertIn("hop_checks_incomplete:1/2", readiness["reasons"])
 
+    def test_not_ready_when_end_to_end_chain_probe_failed(self) -> None:
+        cfg = sample_cfg()
+        now = 5_500
+        state = {
+            "pproxy": "running",
+            "funkydns": "disabled",
+            "hops": {
+                "hop_0": {"ok": True},
+                "hop_1": {"ok": True},
+                "chain": {"ok": False, "error": "HTTP/1.1 502 Bad Gateway"},
+            },
+            "hops_last_update": now - 1,
+        }
+        readiness = supervisor.compute_readiness(state, cfg, now=now)
+        self.assertFalse(readiness["ready"])
+        self.assertIn("chain_probe_failed", readiness["reasons"])
+
     def test_relaxed_mode_accepts_any_healthy_hop(self) -> None:
         cfg = sample_cfg(require_all_hops_healthy=False)
         now = 6_000
