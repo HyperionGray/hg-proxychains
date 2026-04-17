@@ -948,6 +948,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         default=_as_bool(cfg.get("chain", {}).get("fail_closed"), default=True),
     )
 
+    gateway_server = None
+    gateway_thread: Optional[threading.Thread] = None
+    gateway_mode = str(cfg.get("supervisor", {}).get("gateway_mode", "native")).strip().lower()
+
     while not STOP_EVENT.is_set():
         try:
             if block_start_until_healthy:
@@ -956,8 +960,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     break
 
             set_state({"pproxy": "starting"})
-            pproxy_proc = start_pproxy(cfg)
-            processes["pproxy"] = pproxy_proc
+            gateway_resource, gateway_thread = start_gateway_listener(cfg)
             set_state(
                 {
                     "pproxy": "running",
@@ -968,8 +971,26 @@ def main(argv: Optional[List[str]] = None) -> int:
             refresh_ready_state(cfg)
             backoff_s = 1
 
-            rc = pproxy_proc.wait()
-            processes["pproxy"] = None
+            if gateway_mode == "pproxy":
+                processes["pproxy"] = gateway_resource
+                rc = gateway_resource.wait()
+                processes["pproxy"] = None
+                gateway_server = None
+            else:
+                gateway_server = gateway_resource
+                gateway_thread = gateway_thread
+                while not STOP_EVENT.is_set():
+                    if gateway_thread is not None and not gateway_thread.is_alive():
+                        break
+                    STOP_EVENT.wait(0.5)
+                rc = 0 if STOP_EVENT.is_set() else 1
+                if gateway_server is not None:
+                    gateway_server.server_close()
+                    gateway_server = None
+                if gateway_thread is not None:
+                    gateway_thread.join(timeout=GATEWAY_THREAD_JOIN_TIMEOUT_S)
+                    gateway_thread = None
+
             set_state(
                 {
                     "pproxy": "down",
@@ -981,6 +1002,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                 break
         except Exception as exc:
             processes["pproxy"] = None
+            if gateway_server is not None:
+                gateway_server.server_close()
+                gateway_server = None
+            if gateway_thread is not None:
+                gateway_thread.join(timeout=GATEWAY_THREAD_JOIN_TIMEOUT_S)
+                gateway_thread = None
             set_state({"pproxy": "error"})
             refresh_ready_state(cfg)
             if STOP_EVENT.is_set():
@@ -994,6 +1021,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         STOP_EVENT.wait(backoff_s)
         backoff_s = min(backoff_s * 2, max_backoff_s)
 
+    if gateway_server is not None:
+        gateway_server.server_close()
+    if gateway_thread is not None:
+        gateway_thread.join(timeout=GATEWAY_THREAD_JOIN_TIMEOUT_S)
     _terminate_process(processes["pproxy"], "pproxy")
     _terminate_process(processes["funkydns"], "funkydns")
     server.server_close()
