@@ -50,4 +50,12 @@ Fastest path to verify the smoke harness end to end:
    ```
    Or run `make down`.
 
+If your VM or kernel cannot provide the container-network firewall hooks that
+Podman expects, you can still validate the first-party gateway and health flow
+without containers:
+
+```bash
+make local-smoke
+```
+
 If anything looks off, use `make logs` and then read `README.md` or `docs/USER-FLOW-REVIEW.md` for the deeper walkthrough.

@@ -152,6 +152,18 @@ not depend on external internet reachability.
 
 It does **not** prove host enforcement. For that, use the scripts in `scripts/` on a real Linux host and follow `docs/HOST-DEPLOYMENT.md`.
 
+If your VM or CI runner cannot start the full Podman smoke stack because its
+kernel/userspace combination cannot program the required bridge firewall
+chains, you can still validate the first-party path locally with:
+
+```bash
+python3 scripts/local_smoke_test.py
+```
+
+That fallback smoke check starts local loopback-only proxy hops, FunkyDNS, the
+native CONNECT gateway, and the exit server without relying on container bridge
+setup.
+
 ## Health vs readiness
 
 - `GET /live`: process is up (simple liveness check)
