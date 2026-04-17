@@ -24,9 +24,9 @@
 ## Host deployment
 
 - [ ] Create `egressd` host user
-- [ ] Review `scripts/host-nftables.sh` for bridge name and infra CIDRs
-- [ ] Review `scripts/host-egress-owner.sh` for upstream IP allowlist
-- [ ] Install `pproxy`, `pyjson5`, and `egressd` files
+- [ ] Review `scripts/host-nftables.sh` for bridge name, infra CIDRs, and IPv6 default-drop behavior
+- [ ] Review `scripts/host-egress-owner.sh` for upstream IP allowlists (IPv4 and optional IPv6)
+- [ ] Install `pyjson5` and `egressd` files (`pproxy` only if using `supervisor.gateway_mode: "pproxy"`)
 - [ ] Install systemd unit from `egressd/systemd/egressd.service`
 - [ ] Verify raw DNS to external resolvers is blocked from a workload
 - [ ] Verify workload can only egress through local listener

@@ -12,8 +12,8 @@ This repo's compose stack is only a smoke harness. Real enforcement happens on a
 
 1. Create a dedicated `egressd` user.
 2. Install Python deps for `egressd`:
-   - `pproxy`
    - `pyjson5`
+   - `pproxy` only if you intentionally set `supervisor.gateway_mode` to `pproxy`
 3. Copy `egressd/` to `/opt/egressd`
 4. Put a host config at `/etc/egressd/config.json5` based on `config.host.example.json5`
    - For embedded FunkyDNS, set `dns.doh_upstreams` to one or more DoH endpoints.
@@ -26,20 +26,25 @@ This repo's compose stack is only a smoke harness. Real enforcement happens on a
 
 - `GET /live` on the configured health bind/port for liveness.
 - `GET /health` for full state (process state + hop status details).
-- `GET /ready` for gating dependent services and automation. This returns non-200 when `pproxy` is down, FunkyDNS is required but not running, or hop checks fail (by default). CONNECT denials such as `403` and `407` stay visible in `/health`, but do not count as ready.
+- `GET /ready` for gating dependent services and automation. This returns non-200 when the local gateway listener is down, FunkyDNS is required but not running, or hop checks fail (by default). CONNECT denials such as `403` and `407` stay visible in `/health`, but do not count as ready.
 
 ## Expected traffic model
 
-workload -> local listener -> pproxy chain -> upstream proxy 1 -> upstream proxy 2 -> destination
+workload -> local listener -> native CONNECT gateway -> upstream proxy 1 -> upstream proxy 2 -> destination
 
 DNS must go only to the local DoH-capable stub. Raw UDP/TCP 53 from workloads should be dropped.
+
+`scripts/host-nftables.sh` now blocks IPv6 from the workload bridge by default.
+That is intentional fail-closed behavior for alpha: if you want IPv6 workloads,
+set `ALLOW_IPV6=1`, provide `GW_IP6`, and review the optional IPv6 infra CIDR
+inputs before applying the rules.
 
 ## Readiness and startup gating
 
 `egressd` supports fail-closed startup gating tied to hop checks:
 
 - `supervisor.block_start_until_hops_healthy` (default `true` in examples):
-  - when enabled, `pproxy` startup is delayed until hop probes meet policy
+  - when enabled, local listener startup is delayed until hop probes meet policy
 - `supervisor.require_all_hops_healthy`:
   - when `true`, every configured hop must be healthy for readiness
 - `supervisor.max_hop_status_age_s`:

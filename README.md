@@ -142,7 +142,7 @@ curl http://localhost:9191/live
 - mounted hosts-file lookup for `hosts.smoke.internal -> 198.51.100.21`
 - mounted `resolv.conf` search-domain lookup for `printer -> printer.corp.test -> 198.51.100.42`
 - local explicit CONNECT tunnel establishment
-- multi-hop relay via `pproxy`
+- multi-hop relay via the native fail-closed CONNECT gateway
 - end-to-end raw TCP after CONNECT
 - per-hop health probes and readiness gating
 - separate FunkyDNS and upstream search-DNS services for DNS work
@@ -157,9 +157,9 @@ It does **not** prove host enforcement. For that, use the scripts in `scripts/` 
 - `GET /live`: process is up (simple liveness check)
 - `GET /health`: detailed state (`pproxy`, `funkydns`, per-hop probe details, and readiness block)
 - `GET /ready`: returns `200` only when `egressd` is usable for forwarding
-  - `pproxy` must be running
+  - the local gateway listener must be running
   - if `dns.launch_funkydns=true`, FunkyDNS must also be running
-  - hop checks must be complete and successful by default
+  - hop checks must be complete and the end-to-end chain probe must succeed by default
   - auth-required or policy-denied CONNECT responses stay visible in `/health`, but keep `/ready` red
 
 Readiness behavior can be tuned via:
@@ -173,6 +173,12 @@ Readiness behavior can be tuned via:
 The compose harness runs FunkyDNS as a **separate service**.
 
 `egressd` does **not** launch FunkyDNS in smoke mode. That avoids double-start bugs and keeps service boundaries clean.
+
+`egressd` now defaults to `supervisor.gateway_mode: "native"`, which means the
+local listener is first-party code that parses CONNECT, enforces
+`chain.allowed_ports`, and then dials the configured HTTP proxy chain hop by
+hop. `pproxy` remains available as an explicit fallback mode for operators who
+want the older listener behavior.
 
 The smoke FunkyDNS image carries a self-signed cert, a clean local zone, a
 mounted `hosts` file, and a mounted `resolv.conf` so compose can health-check:
@@ -204,9 +210,10 @@ For host mode, `egressd/config.host.example.json5` shows how to launch FunkyDNS 
 
 ## Startup preflight checks
 
-`egressd` validates config and binary prerequisites before launching `pproxy`.
-If preflight fails, it exits non-zero and logs each specific failure (for example:
-invalid hop URL, empty chain, or missing binary path).
+`egressd` validates config and runtime prerequisites before starting the local
+gateway. If preflight fails, it exits non-zero and logs each specific failure
+(for example: invalid hop URL, empty chain, or a required binary missing in
+`supervisor.gateway_mode: "pproxy"`).
 
 Useful checks:
 
@@ -220,8 +227,8 @@ make validate-config
 - `egressd/config.json5`: list your proxy hops under `proxies:`; all other fields are optional
 - `egressd/config.simple.example.json5`: the absolute minimum — just a `proxies` list
 - `egressd/config*.json5` DNS section: use `doh_upstreams` (list) or legacy `doh_upstream` (single URL)
-- `scripts/host-egress-owner.sh`: upstream proxy and DoH IPs
-- `scripts/host-nftables.sh`: bridge interface name and infra CIDRs
+- `scripts/host-egress-owner.sh`: upstream proxy / DoH IP allowlists, including optional IPv6 allowlists
+- `scripts/host-nftables.sh`: bridge interface name, infra CIDRs, and whether IPv6 is explicitly enabled
 
 ## Chain visual
 

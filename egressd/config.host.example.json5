@@ -35,6 +35,9 @@
   },
 
   supervisor: {
+    // Native mode uses egressd's built-in fail-closed CONNECT gateway.
+    // Switch to "pproxy" only if you explicitly want the legacy local listener.
+    gateway_mode: "native",
     pproxy_bin: "/usr/local/bin/pproxy",
     funkydns_bin: "/usr/local/bin/funkydns",
     health_bind: "127.0.0.1",

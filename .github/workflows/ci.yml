@@ -1,0 +1,28 @@
+name: First-party CI
+
+on:
+  push:
+    branches:
+      - main
+      - "cursor/**"
+      - "copilot/**"
+  pull_request:
+
+jobs:
+  first-party-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4.3.1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run syntax and unit checks
+        run: make check
+
+      - name: Run first-party hygiene scan
+        run: python3 scripts/repo_hygiene.py scan --repo-root . --no-include-third-party
