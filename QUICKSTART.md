@@ -14,6 +14,19 @@ Fastest path to verify the smoke harness end to end:
    ```
    Or run `make smoke`.
 
+   Host prerequisites for the full Podman smoke path:
+   - Podman / podman-compose installed
+   - a working bridge-network firewall backend
+   - kernel/userspace support for the iptables comment/forward-chain plumbing
+     that Podman networking expects
+
+   If your environment cannot provide those bridge-network hooks, use the
+   container-free fallback instead:
+
+   ```bash
+   make local-smoke
+   ```
+
    If `172.18.0.0/16` conflicts with an existing bridge on your host, choose an
    alternate subnet before starting the stack. Example:
 
@@ -49,13 +62,5 @@ Fastest path to verify the smoke harness end to end:
    podman-compose down -v
    ```
    Or run `make down`.
-
-If your VM or kernel cannot provide the container-network firewall hooks that
-Podman expects, you can still validate the first-party gateway and health flow
-without containers:
-
-```bash
-make local-smoke
-```
 
 If anything looks off, use `make logs` and then read `README.md` or `docs/USER-FLOW-REVIEW.md` for the deeper walkthrough.

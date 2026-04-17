@@ -1,6 +1,6 @@
 # User Flow Review
 
-Review date: 2026-03-17
+Review date: 2026-04-17
 
 ## Scope
 
@@ -16,21 +16,20 @@ This review covers:
 The broken `egressd` startup path found during the initial review has been
 repaired.
 
-Current state after the fix:
+Current state after the alpha hardening pass:
 
-- the `egressd` image includes all runtime modules it imports
-- `egressd/supervisor.py` now has one health/readiness implementation
+- `egressd` now defaults to a first-party native CONNECT gateway
+- runtime CONNECT policy is fail closed via `chain.allowed_ports`
+- readiness depends on the end-to-end proxy chain probe, not just isolated hop
+  reachability
 - preflight is wired into both `--check-config` and normal startup
 - unit tests and Make targets match the live supervisor API
 - the smoke FunkyDNS image now starts DoH with an explicit self-signed cert
-- the vendored FunkyDNS server now disables DoH and DoT when TLS files are
-  missing and auto-cert is off
-- the vendored FunkyDNS resolver now honors `/etc/hosts` and the system
-  resolver defined by `resolv.conf` before falling back to explicit upstreams
-- the smoke harness now mounts custom `hosts` and `resolv.conf` fixtures and
-  proves that behavior over both DNS and DoH
-- the smoke stack now tears down cleanly after the one-shot client exits
-- the smoke harness was re-run successfully end to end
+- the smoke harness now generates its resolver file dynamically and can be
+  moved to alternate subnets through environment variables
+- a container-free fallback smoke harness now exists at
+  `scripts/local_smoke_test.py`
+- first-party CI now runs compile checks, unit tests, and the repo hygiene scan
 
 ## Smoke Harness Flow
 
@@ -38,6 +37,9 @@ Current state after the fix:
 
 1. Initialize `third_party/FunkyDNS`.
 2. Run `podman-compose up --build` or `make smoke`.
+   - If the default smoke subnet overlaps an existing bridge on your host, set
+     the `SMOKE_*` network environment variables described in `QUICKSTART.md`
+     before starting the stack.
 3. Wait for `searchdns` to become healthy and answer `printer.corp.test`.
 4. Wait for `proxy1`, `proxy2`, `exitserver`, and `funky` to become healthy.
 5. `funky` becomes healthy only after direct DNS and DoH checks prove:
@@ -68,7 +70,8 @@ The intended paths are:
 
 - `client -> funky` for direct DNS and DoH ingress checks
 - `funky -> searchdns` for the single-label search-domain expansion path
-- `client -> egressd -> proxy1 -> proxy2 -> exitserver` for the CONNECT proof
+- `client -> egressd native CONNECT gateway -> proxy1 -> proxy2 -> exitserver`
+  for the CONNECT proof
 
 The observed success signal from the smoke run was:
 
@@ -88,8 +91,9 @@ whether the client is allowed to start.
 
 Current readiness behavior:
 
-- `pproxy` must be running
+- the local listener must be running
 - hop checks must exist and be fresh
+- the end-to-end chain probe must succeed
 - all configured hops must be healthy by default
 - managed FunkyDNS must be running when `dns.launch_funkydns=true`
 
@@ -159,16 +163,25 @@ The following checks passed:
 - `python3 -m unittest tests/test_supervisor.py`
 - `python3 -m unittest scripts/test_repo_hygiene.py`
 - `make test`
-- `make preflight`
-- `make validate-config`
-- `podman-compose up --build --abort-on-container-exit --exit-code-from client`
+- `make preflight` equivalent using `sudo podman build --network=host ...`
+  because this VM could not complete normal Podman bridge setup
+- `make validate-config` equivalent using `sudo podman build --network=host ...`
+- `make local-smoke`
 
 ## Residual Caveats
 
 - upstream FunkyDNS still does not stop reliably on container stop signals in
   this environment, which is why the smoke image uses a local launcher wrapper.
-- Host-mode nftables and owner-gating were not executed in this turn, so host
-  enforcement remains code-reviewed rather than runtime-proven here.
+- in this VM, full `podman-compose up` remained blocked by host kernel /
+  container-networking support:
+  - rootful netavark failed programming FORWARD rules
+  - CNI fallback failed on missing iptables `comment` extension support
+  - the required netfilter modules were unavailable for kernel `6.12.58+`
+- because of that, the full compose smoke run is still a host-environment check
+  rather than a repo-code blocker here.
+- Host-mode nftables and owner-gating were not executed against a real workload
+  namespace in this turn, so host enforcement remains code-reviewed plus
+  unit-tested rather than runtime-proven on this VM.
 
 ## Next Task
 
