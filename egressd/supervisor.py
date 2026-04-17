@@ -860,15 +860,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             processes["pproxy"] = None
             set_state({"pproxy": "error"})
             refresh_ready_state(cfg)
-<<<<<<< cursor/project-progress-and-cleanup-6d96
             if STOP_EVENT.is_set():
                 break
-            logging.exception("supervisor loop error")
-=======
             logging.exception("supervisor loop error: %s", exc)
-            if STOP_EVENT.is_set():
-                break
->>>>>>> main
 
         if STOP_EVENT.is_set():
             break
