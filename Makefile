@@ -24,7 +24,7 @@ ready:
 	curl -i http://localhost:9191/ready
 
 pycheck:
-	$(PYTHON) -m py_compile egressd/connect_gateway.py egressd/supervisor.py egressd/chain.py egressd/readiness.py egressd/preflight.py egressd/test_supervisor.py egressd/test_supervisor_readiness.py client/test_client.py exitserver/echo_server.py funkydns-smoke/check_resolution.py funkydns-smoke/generate_cert.py funkydns-smoke/run_funkydns.py tests/test_chain.py tests/test_preflight.py tests/test_hop_connectivity.py tests/test_host_scripts.py tests/test_compose_config.py scripts/repo_hygiene.py scripts/repo_maintenance.py scripts/test_repo_hygiene.py
+	$(PYTHON) -m py_compile egressd/connect_gateway.py egressd/supervisor.py egressd/chain.py egressd/readiness.py egressd/preflight.py egressd/test_supervisor.py egressd/test_supervisor_readiness.py client/test_client.py exitserver/echo_server.py funkydns-smoke/check_resolution.py funkydns-smoke/generate_cert.py funkydns-smoke/prepare_resolv_conf.py funkydns-smoke/run_funkydns.py tests/test_chain.py tests/test_preflight.py tests/test_hop_connectivity.py tests/test_host_scripts.py tests/test_compose_config.py scripts/repo_hygiene.py scripts/repo_maintenance.py scripts/test_repo_hygiene.py
 
 unittest:
 	$(PYTHON) -m unittest egressd/test_supervisor_readiness.py egressd/test_supervisor.py tests/test_readiness.py tests/test_supervisor.py tests/test_chain.py tests/test_preflight.py tests/test_hop_connectivity.py tests/test_host_scripts.py tests/test_compose_config.py scripts/test_repo_hygiene.py scripts/test_repo_maintenance.py

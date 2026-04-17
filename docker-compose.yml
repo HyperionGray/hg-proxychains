@@ -216,7 +216,7 @@ services:
       egressd:
         condition: service_healthy
     environment:
-      - DNS_SERVER=${DNS_SERVER:-${SMOKE_FUNKY_IP:-172.18.0.10}}
+      - DNS_SERVER=${DNS_SERVER:-funky}
     networks:
       egressnet:
         ipv4_address: ${SMOKE_CLIENT_IP:-172.18.0.30}

@@ -14,6 +14,23 @@ Fastest path to verify the smoke harness end to end:
    ```
    Or run `make smoke`.
 
+   If `172.18.0.0/16` conflicts with an existing bridge on your host, choose an
+   alternate subnet before starting the stack. Example:
+
+   ```bash
+   export SMOKE_SUBNET=172.29.0.0/16
+   export SMOKE_GATEWAY=172.29.0.1
+   export SMOKE_SEARCHDNS_IP=172.29.0.40
+   export SMOKE_FUNKY_IP=172.29.0.10
+   export SMOKE_PROXY1_IP=172.29.0.11
+   export SMOKE_PROXY2_IP=172.29.0.12
+   export SMOKE_EXITSERVER_IP=172.29.0.20
+   export SMOKE_EGRESSD_IP=172.29.0.5
+   export SMOKE_CLIENT_IP=172.29.0.30
+   export DNS_SERVER=funky
+   podman-compose up
+   ```
+
 3. Wait for the one-shot `client` container to finish. A good run prints:
    - `DNS OK` / `DoH OK` for `smoke.test`
    - `DNS OK` / `DoH OK` for `hosts.smoke.internal`
