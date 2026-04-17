@@ -48,7 +48,7 @@ services:
       start_period: 15s
     networks:
       egressnet:
-        ipv4_address: 172.18.0.40
+        ipv4_address: ${SMOKE_SEARCHDNS_IP:-172.18.0.40}
 
   funky:
     build: *funkydns_smoke_build
@@ -63,12 +63,38 @@ services:
       - "18443:443"
     environment:
       - HOSTS_FILE_PATH=/opt/funkydns-smoke/etc/hosts
-      - RESOLV_CONF_PATH=/opt/funkydns-smoke/etc/resolv.conf
+      - RESOLV_CONF_PATH=/opt/funkydns-smoke/generated/resolv.conf
       - USE_SYSTEM_RESOLVER=true
       - RESPECT_HOSTS_FILE=true
+      - SEARCHDNS_HOST=searchdns
+      - SMOKE_SEARCHDNS_IP=${SMOKE_SEARCHDNS_IP:-172.18.0.40}
+    command:
+      [
+        "python3",
+        "/opt/funkydns-smoke/prepare_resolv_conf.py",
+        "--output",
+        "/opt/funkydns-smoke/generated/resolv.conf",
+        "--upstream-host",
+        "searchdns",
+        "--search-domain",
+        "corp.test",
+        "--",
+        "python3",
+        "/opt/funkydns-smoke/run_funkydns.py",
+        "funkydns",
+        "server",
+        "--dns-port",
+        "53",
+        "--doh-port",
+        "443",
+        "--cert-path",
+        "/opt/funkydns-smoke/tls/fullchain.pem",
+        "--key-path",
+        "/opt/funkydns-smoke/tls/privkey.pem",
+        "--no-dot",
+      ]
     volumes:
       - ./funkydns-smoke/etc/hosts:/opt/funkydns-smoke/etc/hosts:ro
-      - ./funkydns-smoke/etc/resolv.conf:/opt/funkydns-smoke/etc/resolv.conf:ro
     healthcheck:
       test:
         [
@@ -83,7 +109,7 @@ services:
       start_period: 15s
     networks:
       egressnet:
-        ipv4_address: 172.18.0.10
+        ipv4_address: ${SMOKE_FUNKY_IP:-172.18.0.10}
 
   proxy1:
     build: ./proxy
@@ -104,7 +130,7 @@ services:
       start_period: 5s
     networks:
       egressnet:
-        ipv4_address: 172.18.0.11
+        ipv4_address: ${SMOKE_PROXY1_IP:-172.18.0.11}
 
   proxy2:
     build: ./proxy
@@ -125,7 +151,7 @@ services:
       start_period: 5s
     networks:
       egressnet:
-        ipv4_address: 172.18.0.12
+        ipv4_address: ${SMOKE_PROXY2_IP:-172.18.0.12}
 
   exitserver:
     build: ./exitserver
@@ -147,7 +173,7 @@ services:
       start_period: 5s
     networks:
       egressnet:
-        ipv4_address: 172.18.0.20
+        ipv4_address: ${SMOKE_EXITSERVER_IP:-172.18.0.20}
 
   egressd:
     build: ./egressd
@@ -181,7 +207,7 @@ services:
       start_period: 5s
     networks:
       egressnet:
-        ipv4_address: 172.18.0.5
+        ipv4_address: ${SMOKE_EGRESSD_IP:-172.18.0.5}
 
   client:
     build: ./client
@@ -189,14 +215,16 @@ services:
     depends_on:
       egressd:
         condition: service_healthy
+    environment:
+      - DNS_SERVER=${DNS_SERVER:-${SMOKE_FUNKY_IP:-172.18.0.10}}
     networks:
       egressnet:
-        ipv4_address: 172.18.0.30
+        ipv4_address: ${SMOKE_CLIENT_IP:-172.18.0.30}
 
 networks:
   egressnet:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.18.0.0/16
-          gateway: 172.18.0.1
+        - subnet: ${SMOKE_SUBNET:-172.18.0.0/16}
+          gateway: ${SMOKE_GATEWAY:-172.18.0.1}

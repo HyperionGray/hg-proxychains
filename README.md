@@ -229,6 +229,7 @@ make validate-config
 - `egressd/config*.json5` DNS section: use `doh_upstreams` (list) or legacy `doh_upstream` (single URL)
 - `scripts/host-egress-owner.sh`: upstream proxy / DoH IP allowlists, including optional IPv6 allowlists
 - `scripts/host-nftables.sh`: bridge interface name, infra CIDRs, and whether IPv6 is explicitly enabled
+- `docker-compose.yml`: smoke-harness bridge subnet/gateway via `EGRESSNET_SUBNET` and `EGRESSNET_GATEWAY`
 
 ## Chain visual
 

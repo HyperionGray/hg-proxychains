@@ -5,6 +5,7 @@ WORKDIR /opt/funkydns
 COPY third_party/FunkyDNS /opt/funkydns/
 COPY funkydns-smoke/check_resolution.py /opt/funkydns-smoke/check_resolution.py
 COPY funkydns-smoke/generate_cert.py /opt/funkydns-smoke/generate_cert.py
+COPY funkydns-smoke/prepare_resolv_conf.py /opt/funkydns-smoke/prepare_resolv_conf.py
 COPY funkydns-smoke/run_funkydns.py /opt/funkydns-smoke/run_funkydns.py
 COPY funkydns-smoke/zones /opt/funkydns-smoke/zones
 COPY funkydns-smoke/upstream-zones /opt/funkydns-smoke/upstream-zones
