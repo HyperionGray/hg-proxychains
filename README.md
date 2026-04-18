@@ -140,7 +140,7 @@ curl http://localhost:9191/live
 - HTTPS DoH listener on `funky:443`
 - direct DNS and DoH lookup for `smoke.test -> 203.0.113.10`
 - mounted hosts-file lookup for `hosts.smoke.internal -> 198.51.100.21`
-- mounted `resolv.conf` search-domain lookup for `printer -> printer.corp.test -> 198.51.100.42`
+- search-domain lookup for `printer -> printer.corp.test -> 198.51.100.42`
 - local explicit CONNECT tunnel establishment
 - multi-hop relay via `pproxy`
 - end-to-end raw TCP after CONNECT
@@ -174,8 +174,9 @@ The compose harness runs FunkyDNS as a **separate service**.
 
 `egressd` does **not** launch FunkyDNS in smoke mode. That avoids double-start bugs and keeps service boundaries clean.
 
-The smoke FunkyDNS image carries a self-signed cert, a clean local zone, a
-mounted `hosts` file, and a mounted `resolv.conf` so compose can health-check:
+The smoke FunkyDNS image carries a self-signed cert, a clean local zone, and a
+mounted `hosts` file. On startup it writes a local `resolv.conf` from the
+resolved `searchdns` service address so compose can health-check:
 
 - direct DNS on `53`
 - a real DoH POST on `443`
