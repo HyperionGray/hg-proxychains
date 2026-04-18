@@ -70,7 +70,8 @@ def query_dns(
     server: str, port: int, name: str, record_type: str
 ) -> dns.message.Message:
     query = dns.message.make_query(name, record_type)
-    return dns.query.udp(query, server, port=port, timeout=5)
+    server_ip = socket.gethostbyname(server)
+    return dns.query.udp(query, server_ip, port=port, timeout=5)
 
 
 def extract_answers(
