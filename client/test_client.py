@@ -1,3 +1,4 @@
+import os
 import socket
 import ssl
 import time
@@ -10,7 +11,7 @@ import dns.rdatatype
 
 
 DOH_URL = "https://funky/dns-query"
-DNS_SERVER = "172.18.0.10"
+DNS_SERVER = os.environ.get("DNS_SERVER", "funky")
 DNS_PORT = 53
 RESOLUTION_CASES = (
     {
