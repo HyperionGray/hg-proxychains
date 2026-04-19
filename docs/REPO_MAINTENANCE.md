@@ -9,7 +9,7 @@ Primary documentation has moved to `docs/REPO-HYGIENE.md`.
 - Backup files (`*~`, `*.bak`, `*.orig`, `*.old`, `*.tmp`)
 - Stray Python cache directories (`__pycache__/`)
 - Known stale artifacts (currently `egressd-starter.tar.gz`)
-- Embedded git repositories outside the allowed third-party submodule path
+- Unexpected embedded repositories (nested `.git` roots outside approved locations)
 
 By default, marker scanning includes tracked files in `third_party/FunkyDNS` when that repository is present.
 For day-to-day repo automation, prefer the first-party-only mode (`--no-include-third-party`)
@@ -27,8 +27,11 @@ python3 scripts/repo_hygiene.py scan --repo-root . --json
 # Include third_party marker scan explicitly
 python3 scripts/repo_hygiene.py scan --repo-root . --include-third-party
 
-# Remove backup files + stray cache dirs + stale artifacts while scanning
-python3 scripts/repo_hygiene.py clean --repo-root .
+# Allow additional embedded repos for local workflows
+python3 scripts/repo_maintenance.py --allow-embedded-repo sandbox/my-local-repo
+
+# Remove backup files + stale artifacts while scanning
+python3 scripts/repo_maintenance.py --fix
 ```
 
 Makefile wrappers:
@@ -43,6 +46,12 @@ make maintenance-all
 make maintenance-all-json
 ```
 
+To include marker scanning in `third_party/FunkyDNS`, run the script directly:
+
+```bash
+python3 scripts/repo_maintenance.py --root . --include-third-party
+```
+
 ## Notes
 
 - Use `clean` (not `scan`) to remove backup files, stray `__pycache__/`
@@ -50,7 +59,5 @@ make maintenance-all-json
 - `--stale-artifact <path>` can be supplied repeatedly on `scan` or `clean`
   to track extra generated files for a run.
 - Unfinished markers are reported but not modified automatically.
-- Embedded git repositories are reported but never auto-removed by `clean`.
-- `scan` exits `1` when issues are found.
-- `clean` exits `0` only when removable clutter is deleted and no blocking
-  issues remain; otherwise it exits `1`.
+- Embedded repository findings are reported only; they are never auto-removed.
+- Exit code is `1` when any issues are found, making this suitable for scheduled jobs and CI gates.

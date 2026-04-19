@@ -257,7 +257,11 @@ make maintenance
 # equivalent: python3 scripts/repo_hygiene.py scan --repo-root .
 ```
 
-For automatic cleanup of removable clutter (backup files, stray `__pycache__/` dirs, and known stale artifacts):
+This check also flags unexpected nested repositories (embedded `.git` roots)
+outside approved paths. The Make target skips third-party marker scanning by
+default to avoid blocking on external dependency TODOs.
+
+For automatic cleanup of removable clutter (backup files and known stale artifacts):
 
 ```bash
 make maintenance-fix

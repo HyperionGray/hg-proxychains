@@ -1,4 +1,4 @@
-# Repo hygiene
+# Repo hygiene (legacy helper)
 
 `scripts/repo_hygiene.py` is retained as a legacy scanner. For scheduled automation and current maintenance policy, prefer `scripts/repo_maintenance.py` (`make maintenance` / `make maintenance-fix`).
 

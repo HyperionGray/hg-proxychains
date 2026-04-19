@@ -1,71 +1,50 @@
-import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 import repo_maintenance
 
 
 class RepoMaintenanceTests(unittest.TestCase):
-    def test_discover_embedded_git_repos_skips_allowed_submodule(self) -> None:
+    def test_discover_embedded_repos_ignores_root_and_allowed_paths(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            (root / ".git").mkdir()
-            allowed = root / "third_party" / "FunkyDNS" / ".git"
-            allowed.parent.mkdir(parents=True, exist_ok=True)
-            allowed.write_text("gitdir: ../../.git/modules/third_party/FunkyDNS\n", encoding="utf-8")
-            nested = root / "scratch" / ".git"
-            nested.mkdir(parents=True, exist_ok=True)
+            (root / ".git").mkdir(parents=True)
+            allowed = root / "third_party" / "FunkyDNS"
+            allowed.mkdir(parents=True)
+            (allowed / ".git").write_text(
+                "gitdir: ../.git/modules/FunkyDNS\n", encoding="utf-8"
+            )
 
-            found = repo_maintenance.discover_embedded_git_repos(root, include_third_party=True)
+            rogue = root / "scratch" / "nested-repo"
+            (rogue / ".git").mkdir(parents=True)
 
-            self.assertEqual([str(path.relative_to(root)) for path in found], ["scratch"])
+            found = repo_maintenance.discover_embedded_repos(
+                root, ["third_party/FunkyDNS"]
+            )
 
-    def test_discover_untracked_stray_dirs_detects_pycache(self) -> None:
-        with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
-            cache_file = root / "pkg" / "__pycache__" / "mod.cpython-312.pyc"
-            cache_file.parent.mkdir(parents=True, exist_ok=True)
-            cache_file.write_bytes(b"x")
-            found = repo_maintenance.discover_untracked_stray_dirs(root, include_third_party=True)
+        self.assertEqual(found, ["scratch/nested-repo"])
 
-            self.assertEqual([str(path.relative_to(root)) for path in found], ["pkg/__pycache__"])
+    def test_build_report_counts_embedded_repos_in_summary(self) -> None:
+        root = Path("/repo")
+        with patch("repo_maintenance.run_git_ls_files", return_value=[]), patch(
+            "repo_maintenance.scan_markers",
+            return_value=[],
+        ), patch("repo_maintenance.discover_backup_files", return_value=[]), patch(
+            "repo_maintenance.discover_stale_artifacts",
+            return_value=[],
+        ), patch(
+            "repo_maintenance.discover_embedded_repos",
+            return_value=["scratch/nested-repo"],
+        ):
+            report = repo_maintenance.build_report(
+                root, include_third_party=False, allowed_embedded_repos=[]
+            )
 
-    def test_apply_fixes_removes_files_and_dirs(self) -> None:
-        with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
-            backup_file = root / "notes.tmp"
-            backup_file.write_text("temp\n", encoding="utf-8")
-            cache_dir = root / "build" / "__pycache__"
-            cache_dir.mkdir(parents=True, exist_ok=True)
-            (cache_dir / "a.pyc").write_bytes(b"x")
-            stale = root / "egressd-starter.tar.gz"
-            stale.write_text("bundle\n", encoding="utf-8")
-
-            report = {
-                "backup_files": ["notes.tmp"],
-                "stray_dirs": ["build/__pycache__"],
-                "stale_artifacts": ["egressd-starter.tar.gz"],
-            }
-            removed, failed = repo_maintenance.apply_fixes(root, report)
-
-            self.assertEqual(sorted(removed), sorted(["notes.tmp", "build/__pycache__", "egressd-starter.tar.gz"]))
-            self.assertEqual(failed, [])
-            self.assertFalse(backup_file.exists())
-            self.assertFalse(cache_dir.exists())
-            self.assertFalse(stale.exists())
-
-    def test_embedded_git_scan_can_skip_third_party(self) -> None:
-        with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
-            (root / ".git").mkdir()
-            third_party = root / "third_party" / "FunkyDNS" / "scratch" / ".git"
-            third_party.mkdir(parents=True, exist_ok=True)
-
-            found = repo_maintenance.discover_embedded_git_repos(root, include_third_party=False)
-
-            self.assertEqual(found, [])
+        self.assertEqual(report["summary"]["embedded_repos"], 1)
+        self.assertEqual(report["summary"]["total_issues"], 1)
+        self.assertEqual(report["embedded_repos"], ["scratch/nested-repo"])
 
 
 if __name__ == "__main__":

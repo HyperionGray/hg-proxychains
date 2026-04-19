@@ -13,12 +13,14 @@ __pycache__/
 *.bak
 *.orig
 *.rej
-*~
 .DS_Store
 .venv/
 .env
 third_party/FunkyDNS/.venv/
 third_party/FunkyDNS/__pycache__/
 egressd-starter.tar.gz
-**.bish**
-**/**bish**
+.bish.sqlite
+.bish.index
+**/.bish.sqlite
+**/.bish-index
+**/**.bish**
