@@ -30,9 +30,7 @@ STRAY_DIR_NAMES = {
     ".mypy_cache",
     ".ruff_cache",
 }
-STALE_ARTIFACT_PATHS = frozenset((
-    "egressd-starter.tar.gz",
-))
+STALE_ARTIFACT_PATHS = frozenset({"egressd-starter.tar.gz"})
 UNFINISHED_SCAN_SUFFIXES = {
     ".py",
     ".sh",
