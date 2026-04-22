@@ -91,20 +91,21 @@ class ChainVisualTests(unittest.TestCase):
             "hop_1": {"ok": True, "elapsed_ms": 38},
         }
         visual = supervisor.format_chain_visual(self._cfg(), statuses)
-        self.assertIn("-<>-OK", visual)
-        self.assertNotIn("-XX-", visual)
+        self.assertIn("|S-chain|proxy1:3128<->proxy2:3128", visual)
+        self.assertIn("proxy1:3128<->proxy2:3128", visual)
+        self.assertIn("<->OK", visual)
         self.assertNotIn("FAIL", visual)
 
-    def test_failed_hop_produces_fail_suffix_and_xx_connector(self):
-        """A failed hop uses '-XX-' connector and the line ends with 'FAIL'."""
+    def test_failed_hop_produces_fail_suffix(self):
+        """A failed hop keeps the chain path and ends with 'FAIL'."""
         statuses = {
             "hop_0": {"ok": True, "elapsed_ms": 42},
             "hop_1": {"ok": False, "error": "Connection refused"},
         }
         visual = supervisor.format_chain_visual(self._cfg(), statuses)
-        self.assertIn("-XX-", visual)
+        self.assertIn("proxy1:3128<->proxy2:3128", visual)
         self.assertIn("FAIL", visual)
-        self.assertNotIn("-<>-OK", visual)
+        self.assertNotIn("<->OK", visual)
 
     def test_hop_labels_appear_in_chain_line(self):
         """Each hop hostname:port must appear in the main chain line."""
@@ -136,13 +137,12 @@ class ChainVisualTests(unittest.TestCase):
         self.assertIn("no hops", visual)
 
     def test_single_hop_chain(self):
-        """A single-hop chain produces exactly one hop label and no '-XX-'."""
+        """A single-hop chain produces exactly one hop label."""
         cfg = {"chain": {"hops": [{"url": "http://solo:3128"}], "canary_target": "t:80"}}
         statuses = {"hop_0": {"ok": True, "elapsed_ms": 10}}
         visual = supervisor.format_chain_visual(cfg, statuses)
         self.assertIn("solo:3128", visual)
-        self.assertIn("-<>-OK", visual)
-        self.assertNotIn("-XX-", visual)
+        self.assertIn("solo:3128<->OK", visual)
 
     def _capture_stderr(self, fn, *args, **kwargs) -> str:
         """Call *fn* with redirected stderr and return whatever was written."""
