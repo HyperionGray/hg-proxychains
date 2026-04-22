@@ -1,3 +1,4 @@
+import importlib.util
 import sys
 from types import SimpleNamespace
 import tempfile
@@ -5,8 +6,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import repo_maintenance
+_MODULE_PATH = Path(__file__).resolve().parent / "repo_maintenance.py"
+_SPEC = importlib.util.spec_from_file_location("repo_maintenance", _MODULE_PATH)
+assert _SPEC is not None and _SPEC.loader is not None
+repo_maintenance = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(repo_maintenance)
 
 
 class RepoMaintenanceTests(unittest.TestCase):
@@ -34,8 +38,9 @@ class RepoMaintenanceTests(unittest.TestCase):
 
     def test_main_delegates_clean_command_to_repo_hygiene(self) -> None:
         root = Path("/repo")
-        with patch(
-            "repo_maintenance.subprocess.run",
+        with patch.object(
+            repo_maintenance.subprocess,
+            "run",
             return_value=SimpleNamespace(returncode=0),
         ) as run:
             rc = repo_maintenance.main(
