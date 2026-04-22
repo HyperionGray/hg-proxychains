@@ -7,12 +7,23 @@ CLIENT_DOCKERFILE = REPO_ROOT / "client" / "Dockerfile"
 
 
 class ClientDockerfileTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        if not CLIENT_DOCKERFILE.exists():
+            raise AssertionError(f"Missing Dockerfile: {CLIENT_DOCKERFILE}")
+        cls.dockerfile_text = CLIENT_DOCKERFILE.read_text(encoding="utf-8")
+
     def _dockerfile_text(self) -> str:
-        self.assertTrue(CLIENT_DOCKERFILE.exists())
-        return CLIENT_DOCKERFILE.read_text(encoding="utf-8")
+        return self.dockerfile_text
 
     def test_client_dockerfile_uses_expected_base_image(self) -> None:
         self.assertIn("FROM python:3.11-slim", self._dockerfile_text())
+        first_non_empty_line = next(
+            line.strip()
+            for line in self._dockerfile_text().splitlines()
+            if line.strip()
+        )
+        self.assertEqual(first_non_empty_line, "FROM python:3.11-slim")
 
     def test_client_dockerfile_sets_expected_workdir(self) -> None:
         self.assertIn("WORKDIR /opt/client", self._dockerfile_text())
