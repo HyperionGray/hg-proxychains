@@ -1,14 +1,20 @@
 import sys
 import tempfile
 import unittest
+import importlib.util
 from pathlib import Path
 from unittest.mock import patch
 
-from scripts import repo_maintenance
+_MODULE_PATH = Path(__file__).resolve().parent / "repo_maintenance.py"
+_SPEC = importlib.util.spec_from_file_location("repo_maintenance", _MODULE_PATH)
+if _SPEC is None or _SPEC.loader is None:  # pragma: no cover - defensive import guard
+    raise ImportError(f"unable to load repo_maintenance from {_MODULE_PATH}")
+repo_maintenance = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(repo_maintenance)
 
 
 class RepoMaintenanceTests(unittest.TestCase):
-    def test_discover_embedded_git_repos_ignores_root_and_gitlink_and_third_party(self) -> None:
+    def test_discover_embedded_git_repos_excludes_special_paths(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             (root / ".git").mkdir(parents=True)
@@ -48,7 +54,7 @@ class RepoMaintenanceTests(unittest.TestCase):
         mock_run.assert_called_once()
         args = mock_run.call_args.args[0]
         self.assertEqual(args[0], sys.executable)
-        self.assertTrue(args[1].endswith("repo_hygiene.py"))
+        self.assertEqual(Path(args[1]).name, "repo_hygiene.py")
         self.assertEqual(
             args[2:],
             [
