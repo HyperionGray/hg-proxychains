@@ -53,11 +53,19 @@ class RepoMaintenanceTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         run.assert_called_once()
         cmd = run.call_args[0][0]
-        self.assertEqual(cmd[2], "clean")
-        self.assertEqual(cmd[4], str(root.resolve()))
-        self.assertIn("--baseline-file", cmd)
-        self.assertIn("custom-baseline.json", cmd)
-        self.assertIn("--json", cmd)
+        self.assertEqual(
+            cmd,
+            [
+                sys.executable,
+                str((Path(repo_maintenance.__file__).resolve().parent / "repo_hygiene.py")),
+                "clean",
+                "--repo-root",
+                str(root.resolve()),
+                "--baseline-file",
+                "custom-baseline.json",
+                "--json",
+            ],
+        )
         self.assertNotIn("--include-third-party", cmd)
 
 
