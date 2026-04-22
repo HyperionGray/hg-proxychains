@@ -1,36 +1,93 @@
 # QUICKSTART
 
-Fastest path to verify the smoke harness end to end:
+Fastest complete path for a new user to get this repo running end to end.
 
-1. Initialize the private FunkyDNS submodule:
-   ```bash
-   git submodule update --init --recursive third_party/FunkyDNS
-   ```
-   If you prefer the helper script, run `make deps` instead.
+## 0) Prereqs
 
-2. Start the stack:
-   ```bash
-   podman-compose up --build
-   ```
-   Or run `make smoke`.
+- `podman`
+- `podman-compose`
+- `make`
 
-3. Wait for the one-shot `client` container to finish. A good run prints:
-   - `DNS OK` / `DoH OK` for `smoke.test`
-   - `DNS OK` / `DoH OK` for `hosts.smoke.internal`
-   - `DNS OK` / `DoH OK` for `printer`
-   - `CONNECT` followed by `OK from exit-server`
+## 1) Initialize third-party dependency
 
-4. Spot-check health endpoints:
-   ```bash
-   curl -sk https://localhost:18443/healthz
-   curl http://localhost:9191/health
-   curl -f http://localhost:9191/ready
-   ```
+```bash
+git submodule update --init --recursive third_party/FunkyDNS
+```
 
-5. Tear it down when finished:
-   ```bash
-   podman-compose down -v
-   ```
-   Or run `make down`.
+Or:
 
-If anything looks off, use `make logs` and then read `README.md` or `docs/USER-FLOW-REVIEW.md` for the deeper walkthrough.
+```bash
+make deps
+```
+
+## 2) Minimal config (optional but recommended)
+
+`egressd/config.json5` only needs your proxy list:
+
+```json5
+{
+  proxies: [
+    "http://proxy1:3128",
+    "http://proxy2:3128",
+  ],
+  logging: {
+    chain_visual: true,
+  },
+}
+```
+
+`chain_visual: true` enables the classic chain view:
+
+```text
+[egressd] |S-chain|proxy1:3128<->proxy2:3128<->OK
+```
+
+## 3) Start smoke harness
+
+```bash
+podman-compose up --build
+```
+
+Or:
+
+```bash
+make smoke
+```
+
+## 4) Confirm expected output
+
+Wait for one-shot `client` completion. A healthy run includes:
+
+- `DNS OK` / `DoH OK` for `smoke.test`
+- `DNS OK` / `DoH OK` for `hosts.smoke.internal`
+- `DNS OK` / `DoH OK` for `printer`
+- `CONNECT` followed by `OK from exit-server`
+
+Then verify health endpoints:
+
+```bash
+curl -sk https://localhost:18443/healthz
+curl http://localhost:9191/health
+curl -f http://localhost:9191/ready
+curl http://localhost:9191/live
+```
+
+## 5) Stop and clean up
+
+```bash
+podman-compose down -v
+```
+
+Or:
+
+```bash
+make down
+```
+
+## 6) Troubleshooting
+
+```bash
+make logs
+make health
+make ready
+```

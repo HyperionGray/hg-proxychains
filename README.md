@@ -231,16 +231,16 @@ proxychains-style display on stderr.  It prints on startup (topology only)
 and again whenever the per-hop health state changes:
 
 ```
-[egressd] |S-chain|-<>-proxy1:3128-<>-proxy2:3128-<>-OK
+[egressd] |S-chain|proxy1:3128<->proxy2:3128<->OK
 [egressd]   hop_0: proxy1:3128                 OK   42ms
 [egressd]   hop_1: proxy2:3128                 OK   38ms
 ```
 
-When a hop is unreachable the connector flips to `-XX-` and the line ends
-with `FAIL`:
+When a hop is unreachable the chain still renders in the same classic
+`proxy1<->proxy2<->proxy3` style, and the line ends with `FAIL`:
 
 ```
-[egressd] |S-chain|-<>-proxy1:3128-XX-proxy2:3128-<>-FAIL
+[egressd] |S-chain|proxy1:3128<->proxy2:3128<->FAIL
 [egressd]   hop_0: proxy1:3128                 OK   42ms
 [egressd]   hop_1: proxy2:3128                 FAIL Connection refused
 ```

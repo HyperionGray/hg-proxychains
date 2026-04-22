@@ -165,21 +165,16 @@ def format_chain_visual(cfg: Dict[str, Any], hop_statuses: Optional[Dict[str, An
     if not hops:
         return "[egressd] chain: (no hops configured)"
 
-    segments: List[str] = ["|S-chain|"]
+    hop_labels: List[str] = []
     for idx, hop in enumerate(hops):
         label = _extract_hop_label(hop)
-        if hop_statuses is not None:
-            ok = bool(hop_statuses.get(f"hop_{idx}", {}).get("ok", False))
-            connector = "-<>-" if ok else "-XX-"
-        else:
-            connector = "-<>-"
-        segments.append(f"{connector}{label}")
+        hop_labels.append(label)
 
-    final = "-<>-..."
+    final = "..."
     if hop_statuses is not None:
-        final = "-<>-OK" if _all_hops_ok(hops, hop_statuses) else "-<>-FAIL"
+        final = "OK" if _all_hops_ok(hops, hop_statuses) else "FAIL"
 
-    lines = [f"[egressd] {''.join(segments)}{final}"]
+    lines = [f"[egressd] |S-chain|{'<->'.join(hop_labels)}<->{final}"]
     if hop_statuses:
         for idx, hop in enumerate(hops):
             label = _extract_hop_label(hop)
