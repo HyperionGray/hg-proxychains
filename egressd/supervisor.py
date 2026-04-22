@@ -2,13 +2,11 @@
 from __future__ import annotations
 
 import argparse
-import base64
 import copy
 import json
 import logging
 import os
 import signal
-import socket
 import subprocess
 import sys
 import threading
@@ -22,7 +20,8 @@ import pyjson5
 
 from chain import build_relay_string
 from preflight import normalize_cfg, report_to_json, run_preflight
-from readiness import build_readiness_report
+from supervisor_hops import check_hop_connectivity, collect_hop_statuses, format_chain_visual, parse_proxy_url
+from supervisor_readiness import compute_readiness, compute_startup_gate, summarize_readiness
 
 CFG_PATH = os.environ.get("EGRESSD_CONFIG", "/opt/egressd/config.json5")
 STATE_LOCK = threading.Lock()
@@ -119,16 +118,6 @@ def get_state_snapshot() -> Dict[str, Any]:
         return copy.deepcopy(STATE)
 
 
-def _normalize_state_for_readiness(state: Dict[str, Any]) -> Dict[str, Any]:
-    normalized = copy.deepcopy(state)
-    if normalized.get("hops_last_update") is None:
-        legacy_value = normalized.get("hop_last_checked")
-        if legacy_value is None:
-            legacy_value = normalized.get("last_hop_check")
-        normalized["hops_last_update"] = legacy_value
-    return normalized
-
-
 def normalize_funkydns_upstreams(value: Any) -> List[str]:
     parsed: Any = value
     if isinstance(value, str):
@@ -167,7 +156,6 @@ def normalize_funkydns_upstreams(value: Any) -> List[str]:
 
     if not normalized:
         raise ValueError("doh_upstream resolved to an empty list")
-
     return normalized
 
 
@@ -218,328 +206,24 @@ def start_funkydns(cfg: Dict[str, Any]) -> Optional[subprocess.Popen]:
     return _start_logged_process("funkydns", argv)
 
 
-def parse_proxy_url(url: str) -> Tuple[str, int, Optional[str]]:
-    """Parse proxy URL and extract host, port, and optional auth header.
-    
-    Args:
-        url: Proxy URL (http:// or https://)
-        
-    Returns:
-        Tuple of (host, port, optional_auth_header)
-        
-    Raises:
-        ValueError: If URL is malformed or has unsupported scheme
-    """
-    parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"}:
-        raise ValueError(f"unsupported proxy scheme: {parsed.scheme}")
-    host = parsed.hostname
-    if not host:
-        raise ValueError(f"invalid proxy url: {url}")
-    port = parsed.port or (443 if parsed.scheme == "https" else 80)
-    auth_header = None
-    if parsed.username is not None:
-        raw_user = parsed.username
-        raw_pass = parsed.password or ""
-        # Validate credentials don't contain newlines that could break headers
-        if '\n' in raw_user or '\r' in raw_user or '\n' in raw_pass or '\r' in raw_pass:
-            raise ValueError("proxy credentials cannot contain newline characters")
-        token = base64.b64encode(f"{raw_user}:{raw_pass}".encode("utf-8")).decode("ascii")
-        auth_header = f"Proxy-Authorization: Basic {token}\r\n"
-    return host, port, auth_header
-
-
-def _parse_http_status_code(status_line: str) -> Optional[int]:
-    parts = status_line.split()
-    if len(parts) < 2:
-        return None
-    try:
-        return int(parts[1])
-    except ValueError:
-        return None
-
-
-def check_hop_connectivity(hop_url: str, target: str, timeout: float = 3.0) -> Dict[str, Any]:
-    start = time.time()
-    checked_at = int(start)
-    proxy_label = hop_url
-    sock: Optional[socket.socket] = None
-    try:
-        try:
-            host, port, auth_header = parse_proxy_url(hop_url)
-        except ValueError as exc:
-            return {
-                "ok": False,
-                "proxy": proxy_label,
-                "error": str(exc),
-                "elapsed_ms": int((time.time() - start) * 1000),
-                "checked_at": checked_at,
-            }
-        proxy_label = f"{host}:{port}"
-        sock = socket.create_connection((host, port), timeout=timeout)
-        sock.settimeout(timeout)
-        request = (
-            f"CONNECT {target} HTTP/1.1\r\n"
-            f"Host: {target}\r\n"
-            f"Proxy-Connection: keep-alive\r\n"
-            f"{auth_header or ''}"
-            f"\r\n"
-        )
-        sock.sendall(request.encode("utf-8"))
-        response = sock.recv(4096).decode("utf-8", errors="ignore")
-        status_line = response.splitlines()[0] if response else "<no-response>"
-        status_code = _parse_http_status_code(status_line)
-        reachable = status_code is not None
-        ok = status_code is not None and 200 <= status_code < 300
-        result = {
-            "ok": ok,
-            "reachable": reachable,
-            "proxy": proxy_label,
-            "status_line": status_line,
-            "status_code": status_code,
-            "elapsed_ms": int((time.time() - start) * 1000),
-            "checked_at": checked_at,
-        }
-        if not ok:
-            result["error"] = status_line
-        return result
-    except (socket.error, socket.timeout, OSError, ValueError) as exc:
-        return {
-            "ok": False,
-            "proxy": proxy_label,
-            "error": str(exc),
-            "elapsed_ms": int((time.time() - start) * 1000),
-            "checked_at": checked_at,
-        }
-    finally:
-        if sock is not None:
-            try:
-                sock.close()
-            except OSError:
-                # Socket may already be closed, ignore
-                logging.debug("Failed to close socket during cleanup")
-
-
-def collect_hop_statuses(cfg: Dict[str, Any], target: str) -> Dict[str, Any]:
-    timeout_s = max(0.1, int(cfg.get("chain", {}).get("connect_timeout_ms", 3000)) / 1000.0)
-    checked_at = int(time.time())
-    statuses: Dict[str, Any] = {}
-    for idx, hop in enumerate(cfg.get("chain", {}).get("hops", [])):
-        hop_key = f"hop_{idx}"
-        hop_url = hop.get("url") if isinstance(hop, dict) else None
-        if not hop_url:
-            statuses[hop_key] = {
-                "ok": False,
-                "proxy": "<missing>",
-                "error": "missing hop url",
-                "elapsed_ms": 0,
-                "checked_at": checked_at,
-            }
-            continue
-        if not target:
-            statuses[hop_key] = {
-                "ok": False,
-                "proxy": hop_url,
-                "error": "missing chain.canary_target",
-                "elapsed_ms": 0,
-                "checked_at": checked_at,
-            }
-            continue
-        statuses[hop_key] = check_hop_connectivity(hop_url, target, timeout=timeout_s)
-    return statuses
-
-
-def _stale_after_s(cfg: Dict[str, Any]) -> int:
-    supervisor_cfg = cfg.get("supervisor", {})
-    interval_s = int(supervisor_cfg.get("hop_check_interval_s", 5))
-    return int(
-        supervisor_cfg.get(
-            "max_hop_status_age_s",
-            supervisor_cfg.get("hop_stale_after_s", max(15, interval_s * 3)),
-        )
-    )
-
-
-def _compute_relaxed_readiness(
-    state: Dict[str, Any],
-    cfg: Dict[str, Any],
-    stale_after_s: int,
-    require_funkydns: bool,
-    expected_hops: int,
-    now: Optional[int] = None,
-) -> Dict[str, Any]:
-    ts_now = int(time.time()) if now is None else int(now)
-    reasons: List[str] = []
-
-    if state.get("pproxy") != "running":
-        reasons.append("pproxy_not_running")
-
-    if require_funkydns and state.get("funkydns") != "running":
-        reasons.append("funkydns_not_running")
-
-    hop_checks = state.get("hops", {})
-    if not hop_checks:
-        reasons.append("hop_checks_missing")
-
-    if expected_hops and len(hop_checks) < expected_hops:
-        reasons.append(f"hop_checks_incomplete:{len(hop_checks)}/{expected_hops}")
-
-    last_update = state.get("hops_last_update")
-    stale_age_s: Optional[int] = None
-    if last_update is None:
-        reasons.append("hop_checks_never_ran")
-    else:
-        stale_age_s = max(0, ts_now - int(last_update))
-        if stale_age_s > stale_after_s:
-            reasons.append("hop_checks_stale")
-
-    healthy_hops = 0
-    for hop_status in hop_checks.values():
-        if bool(hop_status.get("ok", False)):
-            healthy_hops += 1
-
-    if hop_checks and healthy_hops == 0:
-        reasons.append("all_hops_unhealthy")
-
-    return {
-        "ready": len(reasons) == 0,
-        "checked_at": ts_now,
-        "stale_after_s": stale_after_s,
-        "stale_age_s": stale_age_s,
-        "reasons": reasons,
-        "expected_hops": expected_hops,
-        "observed_hops": len(hop_checks),
-    }
-
-
-def compute_readiness(
-    state: Optional[Dict[str, Any]] = None,
-    cfg: Optional[Dict[str, Any]] = None,
-    now: Optional[int] = None,
-) -> Dict[str, Any]:
-    runtime_cfg = cfg or RUNTIME_CFG
-    snapshot = _normalize_state_for_readiness(get_state_snapshot() if state is None else state)
-    stale_after_s = _stale_after_s(runtime_cfg)
-    require_funkydns = bool(runtime_cfg.get("dns", {}).get("launch_funkydns", False))
-    expected_hops = len(runtime_cfg.get("chain", {}).get("hops", []))
-    require_all_hops = _as_bool(
-        runtime_cfg.get("supervisor", {}).get("require_all_hops_healthy"),
-        default=True,
-    )
-
-    if not require_all_hops:
-        return _compute_relaxed_readiness(
-            snapshot,
-            runtime_cfg,
-            stale_after_s,
-            require_funkydns,
-            expected_hops,
-            now=now,
-        )
-
-    report = build_readiness_report(
-        snapshot,
-        stale_after_s=stale_after_s,
-        require_funkydns=require_funkydns,
-        now=now,
-    )
-    reasons = list(report["reasons"])
-    observed_hops = snapshot.get("hops", {})
-    if expected_hops and len(observed_hops) < expected_hops:
-        reasons.append(f"hop_checks_incomplete:{len(observed_hops)}/{expected_hops}")
-    report["reasons"] = reasons
-    report["ready"] = len(reasons) == 0
-    report["expected_hops"] = expected_hops
-    report["observed_hops"] = len(observed_hops)
-    return report
-
-
-def _summarize_readiness(report: Dict[str, Any], state: Dict[str, Any], cfg: Dict[str, Any], now: Optional[int] = None) -> str:
-    if report["ready"]:
-        return "ready"
-
-    reasons = list(report.get("reasons", []))
-    ts_now = int(time.time()) if now is None else int(now)
-
-    if "pproxy_not_running" in reasons:
-        return "pproxy not running"
-    if "funkydns_not_running" in reasons:
-        return "funkydns is enabled but not running"
-    if "hop_checks_never_ran" in reasons:
-        last_start = state.get("last_start")
-        grace_s = int(cfg.get("supervisor", {}).get("ready_grace_period_s", 15))
-        if isinstance(last_start, int) and (ts_now - last_start) <= grace_s:
-            return "waiting for initial hop probes"
-        return "hop probes unavailable"
-    if "hop_checks_stale" in reasons:
-        stale_age = report.get("stale_age_s")
-        if stale_age is None:
-            return "hop probe data stale"
-        return f"hop probe data stale ({stale_age}s old)"
-    if any(reason.startswith("hop_checks_incomplete:") for reason in reasons):
-        return "hop probes incomplete"
-    if any(reason.endswith("_down") for reason in reasons):
-        return "at least one hop is unhealthy"
-    if "all_hops_unhealthy" in reasons:
-        return "all hops are unhealthy"
-    if "hop_checks_missing" in reasons:
-        return "hop probes unavailable"
-    return reasons[0] if reasons else "not ready"
-
-
 def evaluate_readiness(cfg: Optional[Dict[str, Any]] = None, now: Optional[int] = None) -> Tuple[bool, str]:
     runtime_cfg = cfg or RUNTIME_CFG
     snapshot = get_state_snapshot()
     report = compute_readiness(snapshot, runtime_cfg, now=now)
-    return report["ready"], _summarize_readiness(report, snapshot, runtime_cfg, now=now)
+    return report["ready"], summarize_readiness(report, snapshot, runtime_cfg, now=now)
 
 
 def refresh_ready_state(cfg: Optional[Dict[str, Any]] = None, now: Optional[int] = None) -> Dict[str, Any]:
     runtime_cfg = cfg or RUNTIME_CFG
-    report = compute_readiness(cfg=runtime_cfg, now=now)
+    report = compute_readiness(get_state_snapshot(), runtime_cfg, now=now)
     set_state({"ready": report["ready"], "readiness_reasons": list(report["reasons"])})
     return report
-
-
-def _compute_startup_gate(state: Dict[str, Any], cfg: Dict[str, Any], now: Optional[int] = None) -> Tuple[bool, str]:
-    snapshot = _normalize_state_for_readiness(state)
-    ts_now = int(time.time()) if now is None else int(now)
-    require_funkydns = bool(cfg.get("dns", {}).get("launch_funkydns", False))
-    if require_funkydns and snapshot.get("funkydns") != "running":
-        return False, "funkydns not running"
-
-    expected_hops = len(cfg.get("chain", {}).get("hops", []))
-    if expected_hops == 0:
-        return True, "ready (no hops configured)"
-
-    last_update = snapshot.get("hops_last_update")
-    if last_update is None:
-        return False, "waiting for initial hop probes"
-
-    age_s = ts_now - int(last_update)
-    if age_s > _stale_after_s(cfg):
-        return False, f"hop probe data stale ({age_s}s old)"
-
-    hop_states = snapshot.get("hops", {})
-    if len(hop_states) < expected_hops:
-        return False, "hop probes incomplete"
-
-    require_all_hops = _as_bool(
-        cfg.get("supervisor", {}).get("require_all_hops_healthy"),
-        default=True,
-    )
-    hop_ok = [bool(hop_states.get(f"hop_{idx}", {}).get("ok")) for idx in range(expected_hops)]
-    if require_all_hops and not all(hop_ok):
-        return False, "at least one hop is unhealthy"
-    if not require_all_hops and not any(hop_ok):
-        return False, "all hops are unhealthy"
-    return True, "ready"
 
 
 def wait_for_chain_ready(cfg: Dict[str, Any]) -> None:
     last_reason: Optional[str] = None
     while not STOP_EVENT.is_set():
-        ready, reason = _compute_startup_gate(get_state_snapshot(), cfg)
+        ready, reason = compute_startup_gate(get_state_snapshot(), cfg)
         if ready:
             return
         if reason != last_reason:
@@ -549,101 +233,7 @@ def wait_for_chain_ready(cfg: Dict[str, Any]) -> None:
     raise RuntimeError("shutdown requested")
 
 
-def _extract_hop_label(hop: Any) -> str:
-    """Return a sanitized ``host[:port]`` label for a hop config entry."""
-    raw_url = hop.get("url", "") if isinstance(hop, dict) else ""
-    if not raw_url:
-        return ""
-
-    try:
-        parsed = urlparse(raw_url)
-    except (ValueError, AttributeError):
-        # Never return the raw URL to avoid leaking credentials.
-        return ""
-
-    host = parsed.hostname or ""
-    port = parsed.port
-
-    # Derive an effective port similar to connectivity probing defaults:
-    # - 80 for HTTP/WS when no explicit port is provided
-    # - 443 for HTTPS/WSS when no explicit port is provided
-    if port is None:
-        if parsed.scheme in ("https", "wss"):
-            port = 443
-        elif parsed.scheme in ("http", "ws"):
-            port = 80
-
-    if host and port:
-        return f"{host}:{port}"
-    if host:
-        return host
-
-    # Fall back to an empty label rather than exposing raw URL/userinfo.
-    return ""
-
-
-def _all_hops_ok(hops: List[Any], hop_statuses: Dict[str, Any]) -> bool:
-    """Return True only when every hop in *hops* has a passing status entry."""
-    return bool(hops) and all(
-        bool(hop_statuses.get(f"hop_{idx}", {}).get("ok", False))
-        for idx in range(len(hops))
-    )
-
-
-def format_chain_visual(cfg: Dict[str, Any], hop_statuses: Optional[Dict[str, Any]] = None) -> str:
-    """Return a terminal-friendly proxychains-style ASCII chain visualization.
-
-    When *hop_statuses* is None the output shows the configured topology with
-    a trailing ``...`` to indicate that probing has not run yet.  When
-    *hop_statuses* is provided the connectors and final token reflect the
-    current probe results, and a per-hop detail line is appended for each hop.
-    """
-    chain_cfg = cfg.get("chain", {})
-    hops = chain_cfg.get("hops", [])
-
-    if not hops:
-        return "[egressd] chain: (no hops configured)"
-
-    segments: List[str] = ["|S-chain|"]
-
-    for idx, hop in enumerate(hops):
-        label = _extract_hop_label(hop)
-
-        if hop_statuses is not None:
-            ok = bool(hop_statuses.get(f"hop_{idx}", {}).get("ok", False))
-            connector = "-<>-" if ok else "-XX-"
-        else:
-            connector = "-<>-"
-
-        segments.append(f"{connector}{label}")
-
-    if hop_statuses is not None:
-        final = "-<>-OK" if _all_hops_ok(hops, hop_statuses) else "-<>-FAIL"
-    else:
-        final = "-<>-..."
-
-    lines = [f"[egressd] {''.join(segments)}{final}"]
-
-    if hop_statuses:
-        for idx, hop in enumerate(hops):
-            label = _extract_hop_label(hop)
-            hop_key = f"hop_{idx}"
-            status = hop_statuses.get(hop_key, {})
-            ok = bool(status.get("ok", False))
-            elapsed_ms = status.get("elapsed_ms")
-
-            if ok:
-                timing = f"{elapsed_ms}ms" if elapsed_ms is not None else "ok"
-                lines.append(f"[egressd]   hop_{idx}: {label:<30} OK   {timing}")
-            else:
-                err_msg = status.get("error") or status.get("status_line") or "unreachable"
-                lines.append(f"[egressd]   hop_{idx}: {label:<30} FAIL {str(err_msg).splitlines()[0]}")
-
-    return "\n".join(lines)
-
-
 def print_chain_visual(cfg: Dict[str, Any], hop_statuses: Optional[Dict[str, Any]] = None) -> None:
-    """Print the chain visual to stderr when ``logging.chain_visual`` is enabled."""
     if not _as_bool(cfg.get("logging", {}).get("chain_visual"), default=False):
         return
     print(format_chain_visual(cfg, hop_statuses), file=sys.stderr, flush=True)
@@ -660,7 +250,10 @@ def hop_health_loop(cfg: Dict[str, Any]) -> None:
         set_hop_statuses(statuses, checked_at=checked_at)
         refresh_ready_state(cfg, now=checked_at)
         hops = cfg.get("chain", {}).get("hops", [])
-        current_ok = _all_hops_ok(hops, statuses)
+        current_ok = bool(hops) and all(
+            bool(statuses.get(f"hop_{idx}", {}).get("ok", False))
+            for idx in range(len(hops))
+        )
         if first_run or current_ok != last_overall_ok:
             print_chain_visual(cfg, statuses)
             last_overall_ok = current_ok
@@ -860,15 +453,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             processes["pproxy"] = None
             set_state({"pproxy": "error"})
             refresh_ready_state(cfg)
-<<<<<<< cursor/project-progress-and-cleanup-6d96
             if STOP_EVENT.is_set():
                 break
-            logging.exception("supervisor loop error")
-=======
             logging.exception("supervisor loop error: %s", exc)
-            if STOP_EVENT.is_set():
-                break
->>>>>>> main
 
         if STOP_EVENT.is_set():
             break
