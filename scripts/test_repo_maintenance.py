@@ -46,7 +46,7 @@ class RepoMaintenanceTests(unittest.TestCase):
         self.assertEqual(report["summary"]["total_issues"], 1)
         self.assertEqual(report["embedded_repos"], ["scratch/nested-repo"])
 
-    def test_discover_embedded_repos_includes_unallowed_third_party_paths(self) -> None:
+    def test_discover_embedded_repos_detects_rogue_third_party_repos(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             (root / ".git").mkdir(parents=True)
@@ -58,6 +58,7 @@ class RepoMaintenanceTests(unittest.TestCase):
             )
 
             rogue_third_party = root / "third_party" / "rogue"
+            rogue_third_party.mkdir(parents=True)
             (rogue_third_party / ".git").mkdir(parents=True)
 
             found = repo_maintenance.discover_embedded_repos(

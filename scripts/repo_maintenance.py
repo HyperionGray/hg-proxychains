@@ -110,7 +110,10 @@ def discover_stale_artifacts(tracked_paths: Sequence[str], untracked_paths: Sequ
 
 def discover_embedded_repos(root: Path, allowed_embedded_repos: Sequence[str] | None = None) -> list[str]:
     allowed = set(allowed_embedded_repos or [])
-    found = [path.relative_to(root).as_posix() for path in discover_embedded_git_repos(root, include_third_party=True)]
+    found = [
+        path.relative_to(root).as_posix()
+        for path in discover_embedded_git_repos(root, include_third_party=True)
+    ]
     return [path for path in found if path not in allowed]
 
 
