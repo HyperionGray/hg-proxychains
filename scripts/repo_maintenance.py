@@ -39,15 +39,14 @@ _THIRD_PARTY_PREFIX = "third_party" + "/"
 
 def run_git_ls_files(root: Path, *args: str) -> list[str]:
     """Compatibility helper wrapping ``git ls-files`` style calls."""
-    git_args = args or ("ls-files",)
-    return list_git_paths(root, git_args)
+    return list_git_paths(root, ("ls-files", *args))
 
 
 def scan_markers(root: Path, include_third_party: bool = False) -> list[dict[str, object]]:
     """Return unfinished marker findings as dict payloads."""
     findings = find_unfinished_markers(
         root,
-        run_git_ls_files(root, "ls-files"),
+        run_git_ls_files(root),
         include_third_party=include_third_party,
     )
     return [
@@ -63,14 +62,14 @@ def scan_markers(root: Path, include_third_party: bool = False) -> list[dict[str
 
 def discover_backup_files(root: Path, include_third_party: bool = False) -> list[str]:
     """Return untracked backup/stray paths."""
-    untracked = run_git_ls_files(root, "ls-files", "--others", "--exclude-standard")
+    untracked = run_git_ls_files(root, "--others", "--exclude-standard")
     return classify_stray_paths(untracked, include_third_party=include_third_party)
 
 
 def discover_stale_artifacts(root: Path) -> list[str]:
     """Return stale artifact paths (tracked and untracked)."""
-    tracked = run_git_ls_files(root, "ls-files")
-    untracked = run_git_ls_files(root, "ls-files", "--others", "--exclude-standard")
+    tracked = run_git_ls_files(root)
+    untracked = run_git_ls_files(root, "--others", "--exclude-standard")
     stale_tracked, stale_untracked = find_stale_artifacts(
         tracked,
         untracked,
@@ -95,7 +94,8 @@ def discover_embedded_repos(root: Path, allowed_embedded_repos: Sequence[str] | 
             continue
         if git_path.is_file():
             try:
-                first_line = git_path.read_text(encoding="utf-8", errors="ignore").split("\n", 1)[0]
+                with git_path.open("r", encoding="utf-8", errors="ignore") as handle:
+                    first_line = handle.readline().strip()
                 if first_line.startswith("gitdir:"):
                     continue
             except OSError:
