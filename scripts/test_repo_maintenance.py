@@ -4,8 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import repo_maintenance
+from scripts import repo_maintenance
 
 
 class RepoMaintenanceTests(unittest.TestCase):
@@ -32,7 +31,7 @@ class RepoMaintenanceTests(unittest.TestCase):
         )
 
     def test_main_delegates_to_repo_hygiene_scan(self) -> None:
-        with patch("repo_maintenance.subprocess.run") as mock_run:
+        with patch.object(repo_maintenance.subprocess, "run") as mock_run:
             mock_run.return_value.returncode = 0
             rc = repo_maintenance.main(
                 [
@@ -48,7 +47,7 @@ class RepoMaintenanceTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         mock_run.assert_called_once()
         args = mock_run.call_args.args[0]
-        self.assertEqual(args[0], repo_maintenance.sys.executable)
+        self.assertEqual(args[0], sys.executable)
         self.assertTrue(args[1].endswith("repo_hygiene.py"))
         self.assertEqual(
             args[2:],
