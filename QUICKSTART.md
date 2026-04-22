@@ -62,6 +62,7 @@ Wait for one-shot `client` completion. A healthy run includes:
 - `DNS OK` / `DoH OK` for `hosts.smoke.internal`
 - `DNS OK` / `DoH OK` for `printer`
 - `CONNECT` followed by `OK from exit-server`
+- health endpoints responding (`/healthz`, `/health`, `/ready`, `/live`)
 
 Then verify health endpoints:
 
