@@ -17,11 +17,11 @@ services:
         "53",
         "--no-doh",
         "--no-dot",
-        "--no-system-resolver",
-        "--no-hosts-file",
       ]
     environment:
       - ZONES_DIR=/opt/funkydns-smoke/upstream-zones
+      - USE_SYSTEM_RESOLVER=false
+      - RESPECT_HOSTS_FILE=false
     healthcheck:
       test:
         [
