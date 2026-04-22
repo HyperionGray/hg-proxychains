@@ -91,6 +91,7 @@ class ChainVisualTests(unittest.TestCase):
             "hop_1": {"ok": True, "elapsed_ms": 38},
         }
         visual = supervisor.format_chain_visual(self._cfg(), statuses)
+        self.assertIn("|S-chain|proxy1:3128<->proxy2:3128", visual)
         self.assertIn("proxy1:3128<->proxy2:3128", visual)
         self.assertIn("<->OK", visual)
         self.assertNotIn("FAIL", visual)

@@ -174,7 +174,8 @@ def format_chain_visual(cfg: Dict[str, Any], hop_statuses: Optional[Dict[str, An
     if hop_statuses is not None:
         final = "OK" if _all_hops_ok(hops, hop_statuses) else "FAIL"
 
-    lines = [f"[egressd] |S-chain|{'<->'.join(hop_labels)}<->{final}"]
+    chain_path = "<->".join(hop_labels + [final])
+    lines = [f"[egressd] |S-chain|{chain_path}"]
     if hop_statuses:
         for idx, hop in enumerate(hops):
             label = _extract_hop_label(hop)
