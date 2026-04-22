@@ -20,10 +20,23 @@ class ExitServerHandlerTests(unittest.TestCase):
         cls._server.server_close()
         cls._thread.join(timeout=2)
 
-    def test_get_returns_expected_status_headers_and_body(self) -> None:
+    def test_get_root_path(self) -> None:
         conn = http.client.HTTPConnection("127.0.0.1", self._port, timeout=2)
         try:
             conn.request("GET", "/")
+            response = conn.getresponse()
+            body = response.read()
+        finally:
+            conn.close()
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.getheader("Content-Type"), "text/plain")
+        self.assertEqual(body, b"OK from exit-server\n")
+
+    def test_get_non_root_path(self) -> None:
+        conn = http.client.HTTPConnection("127.0.0.1", self._port, timeout=2)
+        try:
+            conn.request("GET", "/status")
             response = conn.getresponse()
             body = response.read()
         finally:
