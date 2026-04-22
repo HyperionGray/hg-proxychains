@@ -28,11 +28,11 @@ make deps
 {
   proxies: [
     "http://proxy1:3128",
-    "http://proxy2:3128",
+    "http://proxy2:3128"
   ],
   logging: {
-    chain_visual: true,
-  },
+    chain_visual: true
+  }
 }
 ```
 
