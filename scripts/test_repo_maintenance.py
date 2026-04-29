@@ -33,7 +33,7 @@ class RepoMaintenanceTests(unittest.TestCase):
             return_value=[],
         ), patch("repo_maintenance.discover_backup_files", return_value=[]), patch(
             "repo_maintenance.discover_stale_artifacts",
-            return_value=[],
+            return_value=([], []),
         ), patch(
             "repo_maintenance.discover_embedded_repos",
             return_value=["scratch/nested-repo"],

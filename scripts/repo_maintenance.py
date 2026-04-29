@@ -138,12 +138,7 @@ def build_report(
         baseline_file=baseline_file,
     )
     backup_files = discover_backup_files(untracked, include_third_party=include_third_party)
-    stale_artifacts = discover_stale_artifacts(tracked, untracked)
-    if isinstance(stale_artifacts, tuple) and len(stale_artifacts) == 2:
-        stale_tracked_artifacts, stale_untracked_artifacts = stale_artifacts
-    else:
-        stale_tracked_artifacts = list(stale_artifacts)
-        stale_untracked_artifacts = []
+    stale_tracked_artifacts, stale_untracked_artifacts = discover_stale_artifacts(tracked, untracked)
     embedded_repos = discover_embedded_repos(root, allowed_embedded_repos=allowed_embedded_repos)
     total_issues = (
         len(unfinished_markers)
