@@ -17,6 +17,7 @@ from typing import Sequence
 from repo_hygiene_lib import (
     STALE_ARTIFACT_PATHS,
     classify_stray_paths,
+    collect_git_paths,
     find_stale_artifacts,
     find_unfinished_markers,
     list_git_paths,
@@ -42,11 +43,16 @@ def run_git_ls_files(root: Path, *args: str) -> list[str]:
     return list_git_paths(root, ("ls-files", *args))
 
 
+def _collect_git_ls_files(root: Path, *args: str, include_third_party: bool = False) -> list[str]:
+    """Return root-repo paths plus submodule paths when requested."""
+    return collect_git_paths(root, ("ls-files", *args), include_third_party=include_third_party)
+
+
 def scan_markers(root: Path, include_third_party: bool = False) -> list[dict[str, object]]:
     """Return unfinished marker findings as dict payloads."""
     findings = find_unfinished_markers(
         root,
-        run_git_ls_files(root),
+        _collect_git_ls_files(root, include_third_party=include_third_party),
         include_third_party=include_third_party,
     )
     return [
@@ -62,7 +68,12 @@ def scan_markers(root: Path, include_third_party: bool = False) -> list[dict[str
 
 def discover_backup_files(root: Path, include_third_party: bool = False) -> list[str]:
     """Return untracked backup/stray paths."""
-    untracked = run_git_ls_files(root, "--others", "--exclude-standard")
+    untracked = _collect_git_ls_files(
+        root,
+        "--others",
+        "--exclude-standard",
+        include_third_party=include_third_party,
+    )
     return classify_stray_paths(untracked, include_third_party=include_third_party)
 
 
@@ -78,28 +89,41 @@ def discover_stale_artifacts(root: Path) -> list[str]:
     return sorted(set(stale_tracked) | set(stale_untracked))
 
 
-def discover_embedded_repos(root: Path, allowed_embedded_repos: Sequence[str] | None = None) -> list[str]:
-    """Compatibility helper returning relative embedded-repo paths."""
+def _is_gitlink_file(git_path: Path) -> bool:
+    if not git_path.is_file():
+        return False
+    try:
+        with git_path.open("r", encoding="utf-8", errors="ignore") as handle:
+            first_line = handle.readline().strip()
+    except OSError:
+        return False
+    return first_line.startswith("gitdir:")
+
+
+def _discover_embedded_repo_roots(root: Path) -> list[Path]:
     root_git = root / ".git"
-    allowed = set(allowed_embedded_repos or [])
-    found: list[str] = []
+    found: list[Path] = []
     for git_path in sorted(root.rglob(".git")):
         if git_path == root_git:
             continue
         try:
-            rel = git_path.parent.relative_to(root).as_posix()
+            git_path.parent.relative_to(root)
         except ValueError:
             continue
+        if _is_gitlink_file(git_path):
+            continue
+        found.append(git_path.parent)
+    return found
+
+
+def discover_embedded_repos(root: Path, allowed_embedded_repos: Sequence[str] | None = None) -> list[str]:
+    """Compatibility helper returning relative embedded-repo paths."""
+    allowed = set(allowed_embedded_repos or [])
+    found: list[str] = []
+    for repo_root in _discover_embedded_repo_roots(root):
+        rel = repo_root.relative_to(root).as_posix()
         if rel in allowed:
             continue
-        if git_path.is_file():
-            try:
-                with git_path.open("r", encoding="utf-8", errors="ignore") as handle:
-                    first_line = handle.readline().strip()
-                if first_line.startswith("gitdir:"):
-                    continue
-            except OSError:
-                pass
         found.append(rel)
     return found
 
@@ -146,26 +170,12 @@ def discover_embedded_git_repos(root: Path, include_third_party: bool = True) ->
     *include_third_party* is ``False``, anything under the ``third_party/``
     directory is skipped entirely.
     """
-    root_git = root / ".git"
     stray: list[Path] = []
-    for git_path in sorted(root.rglob(".git")):
-        if git_path == root_git:
-            continue
-        try:
-            rel = str(git_path.parent.relative_to(root))
-        except ValueError:
-            continue
+    for repo_root in _discover_embedded_repo_roots(root):
+        rel = repo_root.relative_to(root).as_posix()
         if not include_third_party and rel.startswith(_THIRD_PARTY_PREFIX):
             continue
-        # Gitlink files mark legitimate submodule checkouts; skip them.
-        if git_path.is_file():
-            try:
-                first_line = git_path.read_text(encoding="utf-8", errors="ignore").split("\n", 1)[0]
-                if first_line.startswith("gitdir:"):
-                    continue
-            except OSError:
-                pass
-        stray.append(git_path.parent)
+        stray.append(repo_root)
     return stray
 
 
