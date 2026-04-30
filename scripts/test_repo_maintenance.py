@@ -3,6 +3,7 @@ import sys
 from types import SimpleNamespace
 import tempfile
 import unittest
+import importlib.util
 from pathlib import Path
 from unittest.mock import patch
 
@@ -14,7 +15,7 @@ _SPEC.loader.exec_module(repo_maintenance)
 
 
 class RepoMaintenanceTests(unittest.TestCase):
-    def test_discover_embedded_repos_ignores_root_and_allowed_paths(self) -> None:
+    def test_discover_embedded_git_repos_excludes_special_paths(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             (root / ".git").mkdir(parents=True)
