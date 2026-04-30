@@ -1,4 +1,6 @@
+import importlib.util
 import sys
+from types import SimpleNamespace
 import tempfile
 import unittest
 import importlib.util
@@ -7,8 +9,7 @@ from unittest.mock import patch
 
 _MODULE_PATH = Path(__file__).resolve().parent / "repo_maintenance.py"
 _SPEC = importlib.util.spec_from_file_location("repo_maintenance", _MODULE_PATH)
-if _SPEC is None or _SPEC.loader is None:  # pragma: no cover - defensive import guard
-    raise ImportError(f"unable to load repo_maintenance from {_MODULE_PATH}")
+assert _SPEC is not None and _SPEC.loader is not None
 repo_maintenance = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(repo_maintenance)
 
@@ -36,13 +37,18 @@ class RepoMaintenanceTests(unittest.TestCase):
             ["scratch/nested-repo"],
         )
 
-    def test_main_delegates_to_repo_hygiene_scan(self) -> None:
-        with patch.object(repo_maintenance.subprocess, "run") as mock_run:
-            mock_run.return_value.returncode = 0
+    def test_main_delegates_clean_command_to_repo_hygiene(self) -> None:
+        root = Path("/repo")
+        with patch.object(
+            repo_maintenance.subprocess,
+            "run",
+            return_value=SimpleNamespace(returncode=0),
+        ) as run:
             rc = repo_maintenance.main(
                 [
                     "--root",
-                    "/repo",
+                    str(root),
+                    "--fix",
                     "--no-include-third-party",
                     "--baseline-file",
                     "custom-baseline.json",
@@ -51,21 +57,22 @@ class RepoMaintenanceTests(unittest.TestCase):
             )
 
         self.assertEqual(rc, 0)
-        mock_run.assert_called_once()
-        args = mock_run.call_args.args[0]
-        self.assertEqual(args[0], sys.executable)
-        self.assertEqual(Path(args[1]).name, "repo_hygiene.py")
+        run.assert_called_once()
+        cmd = run.call_args[0][0]
         self.assertEqual(
-            args[2:],
+            cmd,
             [
-                "scan",
+                sys.executable,
+                str((Path(repo_maintenance.__file__).resolve().parent / "repo_hygiene.py")),
+                "clean",
                 "--repo-root",
-                str(Path("/repo").resolve()),
+                str(root.resolve()),
                 "--baseline-file",
                 "custom-baseline.json",
                 "--json",
             ],
         )
+        self.assertNotIn("--include-third-party", cmd)
 
 
 if __name__ == "__main__":

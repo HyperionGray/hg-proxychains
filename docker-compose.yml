@@ -142,7 +142,7 @@ services:
           "CMD",
           "python3",
           "-c",
-          "import socket; s = socket.create_connection(('127.0.0.1', 9999), 2); s.close()",
+          "import urllib.request; body = urllib.request.urlopen('http://127.0.0.1:9999/', timeout=2).read(); assert body == b'OK from exit-server\\n', f'unexpected exitserver body: {body!r}'",
         ]
       interval: 10s
       timeout: 3s
