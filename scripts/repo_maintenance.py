@@ -15,12 +15,11 @@ from pathlib import Path
 from typing import Sequence
 
 from repo_hygiene_lib import (
-    BASELINE_DEFAULT_PATH,
-    apply_marker_baseline,
     classify_stray_paths,
+    collect_git_paths,
+    discover_embedded_git_repos,
     find_stale_artifacts,
     find_unfinished_markers,
-    load_marker_baseline,
 )
 
 
@@ -249,6 +248,86 @@ def apply_fixes(root: Path, report: dict) -> tuple[list[str], list[str]]:
             print(f"warn: failed to remove {rel_path}: {exc}", file=sys.stderr)
             failed.append(rel_path)
     return removed, failed
+
+
+def run_git_ls_files(root: Path, include_third_party: bool = False, *, untracked: bool = False) -> list[str]:
+    list_args = ("ls-files", "--others", "--exclude-standard") if untracked else ("ls-files",)
+    return collect_git_paths(root, list_args, include_third_party=include_third_party)
+
+
+def scan_markers(root: Path, tracked_paths: Sequence[str], include_third_party: bool = False) -> list[dict]:
+    findings = find_unfinished_markers(root, tracked_paths, include_third_party=include_third_party)
+    return [
+        {
+            "path": finding.path,
+            "line_number": finding.line_number,
+            "marker": finding.marker,
+            "line": finding.line,
+        }
+        for finding in findings
+    ]
+
+
+def discover_backup_files(untracked_paths: Sequence[str], include_third_party: bool = False) -> list[str]:
+    return classify_stray_paths(untracked_paths, include_third_party=include_third_party)
+
+
+def discover_stale_artifacts(tracked_paths: Sequence[str], untracked_paths: Sequence[str]) -> list[str]:
+    stale_tracked, stale_untracked = find_stale_artifacts(
+        tracked_paths=tracked_paths,
+        untracked_paths=untracked_paths,
+    )
+    return sorted(set(stale_tracked) | set(stale_untracked))
+
+
+def discover_embedded_repos(
+    root: Path,
+    allowed_embedded_repos: Sequence[str] | None = None,
+    include_third_party: bool = False,
+) -> list[str]:
+    allowed = tuple(Path(path).as_posix().rstrip("/") for path in (allowed_embedded_repos or []))
+    found = [
+        path.relative_to(root).as_posix() if isinstance(path, Path) and path.is_absolute() else Path(path).as_posix()
+        for path in discover_embedded_git_repos(root, include_third_party=include_third_party)
+    ]
+    if not allowed:
+        return found
+
+    def _is_allowed(rel_path: str) -> bool:
+        return any(rel_path == prefix or rel_path.startswith(f"{prefix}/") for prefix in allowed)
+
+    return [rel_path for rel_path in found if not _is_allowed(rel_path)]
+
+
+def build_report(
+    root: Path,
+    *,
+    include_third_party: bool = False,
+    allowed_embedded_repos: Sequence[str] | None = None,
+) -> dict:
+    tracked_paths = run_git_ls_files(root, include_third_party=include_third_party, untracked=False)
+    untracked_paths = run_git_ls_files(root, include_third_party=include_third_party, untracked=True)
+    markers = scan_markers(root, tracked_paths, include_third_party=include_third_party)
+    backup_files = discover_backup_files(untracked_paths, include_third_party=include_third_party)
+    stale_artifacts = discover_stale_artifacts(tracked_paths, untracked_paths)
+    embedded_repos = discover_embedded_repos(
+        root,
+        allowed_embedded_repos=allowed_embedded_repos,
+        include_third_party=include_third_party,
+    )
+    return {
+        "unfinished_markers": markers,
+        "backup_files": backup_files,
+        "stale_artifacts": stale_artifacts,
+        "embedded_repos": embedded_repos,
+        "summary": {
+            "unfinished_markers": len(markers),
+            "backup_files": len(backup_files),
+            "stale_artifacts": len(stale_artifacts),
+            "embedded_repos": len(embedded_repos),
+            "total_issues": len(markers) + len(backup_files) + len(stale_artifacts) + len(embedded_repos),
+        },
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -1,13 +1,21 @@
+import importlib.util
+import sys
+from types import SimpleNamespace
 import tempfile
 import unittest
+import importlib.util
 from pathlib import Path
 from unittest.mock import patch
 
-import repo_maintenance
+_MODULE_PATH = Path(__file__).resolve().parent / "repo_maintenance.py"
+_SPEC = importlib.util.spec_from_file_location("repo_maintenance", _MODULE_PATH)
+assert _SPEC is not None and _SPEC.loader is not None
+repo_maintenance = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(repo_maintenance)
 
 
 class RepoMaintenanceTests(unittest.TestCase):
-    def test_discover_embedded_repos_ignores_root_and_allowed_paths(self) -> None:
+    def test_discover_embedded_git_repos_excludes_special_paths(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             (root / ".git").mkdir(parents=True)
@@ -20,31 +28,51 @@ class RepoMaintenanceTests(unittest.TestCase):
             rogue = root / "scratch" / "nested-repo"
             (rogue / ".git").mkdir(parents=True)
 
-            found = repo_maintenance.discover_embedded_repos(
-                root, ["third_party/FunkyDNS"]
+            found = repo_maintenance.discover_embedded_git_repos(
+                root, include_third_party=False
             )
 
-        self.assertEqual(found, ["scratch/nested-repo"])
+        self.assertEqual(
+            [path.relative_to(root).as_posix() for path in found],
+            ["scratch/nested-repo"],
+        )
 
-    def test_build_report_counts_embedded_repos_in_summary(self) -> None:
+    def test_main_delegates_clean_command_to_repo_hygiene(self) -> None:
         root = Path("/repo")
-        with patch("repo_maintenance.run_git_ls_files", return_value=[]), patch(
-            "repo_maintenance.scan_markers",
-            return_value=[],
-        ), patch("repo_maintenance.discover_backup_files", return_value=[]), patch(
-            "repo_maintenance.discover_stale_artifacts",
-            return_value=[],
-        ), patch(
-            "repo_maintenance.discover_embedded_repos",
-            return_value=["scratch/nested-repo"],
-        ):
-            report = repo_maintenance.build_report(
-                root, include_third_party=False, allowed_embedded_repos=[]
+        with patch.object(
+            repo_maintenance.subprocess,
+            "run",
+            return_value=SimpleNamespace(returncode=0),
+        ) as run:
+            rc = repo_maintenance.main(
+                [
+                    "--root",
+                    str(root),
+                    "--fix",
+                    "--no-include-third-party",
+                    "--baseline-file",
+                    "custom-baseline.json",
+                    "--json",
+                ]
             )
 
-        self.assertEqual(report["summary"]["embedded_repos"], 1)
-        self.assertEqual(report["summary"]["total_issues"], 1)
-        self.assertEqual(report["embedded_repos"], ["scratch/nested-repo"])
+        self.assertEqual(rc, 0)
+        run.assert_called_once()
+        cmd = run.call_args[0][0]
+        self.assertEqual(
+            cmd,
+            [
+                sys.executable,
+                str((Path(repo_maintenance.__file__).resolve().parent / "repo_hygiene.py")),
+                "clean",
+                "--repo-root",
+                str(root.resolve()),
+                "--baseline-file",
+                "custom-baseline.json",
+                "--json",
+            ],
+        )
+        self.assertNotIn("--include-third-party", cmd)
 
     def test_discover_embedded_repos_detects_rogue_third_party_repos(self) -> None:
         with tempfile.TemporaryDirectory() as td:
