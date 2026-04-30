@@ -81,6 +81,12 @@ services:
           "CMD",
           "python3",
           "/opt/funkydns-smoke/check_resolution.py",
+          "--name",
+          "smoke.test",
+          "--expect",
+          "203.0.113.10",
+          "--expect-owner",
+          "smoke.test.",
           "--quiet",
         ]
       interval: 10s
