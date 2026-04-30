@@ -74,6 +74,27 @@ class RepoMaintenanceTests(unittest.TestCase):
         )
         self.assertNotIn("--include-third-party", cmd)
 
+    def test_discover_embedded_repos_detects_rogue_third_party_repos(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir(parents=True)
+
+            allowed = root / "third_party" / "FunkyDNS"
+            allowed.mkdir(parents=True)
+            (allowed / ".git").write_text(
+                "gitdir: ../.git/modules/FunkyDNS\n", encoding="utf-8"
+            )
+
+            rogue_third_party = root / "third_party" / "rogue"
+            rogue_third_party.mkdir(parents=True)
+            (rogue_third_party / ".git").mkdir(parents=True)
+
+            found = repo_maintenance.discover_embedded_repos(
+                root, ["third_party/FunkyDNS"]
+            )
+
+        self.assertEqual(found, ["third_party/rogue"])
+
 
 if __name__ == "__main__":
     unittest.main()
