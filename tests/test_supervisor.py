@@ -171,5 +171,23 @@ class ChainVisualTests(unittest.TestCase):
         self.assertIn("|S-chain|", output)
 
 
+class FunkyDnsUpstreamParsingTests(unittest.TestCase):
+    def test_normalize_funkydns_upstreams_accepts_csv_and_deduplicates(self):
+        result = supervisor.normalize_funkydns_upstreams(
+            "https://one.example/dns-query, https://two.example/dns-query,https://one.example/dns-query"
+        )
+        self.assertEqual(
+            result,
+            [
+                "https://one.example/dns-query",
+                "https://two.example/dns-query",
+            ],
+        )
+
+    def test_normalize_funkydns_upstreams_rejects_invalid_scheme(self):
+        with self.assertRaises(ValueError):
+            supervisor.normalize_funkydns_upstreams("ftp://bad.example/dns-query")
+
+
 if __name__ == "__main__":
     unittest.main()
