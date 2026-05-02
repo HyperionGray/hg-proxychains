@@ -200,7 +200,7 @@ services:
       - HTTP_PROXY=http://egressd:15001
       - HTTPS_PROXY=http://egressd:15001
       - ALL_PROXY=http://egressd:15001
-      - NO_PROXY=127.0.0.1,localhost,egressd,funky,proxy1,proxy2,exitserver,searchdns
+      - NO_PROXY=127.0.0.1,localhost,egressd
     dns:
       - 172.30.0.53
     networks:

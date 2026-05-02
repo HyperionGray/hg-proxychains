@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -25,9 +26,21 @@ def compose_cmd(compose_bin: str, args: List[str]) -> List[str]:
     return [compose_bin, *args]
 
 
+def resolve_compose_bin(candidate: str) -> List[str]:
+    if candidate and shutil.which(candidate):
+        return [candidate]
+    # Fallback to docker compose on hosts where podman-compose is unavailable.
+    if candidate == "podman-compose":
+        docker_bin = shutil.which("docker")
+        if docker_bin:
+            return [docker_bin, "compose"]
+    raise FileNotFoundError(f"compose binary not found: {candidate}")
+
+
 def run_compose(compose_bin: str, args: List[str], check: bool = True) -> subprocess.CompletedProcess:
+    cmd = resolve_compose_bin(compose_bin) + args
     return subprocess.run(
-        compose_cmd(compose_bin, args),
+        cmd,
         cwd=REPO_ROOT,
         check=check,
     )
@@ -190,7 +203,7 @@ def main(argv: List[str] | None = None) -> int:
         return int(args.handler(args))
     except subprocess.CalledProcessError as exc:
         return int(exc.returncode)
-    except (RuntimeError, ValueError) as exc:
+    except (RuntimeError, ValueError, FileNotFoundError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 

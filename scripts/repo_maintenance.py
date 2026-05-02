@@ -31,6 +31,7 @@ _STRAY_DIR_NAMES = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"
 # Path prefix for the third-party subtree, with trailing separator to avoid
 # false matches against directories like "third_party_backup/".
 _THIRD_PARTY_PREFIX = "third_party" + "/"
+BASELINE_DEFAULT_PATH = ".repo-hygiene-baseline.json"
 
 
 # ---------------------------------------------------------------------------
@@ -283,7 +284,7 @@ def discover_stale_artifacts(tracked_paths: Sequence[str], untracked_paths: Sequ
 def discover_embedded_repos(
     root: Path,
     allowed_embedded_repos: Sequence[str] | None = None,
-    include_third_party: bool = False,
+    include_third_party: bool = True,
 ) -> list[str]:
     allowed = tuple(Path(path).as_posix().rstrip("/") for path in (allowed_embedded_repos or []))
     found = [
@@ -302,7 +303,7 @@ def discover_embedded_repos(
 def build_report(
     root: Path,
     *,
-    include_third_party: bool = False,
+    include_third_party: bool = True,
     allowed_embedded_repos: Sequence[str] | None = None,
 ) -> dict:
     tracked_paths = run_git_ls_files(root, include_third_party=include_third_party, untracked=False)
