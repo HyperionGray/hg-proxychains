@@ -2,8 +2,28 @@ x-funkydns-smoke-build: &funkydns_smoke_build
   context: .
   dockerfile: funkydns-smoke/Dockerfile
 
+# Compose layout
+# --------------
+# The "chain" services are the only thing you need for the user-facing
+# UX (egressd + the upstream proxy hops + a wrapper container that
+# runs arbitrary programs through the chain). Everything else lives
+# behind the "smoke" profile, which exists to prove the DNS-leak and
+# CONNECT-chain properties end to end.
+#
+# Defaults (no --profile flag) bring up only the chain stack:
+#
+#   pf up
+#   podman-compose up -d proxy1 proxy2 egressd wrapper
+#
+# To run the smoke harness (FunkyDNS + DoH + a one-shot client):
+#
+#   pf smoke
+#   podman-compose --profile smoke up --build --abort-on-container-exit \
+#       --exit-code-from client client
+
 services:
   searchdns:
+    profiles: ["smoke"]
     build: *funkydns_smoke_build
     container_name: searchdns
     init: true
@@ -50,6 +70,7 @@ services:
       - egressnet
 
   funky:
+    profiles: ["smoke"]
     build: *funkydns_smoke_build
     container_name: funky
     init: true
@@ -131,6 +152,7 @@ services:
       - egressnet
 
   exitserver:
+    profiles: ["smoke"]
     build: ./exitserver
     container_name: exitserver
     init: true
@@ -159,10 +181,6 @@ services:
         condition: service_healthy
       proxy2:
         condition: service_healthy
-      funky:
-        condition: service_healthy
-      exitserver:
-        condition: service_healthy
     ports:
       - "15001:15001"
       - "9191:9191"
@@ -184,11 +202,32 @@ services:
     networks:
       - egressnet
 
+  wrapper:
+    build: ./wrapper
+    image: localhost/hg-proxychains-wrapper:latest
+    # Compose does not allow stdin_open/tty here for `compose run`, so the
+    # CLI passes them via `pf run`. The default `sleep infinity` keeps the
+    # container available for `pf shell` if you prefer the long-running
+    # form.
+    depends_on:
+      egressd:
+        condition: service_healthy
+    networks:
+      - egressnet
+    # Do not auto-start the wrapper; it is launched on-demand by `pf run`
+    # and `pf shell`.
+    profiles: ["wrapper"]
+
   client:
+    profiles: ["smoke"]
     build: ./client
     container_name: client
     depends_on:
       egressd:
+        condition: service_healthy
+      funky:
+        condition: service_healthy
+      exitserver:
         condition: service_healthy
     networks:
       - egressnet

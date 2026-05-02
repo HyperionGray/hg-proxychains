@@ -1,37 +1,56 @@
+PF      ?= ./pf.py
 COMPOSE ?= podman-compose
-PODMAN ?= podman
-PYTHON ?= python3
+PODMAN  ?= podman
+PYTHON  ?= python3
 EGRESSD_IMAGE ?= localhost/hg-proxychains-egressd-validate:latest
 
-.PHONY: deps smoke down logs health ready pycheck unittest test check preflight validate-config validate-image repo-scan repo-scan-json repo-clean maintenance maintenance-json maintenance-fix maintenance-all maintenance-all-json maintenance-baseline bundle clean
+# pf.py is the canonical entry-point; these targets just delegate so
+# operators who type `make` out of habit still get the right behavior.
 
-deps:
-	scripts/bootstrap-third-party.sh
+.PHONY: up down logs run shell status health ready smoke deps bootstrap \
+        pycheck unittest test check preflight validate-config validate-image \
+        repo-scan repo-scan-json repo-clean \
+        maintenance maintenance-json maintenance-fix maintenance-all \
+        maintenance-all-json maintenance-baseline bundle clean help
 
-smoke:
-	$(COMPOSE) up --build
+help:
+	@$(PF) --help
+
+up:
+	$(PF) up --build
 
 down:
-	$(COMPOSE) down -v
+	$(PF) down -v
 
 logs:
-	$(COMPOSE) logs -f --tail=200
+	$(PF) logs -f --tail 200
+
+shell:
+	$(PF) shell
+
+status:
+	$(PF) status
 
 health:
-	curl -fsS http://localhost:9191/health | $(PYTHON) -m json.tool
+	$(PF) health
 
 ready:
-	curl -i http://localhost:9191/ready
+	$(PF) ready
+
+smoke:
+	$(PF) smoke --build
+
+deps bootstrap:
+	$(PF) bootstrap
 
 pycheck:
-	$(PYTHON) -m py_compile egressd/supervisor.py egressd/chain.py egressd/readiness.py egressd/preflight.py egressd/test_supervisor.py egressd/test_supervisor_readiness.py client/test_client.py exitserver/echo_server.py funkydns-smoke/check_resolution.py funkydns-smoke/generate_cert.py funkydns-smoke/run_funkydns.py tests/test_chain.py tests/test_preflight.py tests/test_hop_connectivity.py tests/test_client_dockerfile.py scripts/repo_hygiene.py scripts/repo_maintenance.py scripts/test_repo_hygiene.py
+	$(PF) pycheck
 
-unittest:
-	$(PYTHON) -m unittest egressd/test_supervisor_readiness.py egressd/test_supervisor.py tests/test_readiness.py tests/test_supervisor.py tests/test_chain.py tests/test_preflight.py tests/test_hop_connectivity.py tests/test_client_dockerfile.py scripts/test_repo_hygiene.py scripts/test_repo_maintenance.py
+unittest test:
+	$(PF) test
 
-test: unittest
-
-check: pycheck test
+check:
+	$(PF) check
 
 validate-image:
 	$(PODMAN) build -t $(EGRESSD_IMAGE) ./egressd
@@ -48,14 +67,14 @@ repo-scan:
 repo-clean:
 	$(PYTHON) scripts/repo_hygiene.py clean --repo-root . --no-include-third-party
 
+repo-scan-json:
+	$(PYTHON) scripts/repo_hygiene.py scan --repo-root . --no-include-third-party --json
+
 maintenance:
 	$(PYTHON) scripts/repo_maintenance.py --no-include-third-party
 
 maintenance-fix:
 	$(PYTHON) scripts/repo_maintenance.py --no-include-third-party --fix
-
-repo-scan-json:
-	$(PYTHON) scripts/repo_hygiene.py scan --repo-root . --no-include-third-party --json
 
 maintenance-json:
 	$(PYTHON) scripts/repo_maintenance.py --no-include-third-party --json
@@ -73,5 +92,5 @@ bundle:
 	tar -czf egressd-starter.tar.gz .
 
 clean:
-	rm -rf __pycache__ client/__pycache__ egressd/__pycache__ exitserver/__pycache__ tests/__pycache__ scripts/__pycache__
+	rm -rf __pycache__ client/__pycache__ egressd/__pycache__ exitserver/__pycache__ tests/__pycache__ scripts/__pycache__ wrapper/__pycache__
 	rm -f *.log egressd-starter.tar.gz
