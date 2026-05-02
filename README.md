@@ -1,4 +1,4 @@
-# hg-proxychains (egressd)
+# hg-proxychains
 
 A small, fail-closed prototype for container egress enforced through chained HTTP CONNECT proxies (successor-style layout to classic proxychains: explicit hop chain, no direct DNS from workloads).
 
@@ -46,6 +46,7 @@ The design goal is intentionally boring:
 │   └── echo_server.py
 ├── client/
 │   ├── Dockerfile
+│   ├── hg_proxychains.py
 │   └── test_client.py
 ├── scripts/
 │   ├── bootstrap-third-party.sh
@@ -67,6 +68,15 @@ The design goal is intentionally boring:
 Start with `QUICKSTART.md` for the shortest smoke-harness path.
 
 **Three-step mental model:** (1) start the stack, (2) run arbitrary commands in the same network with `HTTP(S)_PROXY` pointing at `egressd`, (3) watch the `|S-chain|` line on `egressd` stderr (enabled in smoke `egressd/config.json5` via `logging.chain_visual`). Use `./scripts/hg-proxychains` from the repo root for (1) and (2); see `QUICKSTART.md`.
+
+```bash
+podman-compose up --build
+podman-compose run --rm client curl -fsS https://example.com/
+```
+
+`client` runs the `hg-proxychains` wrapper by default. The wrapper prints the
+current chain state, sets HTTP(S) proxy environment variables to `egressd`, and
+then runs your command inside the private workload network.
 
 For a reviewed walkthrough of the smoke-harness flow, host flow, and current
 known breakpoints, see `docs/USER-FLOW-REVIEW.md`.
@@ -125,7 +135,7 @@ make smoke
 
 To keep the stack up and run ad hoc commands through the chain from the host, use `make smoke-daemon` then `make proxy-run ARGS='curl ...'` or `./scripts/hg-proxychains` (see `QUICKSTART.md`).
 
-### 4. Check results
+### 3. Check results
 
 - `client` should print matching `DNS OK` and `DoH OK` lines for:
   - `smoke.test -> 203.0.113.10`
@@ -157,6 +167,37 @@ The smoke config uses `exitserver:9999` as the canary target, so readiness does
 not depend on external internet reachability.
 
 It does **not** prove host enforcement. For that, use the scripts in `scripts/` on a real Linux host and follow `docs/HOST-DEPLOYMENT.md`.
+
+`chain.allowed_ports` and `chain.fail_closed` are validation/readiness inputs
+for this supervisor. Runtime egress blocking comes from the surrounding network
+topology in compose (`worknet` is internal) or from the host firewall/owner
+rules in host mode; `pproxy` itself is not a firewall.
+
+## Running commands
+
+After the stack is healthy, run any command in the client container:
+
+```bash
+podman-compose run --rm client curl -fsS https://example.com/
+make run CMD="curl -fsS https://example.com/"
+```
+
+The command starts as:
+
+```text
+[hg-proxychains] |S-chain|proxy1:3128<-->proxy2:3128<-->OK
+```
+
+The compose topology has two networks:
+
+- `worknet` is internal. The workload `client` can reach `egressd` and `funky`
+  there, but it cannot reach the proxy hops or arbitrary external destinations.
+- `proxynet` carries the proxy chain. `egressd` bridges from `worknet` to
+  `proxynet`, then relays through the configured hops.
+
+The wrapper is intentionally simple and environment-based. It works for tools
+that honor `HTTP_PROXY` / `HTTPS_PROXY`; raw TCP applications need an explicit
+CONNECT-aware client or a future transparent interception layer.
 
 ## Health vs readiness
 
@@ -237,16 +278,16 @@ proxychains-style display on stderr.  It prints on startup (topology only)
 and again whenever the per-hop health state changes:
 
 ```
-[egressd] |S-chain|proxy1:3128<->proxy2:3128<->OK
+[egressd] |S-chain|proxy1:3128<-->proxy2:3128<-->OK
 [egressd]   hop_0: proxy1:3128                 OK   42ms
 [egressd]   hop_1: proxy2:3128                 OK   38ms
 ```
 
 When a hop is unreachable the chain still renders in the same classic
-`proxy1<->proxy2<->proxy3` style, and the line ends with `FAIL`:
+`proxy1<-->proxy2<-->proxy3` style, and the line ends with `FAIL`:
 
 ```
-[egressd] |S-chain|proxy1:3128<->proxy2:3128<->FAIL
+[egressd] |S-chain|proxy1:3128<-->proxy2:3128<-->FAIL
 [egressd]   hop_0: proxy1:3128                 OK   42ms
 [egressd]   hop_1: proxy2:3128                 FAIL Connection refused
 ```
