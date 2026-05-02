@@ -91,9 +91,9 @@ class ChainVisualTests(unittest.TestCase):
             "hop_1": {"ok": True, "elapsed_ms": 38},
         }
         visual = supervisor.format_chain_visual(self._cfg(), statuses)
-        self.assertIn("|S-chain|proxy1:3128<->proxy2:3128", visual)
-        self.assertIn("proxy1:3128<->proxy2:3128", visual)
-        self.assertIn("<->OK", visual)
+        self.assertIn("|S-chain|proxy1:3128<-->proxy2:3128", visual)
+        self.assertIn("proxy1:3128<-->proxy2:3128", visual)
+        self.assertIn("<-->OK", visual)
         self.assertNotIn("FAIL", visual)
 
     def test_failed_hop_produces_fail_suffix(self):
@@ -103,9 +103,9 @@ class ChainVisualTests(unittest.TestCase):
             "hop_1": {"ok": False, "error": "Connection refused"},
         }
         visual = supervisor.format_chain_visual(self._cfg(), statuses)
-        self.assertIn("proxy1:3128<->proxy2:3128", visual)
+        self.assertIn("proxy1:3128<-->proxy2:3128", visual)
         self.assertIn("FAIL", visual)
-        self.assertNotIn("<->OK", visual)
+        self.assertNotIn("<-->OK", visual)
 
     def test_hop_labels_appear_in_chain_line(self):
         """Each hop hostname:port must appear in the main chain line."""
@@ -142,7 +142,7 @@ class ChainVisualTests(unittest.TestCase):
         statuses = {"hop_0": {"ok": True, "elapsed_ms": 10}}
         visual = supervisor.format_chain_visual(cfg, statuses)
         self.assertIn("solo:3128", visual)
-        self.assertIn("solo:3128<->OK", visual)
+        self.assertIn("solo:3128<-->OK", visual)
 
     def _capture_stderr(self, fn, *args, **kwargs) -> str:
         """Call *fn* with redirected stderr and return whatever was written."""

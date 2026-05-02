@@ -1,6 +1,9 @@
-# egressd starter repo
+# hg-proxychains
 
-A small, fail-closed prototype for container egress enforced through chained HTTP CONNECT proxies.
+A small reboot of the old proxychains idea for containers: run a command in a
+workload container, force HTTP(S) traffic through a chained CONNECT proxy path,
+and show the familiar `proxy1<-->proxy2<-->proxy3` shape while keeping DNS and
+direct egress on the safe side of the compose topology.
 
 This starter repo is split into two tracks:
 
@@ -46,6 +49,7 @@ The design goal is intentionally boring:
 │   └── echo_server.py
 ├── client/
 │   ├── Dockerfile
+│   ├── hg_proxychains.py
 │   └── test_client.py
 ├── scripts/
 │   ├── bootstrap-third-party.sh
@@ -63,7 +67,17 @@ The design goal is intentionally boring:
 
 ## Quick start
 
-Start with `QUICKSTART.md` for the shortest smoke-harness path.
+Start with `QUICKSTART.md` for the shortest path:
+
+```bash
+podman-compose up --build
+podman-compose run --rm client curl -fsS https://example.com/
+```
+
+`client` runs the `hg-proxychains` wrapper by default. The wrapper prints the
+current chain state, sets HTTP(S) proxy environment variables to `egressd`, and
+then runs your command inside the private workload network.
+
 For a reviewed walkthrough of the smoke-harness flow, host flow, and current
 known breakpoints, see `docs/USER-FLOW-REVIEW.md`.
 
@@ -119,7 +133,7 @@ Or through the task runner:
 make smoke
 ```
 
-### 4. Check results
+### 3. Check results
 
 - `client` should print matching `DNS OK` and `DoH OK` lines for:
   - `smoke.test -> 203.0.113.10`
@@ -151,6 +165,37 @@ The smoke config uses `exitserver:9999` as the canary target, so readiness does
 not depend on external internet reachability.
 
 It does **not** prove host enforcement. For that, use the scripts in `scripts/` on a real Linux host and follow `docs/HOST-DEPLOYMENT.md`.
+
+`chain.allowed_ports` and `chain.fail_closed` are validation/readiness inputs
+for this supervisor. Runtime egress blocking comes from the surrounding network
+topology in compose (`worknet` is internal) or from the host firewall/owner
+rules in host mode; `pproxy` itself is not a firewall.
+
+## Running commands
+
+After the stack is healthy, run any command in the client container:
+
+```bash
+podman-compose run --rm client curl -fsS https://example.com/
+make run CMD="curl -fsS https://example.com/"
+```
+
+The command starts as:
+
+```text
+[hg-proxychains] |S-chain|proxy1:3128<-->proxy2:3128<-->OK
+```
+
+The compose topology has two networks:
+
+- `worknet` is internal. The workload `client` can reach `egressd` and `funky`
+  there, but it cannot reach the proxy hops or arbitrary external destinations.
+- `proxynet` carries the proxy chain. `egressd` bridges from `worknet` to
+  `proxynet`, then relays through the configured hops.
+
+The wrapper is intentionally simple and environment-based. It works for tools
+that honor `HTTP_PROXY` / `HTTPS_PROXY`; raw TCP applications need an explicit
+CONNECT-aware client or a future transparent interception layer.
 
 ## Health vs readiness
 
@@ -231,16 +276,16 @@ proxychains-style display on stderr.  It prints on startup (topology only)
 and again whenever the per-hop health state changes:
 
 ```
-[egressd] |S-chain|proxy1:3128<->proxy2:3128<->OK
+[egressd] |S-chain|proxy1:3128<-->proxy2:3128<-->OK
 [egressd]   hop_0: proxy1:3128                 OK   42ms
 [egressd]   hop_1: proxy2:3128                 OK   38ms
 ```
 
 When a hop is unreachable the chain still renders in the same classic
-`proxy1<->proxy2<->proxy3` style, and the line ends with `FAIL`:
+`proxy1<-->proxy2<-->proxy3` style, and the line ends with `FAIL`:
 
 ```
-[egressd] |S-chain|proxy1:3128<->proxy2:3128<->FAIL
+[egressd] |S-chain|proxy1:3128<-->proxy2:3128<-->FAIL
 [egressd]   hop_0: proxy1:3128                 OK   42ms
 [egressd]   hop_1: proxy2:3128                 FAIL Connection refused
 ```

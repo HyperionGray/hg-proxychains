@@ -28,20 +28,22 @@ class ClientDockerfileTests(unittest.TestCase):
     def test_client_dockerfile_sets_expected_workdir(self) -> None:
         self.assertIn("WORKDIR /opt/client", self._dockerfile_text())
 
-    def test_client_dockerfile_installs_dnspython(self) -> None:
+    def test_client_dockerfile_installs_runtime_tools(self) -> None:
+        text = self._dockerfile_text()
+        self.assertIn("apt-get install -y --no-install-recommends curl ca-certificates", text)
+        self.assertIn("python3 -m pip install --no-cache-dir dnspython", text)
+
+    def test_client_dockerfile_copies_client_entrypoints(self) -> None:
         self.assertIn(
-            "RUN python3 -m pip install --no-cache-dir dnspython",
+            "COPY test_client.py hg_proxychains.py /opt/client/",
             self._dockerfile_text(),
         )
 
-    def test_client_dockerfile_copies_test_script(self) -> None:
-        self.assertIn("COPY test_client.py /opt/client/", self._dockerfile_text())
-
-    def test_client_dockerfile_runs_test_client_by_default(self) -> None:
-        self.assertIn(
-            'CMD ["python3", "/opt/client/test_client.py"]',
-            self._dockerfile_text(),
-        )
+    def test_client_dockerfile_runs_wrapper_by_default(self) -> None:
+        text = self._dockerfile_text()
+        self.assertIn('ENTRYPOINT ["python3", "/opt/client/hg_proxychains.py"]', text)
+        self.assertIn('CMD ["smoke"]', text)
+        self.assertIn("hg-proxychains", text)
 
 
 if __name__ == "__main__":
