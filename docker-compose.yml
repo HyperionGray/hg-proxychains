@@ -88,7 +88,8 @@ services:
       retries: 12
       start_period: 15s
     networks:
-      - egressnet
+      egressnet:
+        ipv4_address: 172.30.0.53
 
   proxy1:
     build: ./proxy
@@ -184,9 +185,31 @@ services:
     networks:
       - egressnet
 
+  runner:
+    build: ./runner
+    init: true
+    profiles: ["runner"]
+    depends_on:
+      egressd:
+        condition: service_healthy
+    command: ["sleep", "infinity"]
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace:rw,Z
+    environment:
+      - HTTP_PROXY=http://egressd:15001
+      - HTTPS_PROXY=http://egressd:15001
+      - ALL_PROXY=http://egressd:15001
+      - NO_PROXY=127.0.0.1,localhost,egressd,funky,proxy1,proxy2,exitserver,searchdns
+    dns:
+      - 172.30.0.53
+    networks:
+      - egressnet
+
   client:
     build: ./client
     container_name: client
+    profiles: ["smoke"]
     depends_on:
       egressd:
         condition: service_healthy
@@ -196,3 +219,6 @@ services:
 networks:
   egressnet:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24

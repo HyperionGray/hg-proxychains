@@ -63,9 +63,44 @@ The design goal is intentionally boring:
 
 ## Quick start
 
-Start with `QUICKSTART.md` for the shortest smoke-harness path.
+Start with `QUICKSTART.md` for the shortest path.
 For a reviewed walkthrough of the smoke-harness flow, host flow, and current
 known breakpoints, see `docs/USER-FLOW-REVIEW.md`.
+
+Task list:
+- clean up this directory
+- initialize dependencies
+- start chain services
+- run wrapped command
+- run smoke and verification checks
+
+### Primary UX: compose up + wrapped command
+
+Bring up the chain once:
+
+```bash
+python3 scripts/hg_proxychains.py up --build
+```
+
+Run any command through the chain:
+
+```bash
+python3 scripts/hg_proxychains.py run -- curl -fsS http://exitserver:9999/
+```
+
+The wrapper waits for `/ready`, prints a proxychains-style chain line, then
+runs your command in the `runner` container with:
+
+- `HTTP_PROXY=http://egressd:15001`
+- `HTTPS_PROXY=http://egressd:15001`
+- `ALL_PROXY=http://egressd:15001`
+- DNS pointed at `funky` (`172.30.0.53`) to avoid resolver leakage
+
+Stop everything:
+
+```bash
+python3 scripts/hg_proxychains.py down -v
+```
 
 ## Minimal config
 
@@ -109,8 +144,7 @@ revision for `third_party/FunkyDNS` and normalizes the remote URL after auth.
 ### 2. Build and run the smoke harness
 
 ```bash
-podman-compose build
-podman-compose up
+python3 scripts/hg_proxychains.py smoke
 ```
 
 Or through the task runner:
@@ -119,7 +153,7 @@ Or through the task runner:
 make smoke
 ```
 
-### 4. Check results
+### 3. Check results
 
 - `client` should print matching `DNS OK` and `DoH OK` lines for:
   - `smoke.test -> 203.0.113.10`

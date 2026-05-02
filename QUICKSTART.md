@@ -6,6 +6,7 @@ Fastest complete path for a new user to get this repo running end to end.
 
 - `podman`
 - `podman-compose`
+- `python3`
 - `make`
 
 ## 1) Initialize third-party dependency
@@ -42,10 +43,28 @@ make deps
 [egressd] |S-chain|proxy1:3128<->proxy2:3128<->OK
 ```
 
-## 3) Start smoke harness
+## 3) Start chain stack (primary UX)
 
 ```bash
-podman-compose up --build
+python3 scripts/hg_proxychains.py up --build
+```
+
+This waits for readiness and prints a proxychains-style chain line.
+
+## 4) Run a wrapped command through the chain
+
+```bash
+python3 scripts/hg_proxychains.py run -- curl -fsS http://exitserver:9999/
+```
+
+Use `run` with any command (`curl`, `apt`, custom scripts, etc.). The command
+runs inside the `runner` container with proxy env vars and DNS forced through
+the stack.
+
+## 5) Run full smoke verification (correctness pass)
+
+```bash
+python3 scripts/hg_proxychains.py smoke
 ```
 
 Or:
@@ -54,15 +73,12 @@ Or:
 make smoke
 ```
 
-## 4) Confirm expected output
-
-Wait for one-shot `client` completion. A healthy run includes:
+Wait for one-shot `client` completion. A healthy smoke run includes:
 
 - `DNS OK` / `DoH OK` for `smoke.test`
 - `DNS OK` / `DoH OK` for `hosts.smoke.internal`
 - `DNS OK` / `DoH OK` for `printer`
 - `CONNECT` followed by `OK from exit-server`
-- health endpoints responding (`/healthz`, `/health`, `/ready`, `/live`)
 
 Then verify health endpoints:
 
@@ -73,10 +89,10 @@ curl -f http://localhost:9191/ready
 curl http://localhost:9191/live
 ```
 
-## 5) Stop and clean up
+## 6) Stop and clean up
 
 ```bash
-podman-compose down -v
+python3 scripts/hg_proxychains.py down -v
 ```
 
 Or:
@@ -85,7 +101,7 @@ Or:
 make down
 ```
 
-## 6) Troubleshooting
+## 7) Troubleshooting
 
 ```bash
 make logs
