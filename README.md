@@ -1,6 +1,9 @@
-# egressd starter repo
+# hg-proxychains
 
-A small, fail-closed prototype for container egress enforced through chained HTTP CONNECT proxies.
+A small reboot of the old proxychains idea for containers: run a command in a
+workload container, force HTTP(S) traffic through a chained CONNECT proxy path,
+and show the familiar `proxy1<-->proxy2<-->proxy3` shape while keeping DNS and
+direct egress on the safe side of the compose topology.
 
 This starter repo is split into two tracks:
 
@@ -20,6 +23,7 @@ The design goal is intentionally boring:
 ```text
 .
 ├── README.md
+├── hg-proxychains
 ├── Makefile
 ├── docker-compose.yml
 ├── docs/
@@ -46,6 +50,8 @@ The design goal is intentionally boring:
 │   └── echo_server.py
 ├── client/
 │   ├── Dockerfile
+│   ├── runner.py
+│   ├── hg_proxychains.py
 │   └── test_client.py
 ├── scripts/
 │   ├── bootstrap-third-party.sh
@@ -63,7 +69,17 @@ The design goal is intentionally boring:
 
 ## Quick start
 
-Start with `QUICKSTART.md` for the shortest day-to-day path.
+Start with `QUICKSTART.md` for the shortest day-to-day path:
+
+```bash
+./hg-proxychains up
+./hg-proxychains run -- curl -fsS https://example.com/
+```
+
+The default compose path now keeps a locked-down `client` toolbox container
+running behind `egressd`. The top-level `./hg-proxychains` helper executes
+commands inside that container after the local DNS + egress firewall is in
+place.
 For a reviewed walkthrough of the smoke-harness flow, host flow, and current
 known breakpoints, see `docs/USER-FLOW-REVIEW.md`.
 
@@ -158,7 +174,7 @@ Or through the task runner:
 make smoke
 ```
 
-### 4. Check results
+### 3. Check results
 
 - `./hg-proxychains smoke` should print matching `DNS OK` and `DoH OK` lines for:
   - `smoke.test -> 203.0.113.10`
@@ -213,6 +229,37 @@ Useful commands:
 ./hg-proxychains shell
 ./hg-proxychains smoke
 ```
+
+`chain.allowed_ports` and `chain.fail_closed` are validation/readiness inputs
+for this supervisor. Runtime egress blocking comes from the surrounding network
+topology in compose (`worknet` is internal) or from the host firewall/owner
+rules in host mode; `pproxy` itself is not a firewall.
+
+## Running commands
+
+After the stack is healthy, run any command in the client container:
+
+```bash
+./hg-proxychains run -- curl -fsS https://example.com/
+make run CMD="curl -fsS https://example.com/"
+```
+
+The command starts as:
+
+```text
+[hg-proxychains] |S-chain|proxy1:3128<-->proxy2:3128<-->OK
+```
+
+The compose topology has two networks:
+
+- `worknet` is internal. The workload `client` can reach `egressd` and `funky`
+  there, but it cannot reach the proxy hops or arbitrary external destinations.
+- `proxynet` carries the proxy chain. `egressd` bridges from `worknet` to
+  `proxynet`, then relays through the configured hops.
+
+The wrapper is intentionally simple and environment-based. It works for tools
+that honor `HTTP_PROXY` / `HTTPS_PROXY`; raw TCP applications need an explicit
+CONNECT-aware client or a future transparent interception layer.
 
 ## Health vs readiness
 
@@ -293,16 +340,16 @@ proxychains-style display on stderr.  It prints on startup (topology only)
 and again whenever the per-hop health state changes:
 
 ```
-[egressd] |S-chain|proxy1:3128<->proxy2:3128<->OK
+[egressd] |S-chain|proxy1:3128<-->proxy2:3128<-->OK
 [egressd]   hop_0: proxy1:3128                 OK   42ms
 [egressd]   hop_1: proxy2:3128                 OK   38ms
 ```
 
 When a hop is unreachable the chain still renders in the same classic
-`proxy1<->proxy2<->proxy3` style, and the line ends with `FAIL`:
+`proxy1<-->proxy2<-->proxy3` style, and the line ends with `FAIL`:
 
 ```
-[egressd] |S-chain|proxy1:3128<->proxy2:3128<->FAIL
+[egressd] |S-chain|proxy1:3128<-->proxy2:3128<-->FAIL
 [egressd]   hop_0: proxy1:3128                 OK   42ms
 [egressd]   hop_1: proxy2:3128                 FAIL Connection refused
 ```

@@ -17,12 +17,21 @@ This review covers:
 The broken `egressd` startup path found during the initial review has been
 repaired.
 
-Current state after the fix:
+Current state after the latest UX pass:
 
 - the `egressd` image includes all runtime modules it imports
 - `egressd/supervisor.py` now has one health/readiness implementation
 - preflight is wired into both `--check-config` and normal startup
 - unit tests and Make targets match the live supervisor API
+- the `client` image now starts through the long-running `runner.py` entrypoint,
+  which waits for `egressd`, installs a local fail-closed firewall, and then
+  serves as a locked-down toolbox for `./hg-proxychains run|shell|smoke`
+- the compose topology now has a private `worknet` for workloads and a
+  separate `proxynet` for proxy hops; `egressd` and `funky` are the only
+  services attached to both
+- `worknet` is marked `internal: true`, so the default client path cannot
+  bypass `egressd` with direct container egress
+- the chain visual now uses the proxychains-style `<-->` separator
 - the smoke FunkyDNS image now starts DoH with an explicit self-signed cert
 - the vendored FunkyDNS server now disables DoH and DoT when TLS files are
   missing and auto-cert is off
@@ -90,6 +99,9 @@ The intended paths are:
 - `client -> funky` for direct DNS and DoH ingress checks
 - `funky -> searchdns` for the single-label search-domain expansion path
 - `client -> egressd -> proxy1 -> proxy2 -> exitserver` for the CONNECT proof
+- arbitrary wrapped client commands get `HTTP_PROXY` and `HTTPS_PROXY` set to
+  `http://egressd:15001`; applications that ignore those variables may fail
+  closed on `worknet` rather than silently bypassing the chain
 
 The observed success signal from the smoke run was:
 
@@ -99,6 +111,7 @@ The observed success signal from the smoke run was:
 - `DoH OK: hosts.smoke.internal A -> 198.51.100.21 (owner hosts.smoke.internal.)`
 - `DNS OK: printer A -> 198.51.100.42 (owner printer.corp.test.)`
 - `DoH OK: printer A -> 198.51.100.42 (owner printer.corp.test.)`
+- `[egressd] |S-chain|proxy1:3128<-->proxy2:3128<-->OK`
 - `HTTP/1.1 200 Connection established`
 - `OK from exit-server`
 
@@ -116,6 +129,11 @@ Current readiness behavior:
 
 In smoke mode, the canary target is `exitserver:9999`, so readiness remains
 self-contained and does not depend on public internet access.
+
+`chain.allowed_ports` is a validation/readiness guard: preflight rejects a
+canary target whose port is not in the configured list when fail-closed mode is
+enabled. Runtime port enforcement for arbitrary applications comes from the
+container/host network policy around `egressd`, not from `pproxy` itself.
 
 ### 4. FunkyDNS behavior in smoke mode
 

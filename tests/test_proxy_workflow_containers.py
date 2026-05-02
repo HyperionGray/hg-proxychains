@@ -16,6 +16,11 @@ class ProxyWorkflowContainerConfigTests(unittest.TestCase):
         self.assertIn("cap_add:", compose)
         self.assertIn("- NET_ADMIN", compose)
         self.assertIn('command: ["serve"]', compose)
+        self.assertIn("worknet:", compose)
+        self.assertIn("internal: true", compose)
+        self.assertIn("proxynet:", compose)
+        self.assertIn("stdin_open: true", compose)
+        self.assertIn("tty: true", compose)
 
     def test_proxy_container_runs_pproxy_on_3128(self) -> None:
         dockerfile = (REPO_ROOT / "proxy" / "Dockerfile").read_text(encoding="utf-8")
