@@ -5,9 +5,8 @@
 # the local egressd CONNECT listener. egressd handles the multi-hop chain.
 #
 # Special behavior:
-#   - no args / "shell"        -> spawn an interactive bash where every
-#                                 forked program is wrapped automatically
-#                                 via PROMPT_COMMAND (visible "[chained]"
+#   - no args / "shell"        -> spawn an interactive bash under
+#                                 proxychains4 (visible "[chained]"
 #                                 prompt to make leakage obvious).
 #   - "raw" <cmd ...>          -> run the command WITHOUT proxychains
 #                                 (escape hatch, useful for debugging).
@@ -33,11 +32,16 @@ EOF
     export PS1='[chained:\w]$ '
     pc_runner='proxychains4 -q -f '"${PC_CONF}"
     cat >/tmp/hg-pc-bashrc <<EOF
-alias raw='command'
+raw() {
+    if [ "\$#" -eq 0 ]; then
+        echo "raw requires a command" >&2
+        return 2
+    fi
+    env -u LD_PRELOAD -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy "\$@"
+}
 pc() { ${pc_runner} "\$@"; }
-PROMPT_COMMAND=':'
 EOF
-    exec bash --rcfile /tmp/hg-pc-bashrc -i
+    exec proxychains4 -q -f "${PC_CONF}" bash --rcfile /tmp/hg-pc-bashrc -i
 }
 
 if [ "$#" -eq 0 ]; then

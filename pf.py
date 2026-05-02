@@ -97,12 +97,12 @@ def cmd_run(args: argparse.Namespace) -> int:
     if not args.command:
         sys.exit("pf run: needs at least one argument (the command to chain)")
     _which_required(COMPOSE)
-    return _run([COMPOSE, "run", "--rm", WRAPPER_SERVICE, *args.command])
+    return _run([COMPOSE, "--profile", WRAPPER_SERVICE, "run", "--rm", WRAPPER_SERVICE, *args.command])
 
 
 def cmd_shell(_args: argparse.Namespace) -> int:
     _which_required(COMPOSE)
-    return _run([COMPOSE, "run", "--rm", WRAPPER_SERVICE, "shell"])
+    return _run([COMPOSE, "--profile", WRAPPER_SERVICE, "run", "--rm", WRAPPER_SERVICE, "shell"])
 
 
 def _curl_or_python(url: str, *, expect_ok: bool) -> int:
@@ -136,7 +136,7 @@ def cmd_status(_args: argparse.Namespace) -> int:
 
 def cmd_smoke(args: argparse.Namespace) -> int:
     _which_required(COMPOSE)
-    cmd = [COMPOSE, "up"]
+    cmd = [COMPOSE, "--profile", "smoke", "up"]
     if args.build:
         cmd.append("--build")
     cmd.extend(["--abort-on-container-exit", "--exit-code-from", "client"])
