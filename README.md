@@ -1,77 +1,89 @@
-# egressd starter repo
+# hg-proxychains
 
-A small, fail-closed prototype for container egress enforced through chained HTTP CONNECT proxies.
+A reboot of the classic [proxychains](https://github.com/rofl0r/proxychains-ng)
+UX, but with the leak-prone bits removed and a sane container-first
+deployment.
 
-This starter repo is split into two tracks:
+You bring up the chain. You run a program. The program's TCP and DNS
+both go through the chain. That's it.
 
-- **Smoke harness**: `podman-compose` setup to prove DoH and the CONNECT chain end to end.
-- **Host deployment examples**: nftables + TPROXY + owner-gating scripts for a real host.
+```text
+your program ──> wrapper (proxychains4, no DNS leak) ──> egressd ──> proxy1 ──> proxy2 ──> internet
+```
 
-The design goal is intentionally boring:
+## Quick start (TL;DR)
 
-- HTTP CONNECT everywhere
-- no direct DNS from workloads
-- DNS only through a local DoH-capable resolver
-- fail closed
-- simple supervision and observability first
+```bash
+./pf.py up                              # bring up the chain
+./pf.py run curl -fsS https://example.com
+./pf.py shell                           # interactive chained shell
+./pf.py status                          # readiness + per-hop visual
+./pf.py down -v                         # stop everything
+```
+
+See [`QUICKSTART.md`](QUICKSTART.md) for the longer walkthrough and
+[`docs/cli/HG-PROXYCHAINS.md`](docs/cli/HG-PROXYCHAINS.md) for the
+full CLI reference.
+
+## What you actually get
+
+- **`pf.py up`** — the only thing you need for day-to-day use. Brings
+  up `proxy1`, `proxy2`, and `egressd`. Nothing else. No DNS infra,
+  no smoke client.
+- **`pf.py run <cmd>`** — runs `<cmd>` inside a wrapper container that
+  uses `proxychains4` (`strict_chain`, `proxy_dns`) to force every TCP
+  and DNS lookup through `egressd`. `egressd` then walks the chain
+  through `proxy1 -> proxy2 -> ...`.
+- **`pf.py shell`** — drops into an interactive shell where every
+  command you run is automatically chained.
+- **`pf.py status`** — pretty per-hop health view, classic
+  proxychains style:
+
+  ```text
+  [egressd] |S-chain|proxy1:3128<->proxy2:3128<->OK
+  [egressd]   hop_0: proxy1:3128                 OK   42ms
+  [egressd]   hop_1: proxy2:3128                 OK   38ms
+  ```
+
+- **`pf.py smoke`** — runs the full DoH + CONNECT-chain smoke
+  harness. This is the property test you only need when you change
+  `egressd` or the FunkyDNS smoke image; you do not need to run it for
+  normal use.
+
+`pf.py` is the documented entry-point. The Makefile still exists and
+calls the same things; use whichever you prefer.
 
 ## Repo layout
 
 ```text
 .
 ├── README.md
-├── Makefile
+├── QUICKSTART.md
+├── pf.py                    # task runner & user-facing CLI
+├── Makefile                 # thin wrapper around pf.py
 ├── docker-compose.yml
+├── wrapper/                 # proxychains4 wrapper container ("pf run")
+├── egressd/                 # local CONNECT listener + chain supervisor
+├── proxy/                   # pproxy hop image (proxy1, proxy2)
+├── exitserver/              # smoke-only echo target for the chain
+├── client/                  # smoke-only DNS+CONNECT property test
+├── funkydns-smoke/          # smoke-only DoH/DNS resolver
 ├── docs/
-│   ├── BRINGUP-CHECKLIST.md
-│   ├── FUNKYDNS-REVIEW.md
-│   ├── HOST-DEPLOYMENT.md
-│   ├── REPO_MAINTENANCE.md
-│   └── USER-FLOW-REVIEW.md
-├── egressd/
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   ├── chain.py
-│   ├── readiness.py
-│   ├── supervisor.py
-│   ├── test_supervisor.py
-│   ├── config.json5
-│   ├── config.simple.example.json5
-│   ├── config.host.example.json5
-│   └── systemd/egressd.service
-├── proxy/
-│   └── Dockerfile
-├── exitserver/
-│   ├── Dockerfile
-│   └── echo_server.py
-├── client/
-│   ├── Dockerfile
-│   └── test_client.py
+│   ├── cli/
+│   │   └── HG-PROXYCHAINS.md
+│   └── ...
 ├── scripts/
 │   ├── bootstrap-third-party.sh
-│   ├── host-nftables.sh
 │   ├── repo_hygiene.py
-│   ├── repo_maintenance.py
-│   ├── host-egress-owner.sh
-│   └── test_repo_hygiene.py
+│   └── ...
 ├── tests/
-│   ├── test_readiness.py
-│   └── test_supervisor.py
-└── third_party/
-    └── README.md
+└── third_party/FunkyDNS/    # smoke-only submodule
 ```
 
-## Quick start
+## Configuration
 
-Start with `QUICKSTART.md` for the shortest smoke-harness path.
-For a reviewed walkthrough of the smoke-harness flow, host flow, and current
-known breakpoints, see `docs/USER-FLOW-REVIEW.md`.
-
-## Minimal config
-
-The only required setting is your list of proxies.  Everything else uses
-safe, sensible defaults (fail-closed, DoH-only DNS, health endpoints on
-port 9191, etc.):
+The only required setting is your list of proxies. Defaults are
+fail-closed and DoH-friendly:
 
 ```json5
 // egressd/config.json5
@@ -80,220 +92,80 @@ port 9191, etc.):
     "http://proxy1:3128",
     "http://proxy2:3128",
   ],
+  chain: { canary_target: "proxy1:3128" },
 }
 ```
 
-Plain URL strings and the canonical `{"url": "..."}` dict form are both
-accepted.  See `egressd/config.simple.example.json5` for this minimal
-format and `egressd/config.host.example.json5` for a fully-annotated host
-deployment example.
+Both plain URL strings and the canonical `{"url": "..."}` dict form
+are accepted. See `egressd/config.simple.example.json5` for the
+absolute minimum and `egressd/config.host.example.json5` for the
+fully-annotated host deployment example.
 
-### 1. Initialize FunkyDNS submodule
+## Health, readiness, and the chain visual
 
-Configure authenticated GitHub access, then initialize the private submodule:
+`egressd` exposes three HTTP endpoints on the supervisor port
+(default `9191`, published on the host as `localhost:9191`):
 
-```bash
-git submodule update --init --recursive third_party/FunkyDNS
-```
+- `GET /live` — process is up
+- `GET /health` — full state (pproxy, funkydns, per-hop probes,
+  readiness reasons)
+- `GET /ready` — `200` only when `egressd` is usable for forwarding
+  (pproxy running, hops healthy, hop probes fresh)
 
-If you prefer a direct clone workflow, you can still clone `P4X-ng/FunkyDNS`
-into `third_party/FunkyDNS` manually:
+The chain visual is enabled by default in `egressd/config.json5` and
+prints on every hop state change.
 
-```bash
-make deps
-```
+## Smoke harness (optional)
 
-This uses `scripts/bootstrap-third-party.sh`, which checks out the exact gitlink
-revision for `third_party/FunkyDNS` and normalizes the remote URL after auth.
-
-### 2. Build and run the smoke harness
-
-```bash
-podman-compose build
-podman-compose up
-```
-
-Or through the task runner:
+The smoke harness lives behind the `smoke` compose profile and
+proves the DoH listener, hosts-file resolution, search-domain
+recursion, and end-to-end CONNECT chain. It is *not* required for
+normal use.
 
 ```bash
-make smoke
+./pf.py bootstrap                  # fetch third_party/FunkyDNS once
+./pf.py smoke --build              # one-shot run, exits with the client
 ```
 
-### 4. Check results
+A successful run prints matching `DNS OK` / `DoH OK` lines for
+`smoke.test`, `hosts.smoke.internal`, and `printer`, followed by
+`HTTP/1.1 200 Connection established` and `OK from exit-server`.
 
-- `client` should print matching `DNS OK` and `DoH OK` lines for:
-  - `smoke.test -> 203.0.113.10`
-  - `hosts.smoke.internal -> 198.51.100.21`
-  - `printer -> 198.51.100.42 (owner printer.corp.test.)`
-- `client` should then print a successful `CONNECT` followed by `OK from exit-server`
-- `funky` exposes the smoke DoH listener on `https://localhost:18443`
+## Host deployment
+
+The container UX is the recommended path. For a real Linux host with
+nftables-enforced egress, see `docs/HOST-DEPLOYMENT.md`. The shape
+is:
+
+```text
+local programs --(TPROXY/owner gate)--> egressd --> proxy1 --> proxy2 --> internet
+```
+
+`egressd/config.host.example.json5` is the fully-annotated config
+template for that path.
+
+## Tests and lints
 
 ```bash
-curl -sk https://localhost:18443/healthz
-curl http://localhost:9191/health
-curl -f http://localhost:9191/ready
-curl http://localhost:9191/live
+./pf.py check          # py_compile + unit tests
+./pf.py test           # unit tests only
+./pf.py pycheck        # py_compile only
+make preflight         # config validation in a disposable container
+make validate-config   # config validation with full binary checks
 ```
 
-## What the smoke harness proves
-
-- HTTPS DoH listener on `funky:443`
-- direct DNS and DoH lookup for `smoke.test -> 203.0.113.10`
-- mounted hosts-file lookup for `hosts.smoke.internal -> 198.51.100.21`
-- search-domain lookup for `printer -> printer.corp.test -> 198.51.100.42`
-- local explicit CONNECT tunnel establishment
-- multi-hop relay via `pproxy`
-- end-to-end raw TCP after CONNECT
-- per-hop health probes and readiness gating
-- separate FunkyDNS and upstream search-DNS services for DNS work
-
-The smoke config uses `exitserver:9999` as the canary target, so readiness does
-not depend on external internet reachability.
-
-It does **not** prove host enforcement. For that, use the scripts in `scripts/` on a real Linux host and follow `docs/HOST-DEPLOYMENT.md`.
-
-## Health vs readiness
-
-- `GET /live`: process is up (simple liveness check)
-- `GET /health`: detailed state (`pproxy`, `funkydns`, per-hop probe details, and readiness block)
-- `GET /ready`: returns `200` only when `egressd` is usable for forwarding
-  - `pproxy` must be running
-  - if `dns.launch_funkydns=true`, FunkyDNS must also be running
-  - hop checks must be complete and successful by default
-  - auth-required or policy-denied CONNECT responses stay visible in `/health`, but keep `/ready` red
-
-Readiness behavior can be tuned via:
-
-- `supervisor.require_all_hops_healthy`
-- `supervisor.max_hop_status_age_s`
-- `supervisor.block_start_until_hops_healthy`
-
-## Important split: smoke mode vs host mode
-
-The compose harness runs FunkyDNS as a **separate service**.
-
-`egressd` does **not** launch FunkyDNS in smoke mode. That avoids double-start bugs and keeps service boundaries clean.
-
-The smoke FunkyDNS image carries a self-signed cert, a clean local zone, and a
-mounted `hosts` file. On startup it writes a local `resolv.conf` from the
-resolved `searchdns` service address so compose can health-check:
-
-- direct DNS on `53`
-- a real DoH POST on `443`
-- local `/etc/hosts` resolution
-- search-domain recursion via a dedicated internal `searchdns` service
-
-The smoke image also uses a small local launcher to bound FunkyDNS teardown,
-because the upstream server path does not currently shut down reliably on
-container stop signals.
-
-The vendored FunkyDNS resolver now honors local host resolution before external
-upstreams:
-
-- `/etc/hosts` is checked first for A and AAAA records
-- local zone files are checked next
-- the system resolver from `/etc/resolv.conf` is preferred before explicit
-  upstreams
-- single-label names use the system resolver's search domains
-
-That makes Ubuntu-style `systemd-resolved` setups behave the way operators
-usually expect. In containerized deployments, point FunkyDNS at a usable
-`resolv.conf` if the container's default one references an unreachable loopback
-stub.
-
-For host mode, `egressd/config.host.example.json5` shows how to launch FunkyDNS locally if you want a single host-managed stack.
-
-## Startup preflight checks
-
-`egressd` validates config and binary prerequisites before launching `pproxy`.
-If preflight fails, it exits non-zero and logs each specific failure (for example:
-invalid hop URL, empty chain, or missing binary path).
-
-Useful checks:
+## Maintenance
 
 ```bash
-make preflight
-make validate-config
+make repo-scan         # find TODO/STUB markers and stray files (first-party)
+make repo-clean        # delete stray cache + backup files
+make maintenance-all   # include third_party/FunkyDNS in the scan
 ```
 
-## What to tweak first
+## Related docs
 
-- `egressd/config.json5`: list your proxy hops under `proxies:`; all other fields are optional
-- `egressd/config.simple.example.json5`: the absolute minimum — just a `proxies` list
-- `egressd/config*.json5` DNS section: use `doh_upstreams` (list) or legacy `doh_upstream` (single URL)
-- `scripts/host-egress-owner.sh`: upstream proxy and DoH IPs
-- `scripts/host-nftables.sh`: bridge interface name and infra CIDRs
-
-## Chain visual
-
-Set `logging.chain_visual: true` in your config to get a terminal-friendly
-proxychains-style display on stderr.  It prints on startup (topology only)
-and again whenever the per-hop health state changes:
-
-```
-[egressd] |S-chain|proxy1:3128<->proxy2:3128<->OK
-[egressd]   hop_0: proxy1:3128                 OK   42ms
-[egressd]   hop_1: proxy2:3128                 OK   38ms
-```
-
-When a hop is unreachable the chain still renders in the same classic
-`proxy1<->proxy2<->proxy3` style, and the line ends with `FAIL`:
-
-```
-[egressd] |S-chain|proxy1:3128<->proxy2:3128<->FAIL
-[egressd]   hop_0: proxy1:3128                 OK   42ms
-[egressd]   hop_1: proxy2:3128                 FAIL Connection refused
-```
-
-The visual is disabled by default (`logging.chain_visual: false`) so it does not
-interfere with JSON log pipelines.
-
-## Maintenance and cleanup
-
-Run repository maintenance checks (unfinished markers, backup files, stale artifacts, stray cache dirs, and unexpected embedded git repos) for first-party code:
-
-```bash
-make maintenance
-# equivalent: python3 scripts/repo_hygiene.py scan --repo-root .
-```
-
-This check also flags unexpected nested repositories (embedded `.git` roots)
-outside approved paths. The Make target skips third-party marker scanning by
-default to avoid blocking on external dependency TODOs.
-
-For automatic cleanup of removable clutter (backup files and known stale artifacts):
-
-```bash
-make maintenance-fix
-# equivalent: python3 scripts/repo_hygiene.py clean --repo-root .
-```
-
-`maintenance*` targets focus on first-party code by default. For a full scan that
-also includes `third_party/FunkyDNS`, use:
-
-```bash
-make maintenance-all
-make maintenance-all-json
-```
-
-For scheduled automation, keep this check in the loop to catch new TODO/STUB markers and stray files early.
-
-For focused first-party hygiene scans and stray cleanup:
-
-```bash
-make repo-scan
-make repo-clean
-make repo-scan-json
-```
-
-## Notes on FunkyDNS review
-
-I added a short review in `docs/FUNKYDNS-REVIEW.md` with the concrete issues worth fixing before you rely on it in a production-ish setup.
-
-## Maintenance helpers
-
-- `make pycheck` compiles key Python entry points for syntax sanity.
-- `make test` runs the repo's unit and hygiene checks.
-- `make preflight` validates config in a disposable container with binary checks skipped.
-- `make validate-config` validates the runtime image/config with normal binary checks.
-- `make clean` removes local build/test artifacts (`__pycache__`, `.pytest_cache`, bundle tarball).
+- `QUICKSTART.md` — end-to-end happy path
+- `docs/cli/HG-PROXYCHAINS.md` — CLI reference
+- `docs/USER-FLOW-REVIEW.md` — design notes & smoke-harness review
+- `docs/HOST-DEPLOYMENT.md` — host-mode deployment with nftables
+- `docs/FUNKYDNS-REVIEW.md` — review of the vendored DNS resolver
