@@ -47,7 +47,7 @@ services:
       retries: 12
       start_period: 15s
     networks:
-      - egressnet
+      - proxynet
 
   funky:
     build: *funkydns_smoke_build
@@ -81,6 +81,12 @@ services:
           "CMD",
           "python3",
           "/opt/funkydns-smoke/check_resolution.py",
+          "--name",
+          "smoke.test",
+          "--expect",
+          "203.0.113.10",
+          "--expect-owner",
+          "smoke.test.",
           "--quiet",
         ]
       interval: 10s
@@ -88,8 +94,8 @@ services:
       retries: 12
       start_period: 15s
     networks:
-      egressnet:
-        ipv4_address: 172.30.0.53
+      - worknet
+      - proxynet
 
   proxy1:
     build: ./proxy
@@ -109,7 +115,7 @@ services:
       retries: 10
       start_period: 5s
     networks:
-      - egressnet
+      - proxynet
 
   proxy2:
     build: ./proxy
@@ -129,7 +135,7 @@ services:
       retries: 10
       start_period: 5s
     networks:
-      - egressnet
+      - proxynet
 
   exitserver:
     build: ./exitserver
@@ -150,7 +156,7 @@ services:
       retries: 10
       start_period: 5s
     networks:
-      - egressnet
+      - proxynet
 
   egressd:
     build: ./egressd
@@ -183,42 +189,24 @@ services:
       retries: 12
       start_period: 5s
     networks:
-      - egressnet
-
-  runner:
-    build: ./runner
-    init: true
-    profiles: ["runner"]
-    depends_on:
-      egressd:
-        condition: service_healthy
-    command: ["sleep", "infinity"]
-    working_dir: /workspace
-    volumes:
-      - ./:/workspace:rw,Z
-    environment:
-      - HTTP_PROXY=http://egressd:15001
-      - HTTPS_PROXY=http://egressd:15001
-      - ALL_PROXY=http://egressd:15001
-      - NO_PROXY=127.0.0.1,localhost,egressd
-    dns:
-      - 172.30.0.53
-    networks:
-      - egressnet
+      - worknet
+      - proxynet
 
   client:
     build: ./client
     container_name: client
-    profiles: ["smoke"]
+    init: true
     depends_on:
       egressd:
         condition: service_healthy
+    stdin_open: true
+    tty: true
     networks:
-      - egressnet
+      - worknet
 
 networks:
-  egressnet:
+  worknet:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.30.0.0/24
+    internal: true
+  proxynet:
+    driver: bridge

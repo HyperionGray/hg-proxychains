@@ -3,10 +3,8 @@
 ## Smoke harness
 
 - [ ] Initialize submodule `third_party/FunkyDNS` (`git submodule update --init --recursive third_party/FunkyDNS`)
-- [ ] `python3 scripts/hg_proxychains.py up --build`
-- [ ] `python3 scripts/hg_proxychains.py run -- curl -fsS http://exitserver:9999/`
-- [ ] Confirm wrapper prints a proxychains-style `<->` chain line with final `OK`
-- [ ] `python3 scripts/hg_proxychains.py smoke`
+- [ ] `podman-compose build`
+- [ ] `podman-compose up`
 - [ ] Confirm `client` prints `DNS OK: smoke.test A -> 203.0.113.10`
 - [ ] Confirm `client` prints `DoH OK: smoke.test A -> 203.0.113.10 (owner smoke.test.)`
 - [ ] Confirm `client` prints `DNS OK: hosts.smoke.internal A -> 198.51.100.21`

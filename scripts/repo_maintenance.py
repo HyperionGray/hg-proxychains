@@ -15,11 +15,14 @@ from pathlib import Path
 from typing import Sequence
 
 from repo_hygiene_lib import (
+    BASELINE_DEFAULT_PATH,
+    apply_marker_baseline,
     classify_stray_paths,
     collect_git_paths,
     discover_embedded_git_repos,
     find_stale_artifacts,
     find_unfinished_markers,
+    load_marker_baseline,
 )
 
 
@@ -31,7 +34,6 @@ _STRAY_DIR_NAMES = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"
 # Path prefix for the third-party subtree, with trailing separator to avoid
 # false matches against directories like "third_party_backup/".
 _THIRD_PARTY_PREFIX = "third_party" + "/"
-BASELINE_DEFAULT_PATH = ".repo-hygiene-baseline.json"
 
 
 # ---------------------------------------------------------------------------
@@ -303,7 +305,7 @@ def discover_embedded_repos(
 def build_report(
     root: Path,
     *,
-    include_third_party: bool = True,
+    include_third_party: bool = False,
     allowed_embedded_repos: Sequence[str] | None = None,
 ) -> dict:
     tracked_paths = run_git_ls_files(root, include_third_party=include_third_party, untracked=False)

@@ -3,19 +3,17 @@ PODMAN ?= podman
 PYTHON ?= python3
 EGRESSD_IMAGE ?= localhost/hg-proxychains-egressd-validate:latest
 
-.PHONY: deps up smoke run-chain down logs health ready pycheck unittest test check preflight validate-config validate-image repo-scan repo-scan-json repo-clean maintenance maintenance-json maintenance-fix maintenance-all maintenance-all-json maintenance-baseline bundle clean
+.PHONY: deps smoke run down logs health ready pycheck unittest test check preflight validate-config validate-image repo-scan repo-scan-json repo-clean maintenance maintenance-json maintenance-fix maintenance-all maintenance-all-json maintenance-baseline bundle clean
 
 deps:
 	scripts/bootstrap-third-party.sh
 
 smoke:
-	$(PYTHON) scripts/hg_proxychains.py smoke
+	$(COMPOSE) up --build
 
-up:
-	$(PYTHON) scripts/hg_proxychains.py up --build
-
-run-chain:
-	$(PYTHON) scripts/hg_proxychains.py run --build -- sh -lc "curl -fsS http://exitserver:9999/"
+run:
+	@if [ -z "$(CMD)" ]; then echo 'usage: make run CMD="curl -fsS https://example.com/"' >&2; exit 2; fi
+	$(COMPOSE) run --rm client $(CMD)
 
 down:
 	$(COMPOSE) down -v
@@ -30,10 +28,10 @@ ready:
 	curl -i http://localhost:9191/ready
 
 pycheck:
-	$(PYTHON) -m py_compile egressd/supervisor.py egressd/chain.py egressd/readiness.py egressd/preflight.py egressd/test_supervisor.py egressd/test_supervisor_readiness.py client/test_client.py exitserver/echo_server.py funkydns-smoke/check_resolution.py funkydns-smoke/generate_cert.py funkydns-smoke/run_funkydns.py tests/test_chain.py tests/test_preflight.py tests/test_hop_connectivity.py tests/test_client_dockerfile.py scripts/repo_hygiene.py scripts/repo_maintenance.py scripts/test_repo_hygiene.py scripts/hg_proxychains.py
+	$(PYTHON) -m py_compile egressd/supervisor.py egressd/chain.py egressd/readiness.py egressd/preflight.py egressd/test_supervisor.py egressd/test_supervisor_readiness.py client/test_client.py client/hg_proxychains.py exitserver/echo_server.py funkydns-smoke/check_resolution.py funkydns-smoke/generate_cert.py funkydns-smoke/run_funkydns.py tests/test_chain.py tests/test_preflight.py tests/test_hop_connectivity.py tests/test_client_dockerfile.py tests/test_client_wrapper.py scripts/repo_hygiene.py scripts/repo_maintenance.py scripts/test_repo_hygiene.py
 
 unittest:
-	$(PYTHON) -m unittest egressd/test_supervisor_readiness.py egressd/test_supervisor.py tests/test_readiness.py tests/test_supervisor.py tests/test_chain.py tests/test_preflight.py tests/test_hop_connectivity.py tests/test_client_dockerfile.py tests/test_proxy_workflow_containers.py tests/test_hg_proxychains.py scripts/test_repo_hygiene.py scripts/test_repo_maintenance.py
+	$(PYTHON) -m unittest egressd/test_supervisor_readiness.py egressd/test_supervisor.py tests/test_readiness.py tests/test_supervisor.py tests/test_chain.py tests/test_preflight.py tests/test_hop_connectivity.py tests/test_client_dockerfile.py tests/test_client_wrapper.py scripts/test_repo_hygiene.py scripts/test_repo_maintenance.py
 
 test: unittest
 
