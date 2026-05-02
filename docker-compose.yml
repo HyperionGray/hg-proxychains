@@ -47,7 +47,7 @@ services:
       retries: 12
       start_period: 15s
     networks:
-      - egressnet
+      - proxynet
 
   funky:
     build: *funkydns_smoke_build
@@ -88,7 +88,8 @@ services:
       retries: 12
       start_period: 15s
     networks:
-      - egressnet
+      - worknet
+      - proxynet
 
   proxy1:
     build: ./proxy
@@ -108,7 +109,7 @@ services:
       retries: 10
       start_period: 5s
     networks:
-      - egressnet
+      - proxynet
 
   proxy2:
     build: ./proxy
@@ -128,7 +129,7 @@ services:
       retries: 10
       start_period: 5s
     networks:
-      - egressnet
+      - proxynet
 
   exitserver:
     build: ./exitserver
@@ -149,7 +150,7 @@ services:
       retries: 10
       start_period: 5s
     networks:
-      - egressnet
+      - proxynet
 
   egressd:
     build: ./egressd
@@ -182,17 +183,24 @@ services:
       retries: 12
       start_period: 5s
     networks:
-      - egressnet
+      - worknet
+      - proxynet
 
   client:
     build: ./client
     container_name: client
+    init: true
     depends_on:
       egressd:
         condition: service_healthy
+    stdin_open: true
+    tty: true
     networks:
-      - egressnet
+      - worknet
 
 networks:
-  egressnet:
+  worknet:
+    driver: bridge
+    internal: true
+  proxynet:
     driver: bridge

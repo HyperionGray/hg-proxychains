@@ -13,6 +13,10 @@ class ProxyWorkflowContainerConfigTests(unittest.TestCase):
         self.assertIn('command: ["pproxy", "-l", "http://0.0.0.0:3128"]', compose)
         self.assertIn("condition: service_healthy", compose)
         self.assertIn("http://127.0.0.1:9191/ready", compose)
+        self.assertIn("worknet:", compose)
+        self.assertIn("internal: true", compose)
+        self.assertIn("proxynet:", compose)
+        self.assertIn("stdin_open: true", compose)
 
     def test_proxy_container_runs_pproxy_on_3128(self) -> None:
         dockerfile = (REPO_ROOT / "proxy" / "Dockerfile").read_text(encoding="utf-8")

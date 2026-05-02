@@ -12,4 +12,13 @@
     canary_target: "exitserver:9999",
     allowed_ports: [80, 443, 9999],
   },
+
+  logging: {
+    chain_visual: true,
+  },
+
+  supervisor: {
+    // Compose clients need to read /health across the private worknet.
+    health_bind: "0.0.0.0",
+  },
 }
