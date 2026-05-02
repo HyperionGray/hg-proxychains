@@ -3,7 +3,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 submodule_path="third_party/FunkyDNS"
-submodule_name="third_party/FunkyDNS"
+submodule_name="FunkyDNS"
 
 cd "$repo_root"
 
@@ -28,7 +28,7 @@ gh_token="$(gh auth token)"
 auth_url="https://x-access-token:${gh_token}@github.com/P4X-ng/FunkyDNS.git"
 public_url="https://github.com/P4X-ng/FunkyDNS.git"
 
-if [ ! -d "$submodule_path/.git" ]; then
+if [ ! -e "$submodule_path/.git" ]; then
   rm -rf "$submodule_path"
   git -c "submodule.${submodule_name}.url=${auth_url}" submodule update --init --recursive "$submodule_path"
 else

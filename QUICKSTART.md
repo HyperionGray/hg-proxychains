@@ -10,6 +10,9 @@ Fastest complete path for a new user to get this repo running end to end.
 
 ## 1) Initialize third-party dependency
 
+`./hg-proxychains up` and `make up` will try to bootstrap the missing
+dependency automatically. If you want to do it yourself first:
+
 ```bash
 git submodule update --init --recursive third_party/FunkyDNS
 ```
@@ -42,7 +45,7 @@ make deps
 [egressd] |S-chain|proxy1:3128<->proxy2:3128<->OK
 ```
 
-## 3) Start smoke harness
+## 3) Start the stack
 
 ```bash
 podman-compose up --build
@@ -51,12 +54,42 @@ podman-compose up --build
 Or:
 
 ```bash
+make up
+```
+
+## 4) Run something through the chain
+
+Once `client` prints its ready banner, run a command through the locked-down
+client container:
+
+```bash
+./hg-proxychains run -- curl -s https://ifconfig.me
+```
+
+You can also open an interactive shell:
+
+```bash
+./hg-proxychains shell
+```
+
+## 5) Run the smoke check
+
+The end-to-end smoke test is still available, but it is no longer the default
+thing that happens on every `compose up`:
+
+```bash
+./hg-proxychains smoke
+```
+
+Or:
+
+```bash
 make smoke
 ```
 
-## 4) Confirm expected output
+## 6) Confirm expected output
 
-Wait for one-shot `client` completion. A healthy run includes:
+A healthy smoke run includes:
 
 - `DNS OK` / `DoH OK` for `smoke.test`
 - `DNS OK` / `DoH OK` for `hosts.smoke.internal`
@@ -73,7 +106,7 @@ curl -f http://localhost:9191/ready
 curl http://localhost:9191/live
 ```
 
-## 5) Stop and clean up
+## 7) Stop and clean up
 
 ```bash
 podman-compose down -v
@@ -85,7 +118,7 @@ Or:
 make down
 ```
 
-## 6) Troubleshooting
+## 8) Troubleshooting
 
 ```bash
 make logs

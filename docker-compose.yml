@@ -187,9 +187,18 @@ services:
   client:
     build: ./client
     container_name: client
+    init: true
     depends_on:
       egressd:
         condition: service_healthy
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - LOCAL_DNS_HOST=funky
+      - LOCAL_PROXY_HOST=egressd
+      - LOCAL_PROXY_PORT=15001
+      - LOCAL_READY_URL=http://egressd:9191/ready
+    command: ["serve"]
     networks:
       - egressnet
 

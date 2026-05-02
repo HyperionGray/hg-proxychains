@@ -34,12 +34,21 @@ class ClientDockerfileTests(unittest.TestCase):
             self._dockerfile_text(),
         )
 
-    def test_client_dockerfile_copies_test_script(self) -> None:
-        self.assertIn("COPY test_client.py /opt/client/", self._dockerfile_text())
+    def test_client_dockerfile_installs_runtime_tools(self) -> None:
+        self.assertIn("apt-get install -y --no-install-recommends", self._dockerfile_text())
+        self.assertIn("iptables", self._dockerfile_text())
+        self.assertIn("iproute2", self._dockerfile_text())
 
-    def test_client_dockerfile_runs_test_client_by_default(self) -> None:
+    def test_client_dockerfile_copies_runner_and_smoke_script(self) -> None:
+        self.assertIn("COPY runner.py test_client.py /opt/client/", self._dockerfile_text())
+
+    def test_client_dockerfile_uses_runner_entrypoint(self) -> None:
         self.assertIn(
-            'CMD ["python3", "/opt/client/test_client.py"]',
+            'ENTRYPOINT ["python3", "/opt/client/runner.py"]',
+            self._dockerfile_text(),
+        )
+        self.assertIn(
+            'CMD ["serve"]',
             self._dockerfile_text(),
         )
 
