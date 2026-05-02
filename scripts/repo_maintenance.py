@@ -15,11 +15,14 @@ from pathlib import Path
 from typing import Sequence
 
 from repo_hygiene_lib import (
+    BASELINE_DEFAULT_PATH,
+    apply_marker_baseline,
     classify_stray_paths,
     collect_git_paths,
     discover_embedded_git_repos,
     find_stale_artifacts,
     find_unfinished_markers,
+    load_marker_baseline,
 )
 
 
@@ -283,7 +286,7 @@ def discover_stale_artifacts(tracked_paths: Sequence[str], untracked_paths: Sequ
 def discover_embedded_repos(
     root: Path,
     allowed_embedded_repos: Sequence[str] | None = None,
-    include_third_party: bool = False,
+    include_third_party: bool = True,
 ) -> list[str]:
     allowed = tuple(Path(path).as_posix().rstrip("/") for path in (allowed_embedded_repos or []))
     found = [
