@@ -3,13 +3,27 @@ PODMAN ?= podman
 PYTHON ?= python3
 EGRESSD_IMAGE ?= localhost/hg-proxychains-egressd-validate:latest
 
-.PHONY: deps smoke down logs health ready pycheck unittest test check preflight validate-config validate-image repo-scan repo-scan-json repo-clean maintenance maintenance-json maintenance-fix maintenance-all maintenance-all-json maintenance-baseline bundle clean
+.PHONY: deps smoke smoke-daemon smoke-down proxy-daemon proxy-stop proxy-run down logs health ready pycheck unittest test check preflight validate-config validate-image repo-scan repo-scan-json repo-clean maintenance maintenance-json maintenance-fix maintenance-all maintenance-all-json maintenance-baseline bundle clean
 
 deps:
 	scripts/bootstrap-third-party.sh
 
 smoke:
 	$(COMPOSE) up --build
+
+# Background stack + host CLI to run commands in the client container through egressd.
+smoke-daemon:
+	scripts/hg-proxychains daemon
+
+smoke-down:
+	scripts/hg-proxychains stop
+
+proxy-daemon: smoke-daemon
+
+proxy-stop: smoke-down
+
+proxy-run:
+	@scripts/hg-proxychains run -- $(ARGS)
 
 down:
 	$(COMPOSE) down -v
@@ -24,10 +38,10 @@ ready:
 	curl -i http://localhost:9191/ready
 
 pycheck:
-	$(PYTHON) -m py_compile egressd/supervisor.py egressd/chain.py egressd/readiness.py egressd/preflight.py egressd/test_supervisor.py egressd/test_supervisor_readiness.py client/test_client.py exitserver/echo_server.py funkydns-smoke/check_resolution.py funkydns-smoke/generate_cert.py funkydns-smoke/run_funkydns.py tests/test_chain.py tests/test_preflight.py tests/test_hop_connectivity.py tests/test_client_dockerfile.py scripts/repo_hygiene.py scripts/repo_maintenance.py scripts/test_repo_hygiene.py
+	$(PYTHON) -m py_compile egressd/supervisor.py egressd/chain.py egressd/readiness.py egressd/preflight.py egressd/test_supervisor.py egressd/test_supervisor_readiness.py client/test_client.py exitserver/echo_server.py funkydns-smoke/check_resolution.py funkydns-smoke/generate_cert.py funkydns-smoke/run_funkydns.py tests/test_chain.py tests/test_preflight.py tests/test_hop_connectivity.py tests/test_client_dockerfile.py tests/test_hg_proxychains_script.py scripts/repo_hygiene.py scripts/repo_maintenance.py scripts/test_repo_hygiene.py
 
 unittest:
-	$(PYTHON) -m unittest egressd/test_supervisor_readiness.py egressd/test_supervisor.py tests/test_readiness.py tests/test_supervisor.py tests/test_chain.py tests/test_preflight.py tests/test_hop_connectivity.py tests/test_client_dockerfile.py scripts/test_repo_hygiene.py scripts/test_repo_maintenance.py
+	$(PYTHON) -m unittest egressd/test_supervisor_readiness.py egressd/test_supervisor.py tests/test_readiness.py tests/test_supervisor.py tests/test_chain.py tests/test_preflight.py tests/test_hop_connectivity.py tests/test_client_dockerfile.py tests/test_hg_proxychains_script.py scripts/test_repo_hygiene.py scripts/test_repo_maintenance.py
 
 test: unittest
 

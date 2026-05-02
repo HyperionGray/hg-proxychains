@@ -90,7 +90,7 @@ class RepoMaintenanceTests(unittest.TestCase):
             (rogue_third_party / ".git").mkdir(parents=True)
 
             found = repo_maintenance.discover_embedded_repos(
-                root, ["third_party/FunkyDNS"]
+                root, ["third_party/FunkyDNS"], include_third_party=True
             )
 
         self.assertEqual(found, ["third_party/rogue"])
