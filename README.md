@@ -174,7 +174,7 @@ Or through the task runner:
 make smoke
 ```
 
-### 3. Check results
+### 4. Check results
 
 - `./hg-proxychains smoke` should print matching `DNS OK` and `DoH OK` lines for:
   - `smoke.test -> 203.0.113.10`
