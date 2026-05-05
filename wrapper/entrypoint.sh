@@ -35,7 +35,7 @@ EOF
     tmpfile=$(mktemp)
     trap 'rm -f "$tmpfile"' EXIT
     cat >"$tmpfile" <<EOF
-alias raw='command'
+alias raw='env -u LD_PRELOAD'
 pc() { ${pc_runner} "\$@"; }
 PROMPT_COMMAND=':'
 EOF
