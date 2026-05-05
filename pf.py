@@ -112,9 +112,14 @@ def _curl_or_python(url: str, *, expect_ok: bool) -> int:
 
     script = (
         "import json, sys, urllib.request;"
-        f"r = urllib.request.urlopen({url!r}, timeout=5);"
-        "data = r.read().decode('utf-8');"
-        "print(data)"
+        "try:"
+        f"  r = urllib.request.urlopen({url!r}, timeout=5);"
+        "  data = r.read().decode('utf-8');"
+        "  print(data);"
+        "  sys.exit(0)"
+        "except Exception as e:"
+        "  print(f'Error: {e}', file=sys.stderr);"
+        "  sys.exit(1)"
     )
     return _run([PYTHON, "-c", script], check=False)
 
