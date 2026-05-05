@@ -19,16 +19,11 @@ from repo_hygiene_lib import (
     apply_marker_baseline,
     classify_stray_paths,
     collect_git_paths,
-    discover_embedded_git_repos,
     find_stale_artifacts,
     find_unfinished_markers,
     load_marker_baseline,
 )
 
-
-# ---------------------------------------------------------------------------
-# Constants shared with repo_hygiene
-# ---------------------------------------------------------------------------
 
 _STRAY_DIR_NAMES = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
 # Path prefix for the third-party subtree, with trailing separator to avoid
@@ -41,7 +36,7 @@ def discover_embedded_git_repos(root: Path, include_third_party: bool = True) ->
 
     The root-level ``.git`` entry and recognised gitlink files (text files
     whose first line starts with ``gitdir:``) are excluded.  If
-    *include_third_party* is ``False``, anything under the ``third_party/``
+    *include_third_party* is False, anything under the ``third_party/``
     directory is skipped entirely.
     """
     root_git = root / ".git"
@@ -55,7 +50,6 @@ def discover_embedded_git_repos(root: Path, include_third_party: bool = True) ->
             continue
         if not include_third_party and rel.startswith(_THIRD_PARTY_PREFIX):
             continue
-        # Gitlink files mark legitimate submodule checkouts; skip them.
         if git_path.is_file():
             try:
                 first_line = git_path.read_text(encoding="utf-8", errors="ignore").split("\n", 1)[0]
@@ -71,7 +65,7 @@ def discover_untracked_stray_dirs(root: Path, include_third_party: bool = True) 
     """Return paths of known stray cache/artifact directories under *root*.
 
     Directories whose base-name appears in the known stray set (e.g.
-    ``__pycache__``) are returned.  If *include_third_party* is ``False``,
+    ``__pycache__``) are returned.  If *include_third_party* is False,
     anything under ``third_party/`` is skipped.
     """
     stray: list[Path] = []
@@ -93,9 +87,7 @@ def discover_untracked_stray_dirs(root: Path, include_third_party: bool = True) 
 def apply_fixes(root: Path, report: dict) -> tuple[list[str], list[str]]:
     """Remove files and directories listed in *report*.
 
-    *report* is a dict with optional keys ``backup_files``, ``stray_dirs``,
-    and ``stale_artifacts``, each mapping to a list of paths relative to
-    *root*.  Returns ``(removed, failed)`` lists of relative path strings.
+    Returns ``(removed, failed)`` lists of relative path strings.
     """
     candidates: list[str] = []
     for key in ("backup_files", "stray_dirs", "stale_artifacts"):
@@ -151,7 +143,7 @@ def discover_stale_artifacts(tracked_paths: Sequence[str], untracked_paths: Sequ
 def discover_embedded_repos(
     root: Path,
     allowed_embedded_repos: Sequence[str] | None = None,
-    include_third_party: bool = False,
+    include_third_party: bool = True,
 ) -> list[str]:
     allowed = tuple(Path(path).as_posix().rstrip("/") for path in (allowed_embedded_repos or []))
     found = [
@@ -197,10 +189,6 @@ def build_report(
         },
     }
 
-
-# ---------------------------------------------------------------------------
-# CLI entry-point (delegates to repo_hygiene.py)
-# ---------------------------------------------------------------------------
 
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(

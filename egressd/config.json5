@@ -1,16 +1,27 @@
+// Minimal egressd config used by the default smoke / chain-only stack.
+//
+// The only required field is `proxies`. Everything below uses safe,
+// sensible defaults; tweak as needed.
 {
-  // Proxy chain -- add as many hops as you need.
-  // This is the only required field; everything else uses safe defaults.
   proxies: [
     "http://proxy1:3128",
     "http://proxy2:3128",
   ],
 
-  // Optional overrides for the chain behavior.
-  // Remove or leave this section out entirely for the simplest setup; the values shown here are examples, not defaults.
   chain: {
-    canary_target: "exitserver:9999",
-    allowed_ports: [80, 443, 9999],
+    // Hop probes target the second proxy's CONNECT listener so the chain
+    // is self-contained and `/ready` does not depend on an external
+    // canary host (the smoke stack's exitserver is in the smoke profile
+    // and is not present for `pf up`).
+    canary_target: "proxy1:3128",
+    allowed_ports: [80, 443, 3128, 9999],
+  },
+
+  logging: {
+    // Render the classic proxychains-style chain visual on startup and
+    // whenever the per-hop health state changes. Disable if you ship
+    // egressd logs into a JSON pipeline.
+    chain_visual: true,
   },
 
   logging: {

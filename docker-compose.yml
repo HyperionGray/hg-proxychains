@@ -2,8 +2,31 @@ x-funkydns-smoke-build: &funkydns_smoke_build
   context: .
   dockerfile: funkydns-smoke/Dockerfile
 
+# Compose layout
+# --------------
+# Default `compose up` (no profile flag) brings up the chain plus the
+# locked-down workload container that gives users the proxychains UX:
+#
+#     proxy1, proxy2     upstream HTTP CONNECT hops
+#     egressd            local CONNECT listener that walks the chain
+#     client             the workload container, locked to egressd
+#                        (HTTP_PROXY env + iptables fail-closed); this
+#                        is what `./hg-proxychains run` and
+#                        `./hg-proxychains shell` exec into.
+#
+# The smoke harness adds a real DNS/DoH path and an echo target. It is
+# only needed when you want to prove DoH and the CONNECT chain end to
+# end; bring it up explicitly:
+#
+#     ./hg-proxychains smoke
+#     podman-compose --profile smoke up funky searchdns exitserver
+#
+# `worknet` is internal-only so the workload container cannot bypass
+# the chain. `proxynet` is where egressd talks to the upstream hops.
+
 services:
   searchdns:
+    profiles: ["smoke"]
     build: *funkydns_smoke_build
     container_name: searchdns
     init: true
@@ -50,6 +73,7 @@ services:
       - proxynet
 
   funky:
+    profiles: ["smoke"]
     build: *funkydns_smoke_build
     container_name: funky
     init: true
@@ -138,6 +162,7 @@ services:
       - proxynet
 
   exitserver:
+    profiles: ["smoke"]
     build: ./exitserver
     container_name: exitserver
     init: true
@@ -166,10 +191,6 @@ services:
         condition: service_healthy
       proxy2:
         condition: service_healthy
-      funky:
-        condition: service_healthy
-      exitserver:
-        condition: service_healthy
     ports:
       - "15001:15001"
       - "9191:9191"
@@ -196,19 +217,26 @@ services:
     build: ./client
     container_name: client
     init: true
-    depends_on:
-      egressd:
-        condition: service_healthy
-    cap_add:
-      - NET_ADMIN
-    environment:
-      - LOCAL_DNS_HOST=funky
-      - LOCAL_PROXY_HOST=egressd
-      - LOCAL_PROXY_PORT=15001
-      - LOCAL_READY_URL=http://egressd:9191/ready
     command: ["serve"]
     stdin_open: true
     tty: true
+    cap_add:
+      - NET_ADMIN
+    depends_on:
+      egressd:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "test",
+          "-f",
+          "/tmp/hg-proxychains-firewall.ready",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
     networks:
       - worknet
 
