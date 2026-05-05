@@ -16,6 +16,7 @@ class ClientWrapperTests(unittest.TestCase):
 
         self.assertEqual(env["HTTP_PROXY"], "http://egressd:15001")
         self.assertEqual(env["HTTPS_PROXY"], "http://egressd:15001")
+        self.assertEqual(env["ALL_PROXY"], "http://egressd:15001")
         self.assertIn("egressd", env["NO_PROXY"])
         self.assertIn("funky", env["NO_PROXY"])
 
@@ -39,14 +40,14 @@ class ClientWrapperTests(unittest.TestCase):
         self.assertEqual(status, 0)
         self.assertIn("usage: hg-proxychains", print_mock.call_args.args[0])
 
-    def test_smoke_prints_demo_banner_and_runs_test_client(self) -> None:
+    def test_smoke_prints_banner_and_runs_test_client(self) -> None:
         with mock.patch("subprocess.call", return_value=0) as call_mock, mock.patch(
             "builtins.print"
         ) as print_mock:
             status = hg_proxychains.main(["smoke"])
 
         self.assertEqual(status, 0)
-        self.assertIn("DEMO SMOKE RUN", print_mock.call_args.args[0])
+        self.assertIn("[hg-proxychains] running smoke validation", print_mock.call_args.args[0])
         call_mock.assert_called_once()
 
 

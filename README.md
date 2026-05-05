@@ -23,6 +23,7 @@ The design goal is intentionally boring:
 ```text
 .
 ├── README.md
+├── hg-proxychains
 ├── Makefile
 ├── docker-compose.yml
 ├── docs/
@@ -49,6 +50,7 @@ The design goal is intentionally boring:
 │   └── echo_server.py
 ├── client/
 │   ├── Dockerfile
+│   ├── runner.py
 │   ├── hg_proxychains.py
 │   └── test_client.py
 ├── scripts/
@@ -68,17 +70,17 @@ The design goal is intentionally boring:
 
 ## Quick start
 
-Start with `QUICKSTART.md` for the shortest path:
+Start with `QUICKSTART.md` for the shortest day-to-day path:
 
 ```bash
-podman-compose up --build
-podman-compose run --rm client curl -fsS https://example.com/
+./hg-proxychains up
+./hg-proxychains run -- curl -fsS https://example.com/
 ```
 
-`client` runs the `hg-proxychains` wrapper by default. The wrapper prints the
-current chain state, sets HTTP(S) proxy environment variables to `egressd`, and
-then runs your command inside the private workload network.
-
+The default compose path now keeps a locked-down `client` toolbox container
+running behind `egressd`. The top-level `./hg-proxychains` helper executes
+commands inside that container after the local DNS + egress firewall is in
+place.
 For a reviewed walkthrough of the smoke-harness flow, host flow, and current
 known breakpoints, see `docs/USER-FLOW-REVIEW.md`.
 
@@ -120,12 +122,51 @@ make deps
 
 This uses `scripts/bootstrap-third-party.sh`, which checks out the exact gitlink
 revision for `third_party/FunkyDNS` and normalizes the remote URL after auth.
+Both `make up` and `./hg-proxychains up` will also call `make deps`
+automatically when that checkout is missing.
 
-### 2. Build and run the smoke harness
+### 2. Bring up the stack
+
+The default compose path now does the simple thing:
+
+- start FunkyDNS, the proxy hops, the exit canary, `egressd`, and a locked-down
+  client toolbox container
+- keep that client container running and ready for commands
+- show the classic `proxy1<->proxy2<->...` chain view if
+  `logging.chain_visual: true` is enabled
 
 ```bash
-podman-compose build
-podman-compose up
+podman-compose up --build
+```
+
+Or through the task runner:
+
+```bash
+make up
+```
+
+Once the stack is healthy, run commands through the chain with the repo wrapper:
+
+```bash
+./hg-proxychains status
+./hg-proxychains run -- curl -I http://exitserver:9999
+./hg-proxychains shell
+```
+
+The `client` container is locked down to:
+
+- DNS only to the local `funky` resolver
+- TCP egress only to the local `egressd` listener
+
+So the wrapped program gets the old "run this command through the chain" feel,
+but without letting the workload leak direct DNS or arbitrary traffic.
+
+### 3. Run the explicit smoke harness
+
+If you want the original end-to-end proof, run the smoke client explicitly:
+
+```bash
+./hg-proxychains smoke
 ```
 
 Or through the task runner:
@@ -134,13 +175,13 @@ Or through the task runner:
 make smoke
 ```
 
-### 3. Check results
+### 4. Check results
 
-- `client` should print matching `DNS OK` and `DoH OK` lines for:
+- `./hg-proxychains smoke` should print matching `DNS OK` and `DoH OK` lines for:
   - `smoke.test -> 203.0.113.10`
   - `hosts.smoke.internal -> 198.51.100.21`
   - `printer -> 198.51.100.42 (owner printer.corp.test.)`
-- `client` should then print a successful `CONNECT` followed by `OK from exit-server`
+- it should then print a successful `CONNECT` followed by `OK from exit-server`
 - `funky` exposes the smoke DoH listener on `https://localhost:18443`
 
 ```bash
@@ -165,7 +206,30 @@ curl http://localhost:9191/live
 The smoke config uses `exitserver:9999` as the canary target, so readiness does
 not depend on external internet reachability.
 
-It does **not** prove host enforcement. For that, use the scripts in `scripts/` on a real Linux host and follow `docs/HOST-DEPLOYMENT.md`.
+It does **not** prove host enforcement. For that, use the scripts in `scripts/`
+on a real Linux host and follow `docs/HOST-DEPLOYMENT.md`.
+
+## Everyday CLI flow
+
+The intended UX is now:
+
+1. `make up` or `podman-compose up --build`
+2. `./hg-proxychains run -- <command>`
+3. `./hg-proxychains shell` when you want an interactive toolbox shell
+4. `./hg-proxychains smoke` when you want the full repository self-test
+
+The repo wrapper is just a small convenience layer around `podman-compose exec`
+for the locked-down `client` service.
+
+Useful commands:
+
+```bash
+./hg-proxychains status
+./hg-proxychains run -- env | rg '(_PROXY|_proxy)'
+./hg-proxychains run -- curl -s http://exitserver:9999
+./hg-proxychains shell
+./hg-proxychains smoke
+```
 
 `chain.allowed_ports` and `chain.fail_closed` are validation/readiness inputs
 for this supervisor. Runtime egress blocking comes from the surrounding network
@@ -177,7 +241,7 @@ rules in host mode; `pproxy` itself is not a firewall.
 After the stack is healthy, run any command in the client container:
 
 ```bash
-podman-compose run --rm client curl -fsS https://example.com/
+./hg-proxychains run -- curl -fsS https://example.com/
 make run CMD="curl -fsS https://example.com/"
 ```
 

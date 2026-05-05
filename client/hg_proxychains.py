@@ -71,8 +71,10 @@ def _proxy_env() -> Dict[str, str]:
         {
             "HTTP_PROXY": proxy_url,
             "HTTPS_PROXY": proxy_url,
+            "ALL_PROXY": proxy_url,
             "http_proxy": proxy_url,
             "https_proxy": proxy_url,
+            "all_proxy": proxy_url,
             "NO_PROXY": env.get("NO_PROXY", DEFAULT_NO_PROXY),
             "no_proxy": env.get("no_proxy", DEFAULT_NO_PROXY),
         }
@@ -88,7 +90,7 @@ def _run_smoke() -> int:
         print(_format_chain_visual(health), file=sys.stderr, flush=True)
     except (OSError, urllib.error.URLError, TimeoutError, json.JSONDecodeError):
         pass
-    print("DEMO SMOKE RUN: hg-proxychains built-in compose validation", file=sys.stderr)
+    print("[hg-proxychains] running smoke validation", file=sys.stderr)
     return subprocess.call([sys.executable, "/opt/client/test_client.py"], env=env)
 
 

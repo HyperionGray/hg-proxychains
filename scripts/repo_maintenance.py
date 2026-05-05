@@ -151,7 +151,7 @@ def discover_stale_artifacts(tracked_paths: Sequence[str], untracked_paths: Sequ
 def discover_embedded_repos(
     root: Path,
     allowed_embedded_repos: Sequence[str] | None = None,
-    include_third_party: bool = True,
+    include_third_party: bool = False,
 ) -> list[str]:
     allowed = tuple(Path(path).as_posix().rstrip("/") for path in (allowed_embedded_repos or []))
     found = [

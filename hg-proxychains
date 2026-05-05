@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+COMPOSE_BIN="${COMPOSE:-podman-compose}"
+CLIENT_SERVICE="${HG_PROXYCHAINS_CLIENT_SERVICE:-client}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+usage() {
+  cat <<'EOF'
+usage: ./hg-proxychains <command> [args...]
+
+commands:
+  up [compose args...]       build and start the stack in the background
+  down [compose args...]     stop and remove the stack
+  logs [compose args...]     follow compose logs
+  status                     print the locked-down client routing status
+  shell [shell args...]      open a shell inside the locked-down client
+  run -- <cmd> [args...]     run a command through the proxy chain
+  smoke                      run the repository smoke checks explicitly
+
+examples:
+  ./hg-proxychains up
+  ./hg-proxychains run -- curl -fsS http://exitserver:9999/
+  ./hg-proxychains shell
+  ./hg-proxychains smoke
+EOF
+}
+
+usage_run() {
+  cat <<'EOF'
+usage: ./hg-proxychains run -- <cmd> [args...]
+
+examples:
+  ./hg-proxychains run -- curl -fsS http://exitserver:9999/
+  ./hg-proxychains run -- env | rg '(_PROXY|_proxy)'
+EOF
+}
+
+usage_shell() {
+  cat <<'EOF'
+usage: ./hg-proxychains shell [shell args...]
+
+examples:
+  ./hg-proxychains shell
+  ./hg-proxychains shell -- bash -lc 'env | sort'
+EOF
+}
+
+require_compose() {
+  if ! command -v "$COMPOSE_BIN" >/dev/null 2>&1; then
+    echo "missing compose binary: $COMPOSE_BIN" >&2
+    exit 1
+  fi
+}
+
+run_exec() {
+  local tty_flag=()
+  if [ "${1:-}" = "--no-tty" ]; then
+    tty_flag=(-T)
+    shift
+  fi
+  "$COMPOSE_BIN" exec "${tty_flag[@]}" "$CLIENT_SERVICE" python3 /opt/client/runner.py "$@"
+}
+
+ensure_deps() {
+  if [ -d "$REPO_ROOT/third_party/FunkyDNS/.git" ]; then
+    return
+  fi
+  echo "[hg-proxychains] bootstrapping third_party/FunkyDNS" >&2
+  make -C "$REPO_ROOT" deps
+}
+
+main() {
+  local command="${1:-}"
+  if [ -z "$command" ]; then
+    usage
+    exit 1
+  fi
+  shift || true
+
+  case "$command" in
+    up)
+      require_compose
+      ensure_deps
+      "$COMPOSE_BIN" up --build -d "$@"
+      ;;
+    down)
+      require_compose
+      "$COMPOSE_BIN" down -v "$@"
+      ;;
+    logs)
+      require_compose
+      "$COMPOSE_BIN" logs -f --tail=200 "$@"
+      ;;
+    status)
+      require_compose
+      run_exec --no-tty status
+      ;;
+    shell)
+      if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+        usage_shell
+        exit 0
+      fi
+      require_compose
+      run_exec shell -- "$@"
+      ;;
+    run)
+      if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+        usage_run
+        exit 0
+      fi
+      if [ "$#" -eq 0 ]; then
+        echo "missing command for 'run'" >&2
+        usage_run >&2
+        exit 1
+      fi
+      require_compose
+      run_exec --no-tty run -- "$@"
+      ;;
+    smoke)
+      require_compose
+      run_exec --no-tty smoke "$@"
+      ;;
+    help|-h|--help)
+      usage
+      ;;
+    *)
+      echo "unknown command: $command" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"

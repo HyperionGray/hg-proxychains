@@ -199,6 +199,14 @@ services:
     depends_on:
       egressd:
         condition: service_healthy
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - LOCAL_DNS_HOST=funky
+      - LOCAL_PROXY_HOST=egressd
+      - LOCAL_PROXY_PORT=15001
+      - LOCAL_READY_URL=http://egressd:9191/ready
+    command: ["serve"]
     stdin_open: true
     tty: true
     networks:

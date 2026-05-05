@@ -10,6 +10,9 @@ Fastest complete path for a new user to get hg-proxychains running end to end.
 
 ## 1) Initialize third-party dependency
 
+`./hg-proxychains up` and `make up` will try to bootstrap the missing
+dependency automatically. If you want to do it yourself first:
+
 ```bash
 git submodule update --init --recursive third_party/FunkyDNS
 ```
@@ -51,32 +54,60 @@ podman-compose up --build
 Or:
 
 ```bash
+make up
+```
+
+Or:
+
+```bash
+./hg-proxychains up
+```
+
+## 4) Run something through the chain
+
+Once `client` prints its ready banner, run a command through the locked-down
+client container:
+
+```bash
+./hg-proxychains run -- curl -s https://ifconfig.me
+```
+
+Or:
+
+```bash
+make run CMD="curl -s https://ifconfig.me"
+```
+
+You can also open an interactive shell:
+
+```bash
+./hg-proxychains shell
+```
+
+## 5) Run the smoke check
+
+The end-to-end smoke test is still available, but it is no longer the default
+thing that happens on every `compose up`:
+
+```bash
+./hg-proxychains smoke
+```
+
+Or:
+
+```bash
 make smoke
 ```
 
-You get a one-shot `client` container that runs:
+## 6) Confirm expected output
 
-```bash
-hg-proxychains smoke
-```
-
-The wrapper talks to `egressd` and prints a proxychains-style chain view such as:
+The wrapper prints a proxychains-style chain view such as:
 
 ```text
 [hg-proxychains] |S-chain|proxy1:3128<-->proxy2:3128<-->OK
 ```
 
-To wrap your own command through the chain after the stack is up:
-
-```bash
-podman-compose run --rm client curl -fsS https://example.com/
-# or
-make run CMD="curl -fsS https://example.com/"
-```
-
-## 4) Confirm expected output
-
-Wait for one-shot `client` completion. A healthy run includes:
+A healthy smoke run includes:
 
 - `DNS OK` / `DoH OK` for `smoke.test`
 - `DNS OK` / `DoH OK` for `hosts.smoke.internal`
@@ -93,7 +124,7 @@ curl -f http://localhost:9191/ready
 curl http://localhost:9191/live
 ```
 
-## 5) Stop and clean up
+## 7) Stop and clean up
 
 ```bash
 podman-compose down -v
@@ -105,7 +136,7 @@ Or:
 make down
 ```
 
-## 6) Correctness boundary
+## 8) Correctness boundary
 
 The compose topology puts `client` on an internal `worknet` with only `egressd`
 and `funky`, while proxy hops and the exit server live on `proxynet`. That makes
@@ -114,7 +145,7 @@ at FunkyDNS. `chain.allowed_ports` is a config/readiness guard; runtime port
 policy must be enforced by `egressd`/`pproxy` configuration or the host firewall
 for production host deployments.
 
-## 7) Troubleshooting
+## 9) Troubleshooting
 
 ```bash
 make logs

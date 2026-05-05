@@ -3,8 +3,11 @@
 ## Smoke harness
 
 - [ ] Initialize submodule `third_party/FunkyDNS` (`git submodule update --init --recursive third_party/FunkyDNS`)
-- [ ] `podman-compose build`
-- [ ] `podman-compose up`
+- [ ] `podman-compose up --build -d`
+- [ ] `./hg-proxychains status`
+- [ ] `./hg-proxychains run -- env | grep -i _proxy`
+- [ ] `./hg-proxychains shell`
+- [ ] `./hg-proxychains smoke`
 - [ ] Confirm `client` prints `DNS OK: smoke.test A -> 203.0.113.10`
 - [ ] Confirm `client` prints `DoH OK: smoke.test A -> 203.0.113.10 (owner smoke.test.)`
 - [ ] Confirm `client` prints `DNS OK: hosts.smoke.internal A -> 198.51.100.21`
@@ -19,7 +22,7 @@
 - [ ] `curl -i http://localhost:9191/ready` returns HTTP 200
 - [ ] Confirm `searchdns` becomes healthy before `funky`
 - [ ] Confirm hop probes show successful CONNECT responses for ready traffic; `403`/`407` should remain diagnostic-only failures in `/health`
-- [ ] Confirm `client` starts only after `egressd` healthcheck is healthy
+- [ ] Confirm `client` stays running and waits for wrapper commands after `egressd` becomes healthy
 
 ## Host deployment
 
