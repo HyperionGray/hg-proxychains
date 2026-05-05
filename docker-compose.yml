@@ -4,22 +4,25 @@ x-funkydns-smoke-build: &funkydns_smoke_build
 
 # Compose layout
 # --------------
-# The "chain" services are the only thing you need for the user-facing
-# UX (egressd + the upstream proxy hops + a wrapper container that
-# runs arbitrary programs through the chain). Everything else lives
-# behind the "smoke" profile, which exists to prove the DNS-leak and
-# CONNECT-chain properties end to end.
+# Default `compose up` (no profile flag) brings up the chain plus the
+# locked-down workload container that gives users the proxychains UX:
 #
-# Defaults (no --profile flag) bring up only the chain stack:
+#     proxy1, proxy2     upstream HTTP CONNECT hops
+#     egressd            local CONNECT listener that walks the chain
+#     client             the workload container, locked to egressd
+#                        (HTTP_PROXY env + iptables fail-closed); this
+#                        is what `./hg-proxychains run` and
+#                        `./hg-proxychains shell` exec into.
 #
-#   pf up
-#   podman-compose up -d proxy1 proxy2 egressd wrapper
+# The smoke harness adds a real DNS/DoH path and an echo target. It is
+# only needed when you want to prove DoH and the CONNECT chain end to
+# end; bring it up explicitly:
 #
-# To run the smoke harness (FunkyDNS + DoH + a one-shot client):
+#     ./hg-proxychains smoke
+#     podman-compose --profile smoke up funky searchdns exitserver
 #
-#   pf smoke
-#   podman-compose --profile smoke up --build --abort-on-container-exit \
-#       --exit-code-from client client
+# `worknet` is internal-only so the workload container cannot bypass
+# the chain. `proxynet` is where egressd talks to the upstream hops.
 
 services:
   searchdns:
@@ -210,34 +213,30 @@ services:
       - worknet
       - proxynet
 
-  wrapper:
-    build: ./wrapper
-    image: localhost/hg-proxychains-wrapper:latest
-    # Compose does not allow stdin_open/tty here for `compose run`, so the
-    # CLI passes them via `pf run`. The default `sleep infinity` keeps the
-    # container available for `pf shell` if you prefer the long-running
-    # form.
-    depends_on:
-      egressd:
-        condition: service_healthy
-    networks:
-      - egressnet
-    # Do not auto-start the wrapper; it is launched on-demand by `pf run`
-    # and `pf shell`.
-    profiles: ["wrapper"]
-
   client:
-    profiles: ["smoke"]
     build: ./client
     container_name: client
     init: true
+    command: ["serve"]
+    stdin_open: true
+    tty: true
+    cap_add:
+      - NET_ADMIN
     depends_on:
       egressd:
         condition: service_healthy
-      funky:
-        condition: service_healthy
-      exitserver:
-        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "test",
+          "-f",
+          "/tmp/hg-proxychains-firewall.ready",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
     networks:
       - worknet
 

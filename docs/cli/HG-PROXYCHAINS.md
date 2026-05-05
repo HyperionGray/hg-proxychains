@@ -1,134 +1,116 @@
-# `pf.py` / hg-proxychains CLI
+# `./hg-proxychains` CLI reference
 
-`pf.py` is the user-facing entry-point. It is the documented way to
-start, run programs through, and tear down the chain. Internally it
-is a thin dispatcher over `podman-compose` and a few small helpers.
+`./hg-proxychains` is a small bash wrapper around `podman-compose` and
+`compose exec`. It is the documented way to start the chain, run
+programs through it, and tear it down. The Makefile targets delegate
+to the same script.
 
-The Makefile targets shell out to the same primitives, so you can use
-either; `pf.py` is the form that keeps working when you take the
-project somewhere without GNU Make.
+There is no Python task runner. The wrapper is intentionally
+under-engineered so the day-to-day commands stay stable across
+upgrades.
 
 ## Synopsis
 
 ```
-pf <subcommand> [args]
+./hg-proxychains <command> [args]
 ```
 
 ## Common workflow
 
 ```bash
-pf up                                # start the chain
-pf run curl -fsS https://example.com # run a program through the chain
-pf shell                             # interactive chained shell
-pf status                            # /ready + /health
-pf down -v                           # stop everything (and remove volumes)
+./hg-proxychains up                              # start the chain + locked-down client
+./hg-proxychains run -- curl -fsS https://example.com
+./hg-proxychains shell                           # interactive shell inside the client
+./hg-proxychains status                          # /ready + per-hop visual
+./hg-proxychains down                            # stop everything (and remove volumes)
 ```
 
-## Subcommands
+## Commands
 
-### `pf up [--build]`
+### `up`
 
-Brings up the chain services in the background:
+Runs `compose up --build -d`. Brings up:
 
-- `proxy1`, `proxy2` — the upstream hops (swap them for your own)
-- `egressd`           — the local CONNECT listener and supervisor
+- `proxy1`, `proxy2` — the upstream HTTP CONNECT hops
+- `egressd`           — the local CONNECT listener and chain supervisor
+- `client`            — the locked-down workload container
 
-`--build` rebuilds the images before starting them.
+The smoke services (`funky`, `searchdns`, `exitserver`) live behind
+the `smoke` compose profile and are *not* started by `up`.
 
-This subcommand intentionally does **not** start the smoke services
-(`funky`, `searchdns`, `exitserver`, `client`) or the wrapper. The
-wrapper is started on demand by `pf run` / `pf shell`. The smoke
-services are gated behind the `smoke` compose profile.
+### `down`
 
-### `pf down [-v]`
+Runs `compose down -v`. Stops the project and removes named volumes.
 
-Stops the compose project. With `-v`, also removes named volumes.
+### `logs [SERVICE [args]]`
 
-### `pf logs [-f] [--tail N] [SERVICE ...]`
+Runs `compose logs -f --tail=200`. With a service name, follows that
+service only.
 
-Tails the logs from the chain services (`proxy1`, `proxy2`, `egressd`)
-by default, or from the listed services if any. `-f` follows.
+### `run -- <cmd> [args ...]`
 
-### `pf run <cmd> [args ...]`
-
-Runs `<cmd>` inside the wrapper container. The wrapper invokes
-`proxychains4 -q` so all TCP and DNS lookups are pushed through
-`egressd:15001` (which then walks the proxy chain).
+`compose exec`s the given command inside the running `client`. The
+`client` container has `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` env
+vars pre-set to `http://egressd:15001` and a fail-closed `iptables`
+configuration that only permits TCP to `egressd:15001` (plus DNS to
+`funky` when the smoke profile is active).
 
 ```bash
-pf run curl -fsS https://example.com
-pf run dig +short example.com
-pf run ssh -o ConnectTimeout=5 user@host.internal
+./hg-proxychains run -- curl -fsS https://example.com
+./hg-proxychains run -- pip install --upgrade requests
+./hg-proxychains run -- env | grep -i proxy
 ```
 
-The wrapper container has a small Debian-based userland with `curl`,
-`wget`, `dig`, `ping`, `nc`, and friends. For anything else, mount
-your binary or extend `wrapper/Dockerfile`.
+The leading `--` is recommended but not required; it is there to
+prevent your shell from interpreting flags meant for the inner
+command.
 
-### `pf shell`
+### `shell [args ...]`
 
-Opens an interactive bash inside the wrapper. The prompt is
-`[chained:CWD]$` so you cannot mistake it for a non-chained shell.
-Every command you launch is forced through the chain.
+Opens an interactive bash inside the locked-down client. The shell
+itself has no special prompt or wrapping; the leak prevention comes
+from the iptables rules installed at startup, not from the shell.
 
-Inside the chained shell, two helpers are available:
+```bash
+./hg-proxychains shell
+```
 
-- `raw <cmd>` — bypass `proxychains4` (escape hatch for diagnostics)
-- `pc <cmd>`  — explicitly invoke `proxychains4` (the default already
-  applies, but useful when chaining flags through `bash -c`)
+### `status`
 
-### `pf status`
+Runs `runner.py status` inside the client. Prints:
 
-Prints `/ready` followed by `/health` from `egressd` on
-`http://localhost:9191`. Use this to confirm the chain is fully up
-before you pour traffic through it.
+- the proxy URL the client is locked to
+- the DNS host the client is locked to (or `unconfigured` if the
+  smoke profile is not active)
+- whether the iptables firewall is in place
 
-### `pf health` / `pf ready`
+### `smoke`
 
-Same as `pf status`, but only one endpoint each. Convenient for
-scripting.
-
-### `pf smoke [--build]`
-
-Runs the full DoH + CONNECT smoke harness. This brings up the smoke
-profile services (FunkyDNS, search DNS, exit server) and waits for
-the one-shot `client` container to exit. The exit code of the harness
-is the exit code of the client.
+Activates the `smoke` compose profile (`funky`, `searchdns`,
+`exitserver`), brings everything up, then runs the end-to-end
+property test inside the client. The first invocation also runs
+`make deps` to fetch `third_party/FunkyDNS`.
 
 You only need this if you are touching `egressd`, the FunkyDNS smoke
-image, or the smoke-harness configuration. `pf smoke` does require
-the `third_party/FunkyDNS` submodule; run `pf bootstrap` once to
-fetch it.
-
-### `pf bootstrap`
-
-Initialises `third_party/FunkyDNS`. Required only for the smoke
-harness. `pf up` does not need it.
-
-### `pf test`
-
-Runs the unit tests (egressd supervisor, preflight, hop connectivity,
-chain visual, compose layout, wrapper, CLI parser, repo hygiene).
-This does not start any containers.
-
-### `pf pycheck`
-
-Runs `python3 -m py_compile` over every first-party Python entry-point.
-
-### `pf check`
-
-`pycheck` followed by `test`.
+image, or the smoke-harness configuration.
 
 ## Environment variables
 
-- `HG_COMPOSE` — compose binary (default: `podman-compose`)
-- `HG_PYTHON`  — python binary used by `pf test` and `pf pycheck`
-  (default: the interpreter that launched `pf.py`)
-- `HG_HEALTH_URL` — base URL for `pf health` / `pf ready` / `pf status`
-  (default: `http://localhost:9191`)
+- `COMPOSE` — compose binary (default: `podman-compose`)
+- `HG_PROXYCHAINS_CLIENT_SERVICE` — compose service to exec into
+  (default: `client`); useful when running against a forked compose
+  layout
 
 ## Exit codes
 
-`pf.py` propagates the exit code of the command it invokes. `pf run
-<cmd>` returns the exit code of `<cmd>` after `proxychains4` is done
-with it.
+The wrapper propagates the exit code of the command it invokes.
+`./hg-proxychains run -- <cmd>` returns the exit code of `<cmd>`.
+
+## Why no Python task runner?
+
+We do not ship a `pf.py`-style task runner because that ecosystem
+([`pf-web-poly-compiler-runner-helper`](https://github.com/HyperionGray/pf-web-poly-compiler-runner-helper))
+evolves on its own schedule. A wrapper that depends on it would
+break every time the task grammar changed. The bash script and the
+Makefile only depend on `compose` and the shell, both of which are
+stable surfaces.

@@ -8,17 +8,17 @@ You bring up the chain. You run a program. The program's TCP and DNS
 both go through the chain. That's it.
 
 ```text
-your program ──> wrapper (proxychains4, no DNS leak) ──> egressd ──> proxy1 ──> proxy2 ──> internet
+your program ──> client (locked-down, fail-closed) ──> egressd ──> proxy1 ──> proxy2 ──> internet
 ```
 
 ## Quick start (TL;DR)
 
 ```bash
-./pf.py up                              # bring up the chain
-./pf.py run curl -fsS https://example.com
-./pf.py shell                           # interactive chained shell
-./pf.py status                          # readiness + per-hop visual
-./pf.py down -v                         # stop everything
+./hg-proxychains up                                # bring up the chain + locked-down client
+./hg-proxychains run -- curl -fsS https://example.com
+./hg-proxychains shell                             # interactive shell inside the locked-down client
+./hg-proxychains status                            # /ready + per-hop visual
+./hg-proxychains down                              # stop everything
 ```
 
 See [`QUICKSTART.md`](QUICKSTART.md) for the longer walkthrough and
@@ -27,31 +27,32 @@ full CLI reference.
 
 ## What you actually get
 
-- **`pf.py up`** — the only thing you need for day-to-day use. Brings
-  up `proxy1`, `proxy2`, and `egressd`. Nothing else. No DNS infra,
-  no smoke client.
-- **`pf.py run <cmd>`** — runs `<cmd>` inside a wrapper container that
-  uses `proxychains4` (`strict_chain`, `proxy_dns`) to force every TCP
-  and DNS lookup through `egressd`. `egressd` then walks the chain
-  through `proxy1 -> proxy2 -> ...`.
-- **`pf.py shell`** — drops into an interactive shell where every
-  command you run is automatically chained.
-- **`pf.py status`** — pretty per-hop health view, classic
-  proxychains style:
+`./hg-proxychains` is a small shell wrapper around `podman-compose`.
+It has no opinions beyond what compose already does for you; we
+explicitly avoid pulling in larger task-runner ecosystems so the
+day-to-day commands are stable and obvious. The Makefile delegates
+here too, so `make up` / `make run CMD="..."` / `make smoke` all work.
+
+- **`up`** — brings up `proxy1`, `proxy2`, `egressd`, and the
+  locked-down `client`. The `client` container has `iptables OUTPUT
+  DROP` everywhere except a single hole to `egressd:15001`, plus
+  `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` env vars pointed at
+  `egressd`. Direct TCP outside the chain is dropped at the kernel.
+- **`run -- <cmd>`** — `compose exec`s `<cmd>` inside the running
+  `client`. The chain's fail-closed iptables rules and proxy env
+  vars are already in place, so `curl`, `wget`, `pip`, `apt`, and
+  any other proxy-aware tool routes through `egressd` automatically.
+- **`shell`** — interactive bash inside the locked-down client.
+- **`status`** — proxychains-style per-hop visual:
 
   ```text
-  [egressd] |S-chain|proxy1:3128<->proxy2:3128<->OK
-  [egressd]   hop_0: proxy1:3128                 OK   42ms
-  [egressd]   hop_1: proxy2:3128                 OK   38ms
+  [hg-proxychains] |S-chain|proxy1:3128<-->proxy2:3128<-->OK
   ```
 
-- **`pf.py smoke`** — runs the full DoH + CONNECT-chain smoke
-  harness. This is the property test you only need when you change
-  `egressd` or the FunkyDNS smoke image; you do not need to run it for
-  normal use.
-
-`pf.py` is the documented entry-point. The Makefile still exists and
-calls the same things; use whichever you prefer.
+- **`smoke`** — activates the `smoke` profile (FunkyDNS DoH,
+  search-DNS helper, echo exit server) and runs the end-to-end
+  property test inside `client`. Only needed when you change
+  `egressd` or the FunkyDNS smoke image.
 
 ## Repo layout
 
@@ -59,14 +60,15 @@ calls the same things; use whichever you prefer.
 .
 ├── README.md
 ├── QUICKSTART.md
-├── pf.py                    # task runner & user-facing CLI
-├── Makefile                 # thin wrapper around pf.py
+├── hg-proxychains           # the shell wrapper (the CLI)
+├── Makefile                 # thin delegate to ./hg-proxychains
 ├── docker-compose.yml
-├── wrapper/                 # proxychains4 wrapper container ("pf run")
+├── client/                  # locked-down workload container
+│                            #   runner.py:        firewall + serve loop
+│                            #   hg_proxychains.py: in-container run/smoke helpers
 ├── egressd/                 # local CONNECT listener + chain supervisor
 ├── proxy/                   # pproxy hop image (proxy1, proxy2)
-├── exitserver/              # smoke-only echo target for the chain
-├── client/                  # smoke-only DNS+CONNECT property test
+├── exitserver/              # smoke-only echo target
 ├── funkydns-smoke/          # smoke-only DoH/DNS resolver
 ├── docs/
 │   ├── cli/
@@ -113,7 +115,8 @@ fully-annotated host deployment example.
   (pproxy running, hops healthy, hop probes fresh)
 
 The chain visual is enabled by default in `egressd/config.json5` and
-prints on every hop state change.
+prints on every hop state change. `./hg-proxychains status` renders
+the same thing client-side.
 
 ## Smoke harness (optional)
 
@@ -123,19 +126,20 @@ recursion, and end-to-end CONNECT chain. It is *not* required for
 normal use.
 
 ```bash
-./pf.py bootstrap                  # fetch third_party/FunkyDNS once
-./pf.py smoke --build              # one-shot run, exits with the client
+./hg-proxychains smoke
 ```
 
 A successful run prints matching `DNS OK` / `DoH OK` lines for
 `smoke.test`, `hosts.smoke.internal`, and `printer`, followed by
 `HTTP/1.1 200 Connection established` and `OK from exit-server`.
 
+The smoke harness is the only thing that needs the FunkyDNS submodule;
+`./hg-proxychains smoke` runs `make deps` for you the first time.
+
 ## Host deployment
 
 The container UX is the recommended path. For a real Linux host with
-nftables-enforced egress, see `docs/HOST-DEPLOYMENT.md`. The shape
-is:
+nftables-enforced egress, see `docs/HOST-DEPLOYMENT.md`. The shape is:
 
 ```text
 local programs --(TPROXY/owner gate)--> egressd --> proxy1 --> proxy2 --> internet
@@ -147,11 +151,11 @@ template for that path.
 ## Tests and lints
 
 ```bash
-./pf.py check          # py_compile + unit tests
-./pf.py test           # unit tests only
-./pf.py pycheck        # py_compile only
-make preflight         # config validation in a disposable container
-make validate-config   # config validation with full binary checks
+make check           # py_compile + unit tests
+make test            # unit tests only
+make pycheck         # py_compile only
+make preflight       # config validation in a disposable container
+make validate-config # config validation with full binary checks
 ```
 
 ## Maintenance

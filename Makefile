@@ -1,64 +1,70 @@
-PF      ?= ./pf.py
-COMPOSE ?= podman-compose
-PODMAN  ?= podman
-PYTHON  ?= python3
+SHELL    := /usr/bin/env bash
+WRAPPER  ?= ./hg-proxychains
+COMPOSE  ?= podman-compose
+PODMAN   ?= podman
+PYTHON   ?= python3
 EGRESSD_IMAGE ?= localhost/hg-proxychains-egressd-validate:latest
 
-# pf.py is the canonical entry-point; these targets just delegate so
-# operators who type `make` out of habit still get the right behavior.
+# `./hg-proxychains` is the canonical entry-point; these targets just
+# delegate so operators who type `make` out of habit get the right
+# behavior. Anything not exposed by the wrapper (preflight, repo
+# hygiene) still lives here.
 
-.PHONY: up down logs run shell status health ready smoke deps bootstrap \
+.PHONY: up down logs run shell status smoke deps bootstrap \
         pycheck unittest test check preflight validate-config validate-image \
         repo-scan repo-scan-json repo-clean \
         maintenance maintenance-json maintenance-fix maintenance-all \
         maintenance-all-json maintenance-baseline bundle clean help
 
 help:
-	@$(PF) --help
+	@$(WRAPPER) --help
 
 up:
-	$(PF) up --build
+	$(WRAPPER) up
 
-smoke: deps
-	$(COMPOSE) up --build -d
-	./hg-proxychains smoke
+down:
+	$(WRAPPER) down
+
+logs:
+	$(WRAPPER) logs
+
+shell:
+	$(WRAPPER) shell
+
+status:
+	$(WRAPPER) status
 
 run:
 	@if [ -z "$(CMD)" ]; then echo 'usage: make run CMD="curl -fsS https://example.com/"' >&2; exit 2; fi
-	./hg-proxychains run -- $(CMD)
-
-down:
-	$(PF) down -v
-
-logs:
-	$(PF) logs -f --tail 200
-
-shell:
-	$(PF) shell
-
-status:
-	$(PF) status
-
-health:
-	$(PF) health
-
-ready:
-	$(PF) ready
+	$(WRAPPER) run -- $(CMD)
 
 smoke:
-	$(PF) smoke --build
+	$(WRAPPER) smoke
 
 deps bootstrap:
-	$(PF) bootstrap
+	scripts/bootstrap-third-party.sh
 
 pycheck:
-	$(PF) pycheck
+	$(PYTHON) -m py_compile \
+	    egressd/supervisor.py egressd/chain.py egressd/readiness.py \
+	    egressd/preflight.py egressd/supervisor_hops.py egressd/supervisor_readiness.py \
+	    client/runner.py client/hg_proxychains.py client/test_client.py \
+	    exitserver/echo_server.py \
+	    funkydns-smoke/check_resolution.py funkydns-smoke/generate_cert.py funkydns-smoke/run_funkydns.py \
+	    scripts/repo_hygiene.py scripts/repo_maintenance.py scripts/repo_hygiene_lib.py
 
 unittest test:
-	$(PF) test
+	$(PYTHON) -m unittest \
+	    egressd.test_supervisor_readiness egressd.test_supervisor \
+	    tests.test_readiness tests.test_supervisor tests.test_chain \
+	    tests.test_preflight tests.test_hop_connectivity \
+	    tests.test_client_dockerfile tests.test_egressd_dockerfile \
+	    tests.test_proxy_workflow_containers tests.test_exitserver \
+	    tests.test_compose_layout tests.test_wrapper_cli \
+	    tests.test_client_wrapper tests.test_bootstrap_third_party
+	cd scripts && $(PYTHON) -m unittest test_repo_hygiene test_repo_maintenance
 
-check:
-	$(PF) check
+check: pycheck test
 
 validate-image:
 	$(PODMAN) build -t $(EGRESSD_IMAGE) ./egressd
@@ -100,5 +106,5 @@ bundle:
 	tar -czf egressd-starter.tar.gz .
 
 clean:
-	rm -rf __pycache__ client/__pycache__ egressd/__pycache__ exitserver/__pycache__ tests/__pycache__ scripts/__pycache__ wrapper/__pycache__
+	rm -rf __pycache__ client/__pycache__ egressd/__pycache__ exitserver/__pycache__ tests/__pycache__ scripts/__pycache__
 	rm -f *.log egressd-starter.tar.gz

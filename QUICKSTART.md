@@ -7,25 +7,26 @@ the chain.
 
 - `podman`
 - `podman-compose`
-- `python3` (for `pf.py`)
+- `make` (only if you prefer `make` over the wrapper script)
 
 ## 1) Bring up the chain
 
-`./hg-proxychains up` and `make up` will try to bootstrap the missing
-dependency automatically. If you want to do it yourself first:
-
 ```bash
-./pf.py up --build
+./hg-proxychains up
 ```
 
-That builds and starts the three core services that make up the chain:
+That builds and starts the four core services:
 
 ```text
-client -> egressd -> proxy1 -> proxy2 -> internet
+your program ──> client ──> egressd ──> proxy1 ──> proxy2 ──> internet
 ```
 
-`egressd` is the local CONNECT listener; `proxy1` and `proxy2` are the
-two upstream hops you can swap for your own.
+- `egressd` is the local CONNECT listener and chain supervisor
+- `proxy1` and `proxy2` are the two upstream hops (swap them for
+  your own)
+- `client` is the locked-down workload container with `iptables` set
+  to fail-closed and `HTTP_PROXY` env pointed at `egressd`. This is
+  where your programs actually run.
 
 The chain visual prints to stderr on first start and again on every
 hop state change, exactly the way the original proxychains used to:
@@ -39,44 +40,40 @@ hop state change, exactly the way the original proxychains used to:
 ## 2) Run a program through the chain
 
 ```bash
-./pf.py run curl -fsS https://example.com
-./pf.py run dig +short example.com
-./pf.py run wget -qO- https://example.com
+./hg-proxychains run -- curl -fsS https://example.com
+./hg-proxychains run -- python3 -c "import urllib.request; print(urllib.request.urlopen('https://example.com').status)"
 ```
 
-Or open an interactive shell where every command is forced through
-the chain:
+Or open an interactive shell:
 
 ```bash
-./pf.py shell
-[chained:/work]$ curl -fsS https://example.com
-[chained:/work]$ exit
+./hg-proxychains shell
+$ curl -fsS https://example.com
+$ exit
 ```
 
-The wrapper container uses `proxychains4` with `strict_chain` and
-`proxy_dns`, so DNS lookups travel through the chain too. Direct
-TCP and direct DNS are both blocked.
-
-If you ever need to bypass the chain inside the wrapper (for
-diagnostics), use `raw`:
-
-```bash
-./pf.py shell
-[chained:/work]$ raw curl -fsS http://egressd:9191/health
-```
+The shell is not a magic "chained shell"; it is a normal bash inside
+a container whose only outbound TCP path is `egressd`. Direct DNS or
+non-proxied TCP connections are dropped by the iptables rules
+installed at startup.
 
 ## 3) Check status
 
 ```bash
-./pf.py status
-./pf.py logs -f
+./hg-proxychains status
+./hg-proxychains logs
 ```
+
+`status` exec's `runner.py status` inside the client and also prints
+the chain visual from `egressd /health`.
 
 ## 4) Tear it all down
 
 ```bash
-./pf.py down -v
+./hg-proxychains down
 ```
+
+That runs `compose down -v`, removing volumes too.
 
 ## 5) Optional: run the full smoke harness
 
@@ -85,9 +82,11 @@ and an `exitserver` so the run can prove the DoH and CONNECT-chain
 properties end to end:
 
 ```bash
-./pf.py bootstrap          # fetch third_party/FunkyDNS
-./pf.py smoke --build      # one-shot run; exits with the test client
+./hg-proxychains smoke
 ```
+
+The first invocation runs `make deps` for you to fetch the
+`third_party/FunkyDNS` submodule.
 
 ## 6) Use your own proxies
 
@@ -104,4 +103,4 @@ Edit `egressd/config.json5` and replace the proxy URLs:
 }
 ```
 
-Then `./pf.py up --build` again.
+Then `./hg-proxychains down && ./hg-proxychains up` to apply.
