@@ -32,12 +32,14 @@ diagnostics (e.g. to talk to egressd's /health endpoint).
 EOF
     export PS1='[chained:\w]$ '
     pc_runner='proxychains4 -q -f '"${PC_CONF}"
-    cat >/tmp/hg-pc-bashrc <<EOF
+    tmpfile=$(mktemp)
+    trap 'rm -f "$tmpfile"' EXIT
+    cat >"$tmpfile" <<EOF
 alias raw='command'
 pc() { ${pc_runner} "\$@"; }
 PROMPT_COMMAND=':'
 EOF
-    exec bash --rcfile /tmp/hg-pc-bashrc -i
+    exec bash --rcfile "$tmpfile" -i
 }
 
 if [ "$#" -eq 0 ]; then
