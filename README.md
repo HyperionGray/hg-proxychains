@@ -1,9 +1,6 @@
 # hg-proxychains
 
-A small reboot of the old proxychains idea for containers: run a command in a
-workload container, force HTTP(S) traffic through a chained CONNECT proxy path,
-and show the familiar `proxy1<-->proxy2<-->proxy3` shape while keeping DNS and
-direct egress on the safe side of the compose topology.
+A small, fail-closed prototype for container egress enforced through chained HTTP CONNECT proxies (successor-style layout to classic proxychains: explicit hop chain, no direct DNS from workloads).
 
 This starter repo is split into two tracks:
 
@@ -53,6 +50,7 @@ The design goal is intentionally boring:
 │   └── test_client.py
 ├── scripts/
 │   ├── bootstrap-third-party.sh
+│   ├── hg-proxychains
 │   ├── host-nftables.sh
 │   ├── repo_hygiene.py
 │   ├── repo_maintenance.py
@@ -67,7 +65,9 @@ The design goal is intentionally boring:
 
 ## Quick start
 
-Start with `QUICKSTART.md` for the shortest path:
+Start with `QUICKSTART.md` for the shortest smoke-harness path.
+
+**Three-step mental model:** (1) start the stack, (2) run arbitrary commands in the same network with `HTTP(S)_PROXY` pointing at `egressd`, (3) watch the `|S-chain|` line on `egressd` stderr (enabled in smoke `egressd/config.json5` via `logging.chain_visual`). Use `./scripts/hg-proxychains` from the repo root for (1) and (2); see `QUICKSTART.md`.
 
 ```bash
 podman-compose up --build
@@ -132,6 +132,8 @@ Or through the task runner:
 ```bash
 make smoke
 ```
+
+To keep the stack up and run ad hoc commands through the chain from the host, use `make smoke-daemon` then `make proxy-run ARGS='curl ...'` or `./scripts/hg-proxychains` (see `QUICKSTART.md`).
 
 ### 3. Check results
 

@@ -13,6 +13,7 @@
     allowed_ports: [80, 443, 9999],
   },
 
+  // Classic |S-chain|proxy1<->proxy2<->OK| on stderr when pproxy is up (see README).
   logging: {
     chain_visual: true,
   },
