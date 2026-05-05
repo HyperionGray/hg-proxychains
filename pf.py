@@ -115,11 +115,15 @@ def _curl_or_python(url: str, *, expect_ok: bool) -> int:
         "try:"
         f"  r = urllib.request.urlopen({url!r}, timeout=5);"
         "  data = r.read().decode('utf-8');"
-        "  print(data);"
-        "  sys.exit(0)"
-        "except Exception as e:"
-        "  print(f'Error: {e}', file=sys.stderr);"
-        "  sys.exit(1)"
+    script = (
+        "import urllib.request, urllib.error; "
+        "try: "
+        f"    r = urllib.request.urlopen({url!r}, timeout=5) "
+        "except urllib.error.HTTPError as e: "
+        "    r = e; "
+        "except Exception as e: "
+        "    print(f'Error: {e}'); exit(1); "
+        "print(r.read().decode('utf-8'))"
     )
     return _run([PYTHON, "-c", script], check=False)
 
