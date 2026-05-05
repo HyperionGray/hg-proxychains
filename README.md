@@ -53,6 +53,7 @@ The design goal is intentionally boring:
 │   └── test_client.py
 ├── scripts/
 │   ├── bootstrap-third-party.sh
+│   ├── hg-proxychains
 │   ├── host-nftables.sh
 │   ├── repo_hygiene.py
 │   ├── repo_maintenance.py
