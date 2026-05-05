@@ -13,11 +13,30 @@ class ProxyWorkflowContainerConfigTests(unittest.TestCase):
         self.assertIn('command: ["pproxy", "-l", "http://0.0.0.0:3128"]', compose)
         self.assertIn("condition: service_healthy", compose)
         self.assertIn("http://127.0.0.1:9191/ready", compose)
+        self.assertIn("--name", compose)
+        self.assertIn("smoke.test", compose)
+        self.assertIn("--expect-owner", compose)
+        self.assertIn("203.0.113.10", compose)
+        self.assertIn("cap_add:", compose)
+        self.assertIn("- NET_ADMIN", compose)
+        self.assertIn('command: ["serve"]', compose)
+        self.assertIn("worknet:", compose)
+        self.assertIn("internal: true", compose)
+        self.assertIn("proxynet:", compose)
+        self.assertIn("stdin_open: true", compose)
+        self.assertIn("tty: true", compose)
 
     def test_proxy_container_runs_pproxy_on_3128(self) -> None:
         dockerfile = (REPO_ROOT / "proxy" / "Dockerfile").read_text(encoding="utf-8")
         self.assertIn("RUN pip install --no-cache-dir pproxy", dockerfile)
         self.assertIn('CMD ["pproxy", "-l", "http://0.0.0.0:3128"]', dockerfile)
+
+    def test_repo_wrapper_exposes_run_shell_and_smoke_commands(self) -> None:
+        wrapper = (REPO_ROOT / "hg-proxychains").read_text(encoding="utf-8")
+        self.assertIn("usage: ./hg-proxychains <command> [args...]", wrapper)
+        self.assertIn("run -- <cmd> [args...]", wrapper)
+        self.assertIn("shell [shell args...]", wrapper)
+        self.assertIn("smoke", wrapper)
 
     def test_swarm_workflow_uses_pinned_actions(self) -> None:
         workflow = (REPO_ROOT / ".github" / "workflows" / "swarm-mode.yml").read_text(

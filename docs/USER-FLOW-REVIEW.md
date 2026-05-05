@@ -1,13 +1,14 @@
 # User Flow Review
 
-Review date: 2026-03-17
+Review date: 2026-05-02
 
 ## Scope
 
 This review covers:
 
-- the smoke-harness flow driven by `docker-compose.yml`
-- the runtime traffic path from `client` to `exitserver`
+- the compose-up flow driven by `docker-compose.yml`
+- the runtime traffic path from the locked-down `client` runner to `exitserver`
+- the explicit smoke-check flow driven by `./hg-proxychains smoke`
 - health and readiness behavior exposed by `egressd`
 - the operator-facing host deployment flow documented in `docs/HOST-DEPLOYMENT.md`
 
@@ -16,12 +17,21 @@ This review covers:
 The broken `egressd` startup path found during the initial review has been
 repaired.
 
-Current state after the fix:
+Current state after the latest UX pass:
 
 - the `egressd` image includes all runtime modules it imports
 - `egressd/supervisor.py` now has one health/readiness implementation
 - preflight is wired into both `--check-config` and normal startup
 - unit tests and Make targets match the live supervisor API
+- the `client` image now starts through the long-running `runner.py` entrypoint,
+  which waits for `egressd`, installs a local fail-closed firewall, and then
+  serves as a locked-down toolbox for `./hg-proxychains run|shell|smoke`
+- the compose topology now has a private `worknet` for workloads and a
+  separate `proxynet` for proxy hops; `egressd` and `funky` are the only
+  services attached to both
+- `worknet` is marked `internal: true`, so the default client path cannot
+  bypass `egressd` with direct container egress
+- the chain visual now uses the proxychains-style `<-->` separator
 - the smoke FunkyDNS image now starts DoH with an explicit self-signed cert
 - the vendored FunkyDNS server now disables DoH and DoT when TLS files are
   missing and auto-cert is off
@@ -29,7 +39,6 @@ Current state after the fix:
   resolver defined by `resolv.conf` before falling back to explicit upstreams
 - the smoke harness now mounts custom `hosts` and `resolv.conf` fixtures and
   proves that behavior over both DNS and DoH
-- the smoke stack now tears down cleanly after the one-shot client exits
 - the smoke harness was re-run successfully end to end
 
 ## Smoke Harness Flow
@@ -37,7 +46,7 @@ Current state after the fix:
 ### 1. Operator startup flow
 
 1. Initialize `third_party/FunkyDNS`.
-2. Run `podman-compose up --build` or `make smoke`.
+2. Run `podman-compose up --build` or `make up`.
 3. Wait for `searchdns` to become healthy and answer `printer.corp.test`.
 4. Wait for `proxy1`, `proxy2`, `exitserver`, and `funky` to become healthy.
 5. `funky` becomes healthy only after direct DNS and DoH checks prove:
@@ -45,11 +54,32 @@ Current state after the fix:
    - mounted hosts-file resolution for `hosts.smoke.internal`
    - mounted `resolv.conf` search-domain resolution for `printer`
 6. Wait for `egressd` to become healthy by passing its `/ready` healthcheck.
-7. Compose starts `client` only after `egressd` is ready.
+7. Compose starts the long-running `client` runner only after `egressd` is ready.
+8. The `client` runner resolves the local DNS/proxy addresses, installs an
+   OUTPUT-only firewall that permits only:
+   - DNS to `funky:53`
+   - CONNECT traffic to `egressd:15001`
+   - loopback and established return traffic
+9. The operator now uses `./hg-proxychains run -- <cmd>`, `shell`, or `smoke`.
 
 ### 2. Request flow
 
-When the stack is healthy, the one-shot client does four groups of checks:
+There are now two request paths:
+
+#### a) Default compose-up path
+
+1. The operator starts the stack.
+2. The long-running `client` runner installs its local firewall and waits.
+3. The operator runs `./hg-proxychains run -- <cmd>`.
+4. The helper executes that command inside `client` with:
+   - `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY` set to `http://egressd:15001`
+   - the local firewall already restricting traffic to only DNS + local egressd
+5. The command's TCP egress path is therefore:
+   `client -> egressd -> proxy1 -> proxy2 -> exitserver`
+
+#### b) Explicit smoke path
+
+When the stack is healthy, `./hg-proxychains smoke` does four groups of checks:
 
 1. Query `smoke.test A` over direct DNS to `funky:53`.
 2. Query `smoke.test A` over DoH to `https://funky/dns-query`.
@@ -69,6 +99,9 @@ The intended paths are:
 - `client -> funky` for direct DNS and DoH ingress checks
 - `funky -> searchdns` for the single-label search-domain expansion path
 - `client -> egressd -> proxy1 -> proxy2 -> exitserver` for the CONNECT proof
+- arbitrary wrapped client commands get `HTTP_PROXY` and `HTTPS_PROXY` set to
+  `http://egressd:15001`; applications that ignore those variables may fail
+  closed on `worknet` rather than silently bypassing the chain
 
 The observed success signal from the smoke run was:
 
@@ -78,13 +111,14 @@ The observed success signal from the smoke run was:
 - `DoH OK: hosts.smoke.internal A -> 198.51.100.21 (owner hosts.smoke.internal.)`
 - `DNS OK: printer A -> 198.51.100.42 (owner printer.corp.test.)`
 - `DoH OK: printer A -> 198.51.100.42 (owner printer.corp.test.)`
+- `[egressd] |S-chain|proxy1:3128<-->proxy2:3128<-->OK`
 - `HTTP/1.1 200 Connection established`
 - `OK from exit-server`
 
 ### 3. Readiness flow
 
 `docker-compose.yml` uses `egressd` `/ready` as the health gate that controls
-whether the client is allowed to start.
+whether the client runner is allowed to start.
 
 Current readiness behavior:
 
@@ -95,6 +129,11 @@ Current readiness behavior:
 
 In smoke mode, the canary target is `exitserver:9999`, so readiness remains
 self-contained and does not depend on public internet access.
+
+`chain.allowed_ports` is a validation/readiness guard: preflight rejects a
+canary target whose port is not in the configured list when fail-closed mode is
+enabled. Runtime port enforcement for arbitrary applications comes from the
+container/host network policy around `egressd`, not from `pproxy` itself.
 
 ### 4. FunkyDNS behavior in smoke mode
 
@@ -161,12 +200,16 @@ The following checks passed:
 - `make test`
 - `make preflight`
 - `make validate-config`
-- `podman-compose up --build --abort-on-container-exit --exit-code-from client`
+- `podman-compose up --build`
+- `./hg-proxychains smoke`
 
 ## Residual Caveats
 
 - upstream FunkyDNS still does not stop reliably on container stop signals in
   this environment, which is why the smoke image uses a local launcher wrapper.
+- The compose harness now provides strong containment only for traffic that runs
+  inside the `client` container through `./hg-proxychains run|shell|smoke`.
+  It does not magically sandbox arbitrary host processes.
 - Host-mode nftables and owner-gating were not executed in this turn, so host
   enforcement remains code-reviewed rather than runtime-proven here.
 

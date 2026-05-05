@@ -23,4 +23,13 @@
     // egressd logs into a JSON pipeline.
     chain_visual: true,
   },
+
+  logging: {
+    chain_visual: true,
+  },
+
+  supervisor: {
+    // Compose clients need to read /health across the private worknet.
+    health_bind: "0.0.0.0",
+  },
 }

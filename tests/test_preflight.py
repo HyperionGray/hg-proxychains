@@ -5,9 +5,10 @@ The preflight check is the first line of defence against misconfigured
 deployments.  These tests exercise each category of error so operators see
 clear, actionable diagnostics before any process is launched.
 
-Crucially they also cover the fail-closed / leak-prevention logic:
+Crucially they also cover the fail-closed readiness logic:
 - when fail_closed=True the canary port **must** appear in allowed_ports,
-  otherwise traffic could leak through a misconfigured chain.
+  otherwise the chain can never become healthy and the workload should remain
+  unable to start through the wrapper.
 
 normalize_cfg tests verify that the simplified user-facing format (e.g.
 top-level ``proxies`` list, plain URL strings as hops) is expanded to the
@@ -124,11 +125,10 @@ class PreflightFailClosedLeakPreventionTests(unittest.TestCase):
     """
     These tests guard the fail-closed / anti-leakage logic.
 
-    When fail_closed=True egressd should refuse connections to any port not in
-    allowed_ports.  If the canary target's port is itself not in allowed_ports,
-    the canary probes would always fail — so the chain would never be declared
-    healthy and all traffic would be dropped.  More importantly, a misconfigured
-    port list could silently allow traffic to bypass the chain.
+    When fail_closed=True and startup is gated on healthy hops, a canary target
+    outside allowed_ports can never produce a healthy chain. That should be
+    rejected before anything starts so the compose workflow fails closed instead
+    of leaving users with a misleading proxy status.
 
     Preflight must reject such configurations before anything starts.
     """

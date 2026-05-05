@@ -19,6 +19,14 @@ help:
 up:
 	$(PF) up --build
 
+smoke: deps
+	$(COMPOSE) up --build -d
+	./hg-proxychains smoke
+
+run:
+	@if [ -z "$(CMD)" ]; then echo 'usage: make run CMD="curl -fsS https://example.com/"' >&2; exit 2; fi
+	./hg-proxychains run -- $(CMD)
+
 down:
 	$(PF) down -v
 

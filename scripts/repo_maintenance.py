@@ -15,10 +15,13 @@ from pathlib import Path
 from typing import Sequence
 
 from repo_hygiene_lib import (
+    BASELINE_DEFAULT_PATH,
+    apply_marker_baseline,
     classify_stray_paths,
     collect_git_paths,
     find_stale_artifacts,
     find_unfinished_markers,
+    load_marker_baseline,
 )
 
 

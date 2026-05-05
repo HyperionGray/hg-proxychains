@@ -11,6 +11,9 @@ the chain.
 
 ## 1) Bring up the chain
 
+`./hg-proxychains up` and `make up` will try to bootstrap the missing
+dependency automatically. If you want to do it yourself first:
+
 ```bash
 ./pf.py up --build
 ```
