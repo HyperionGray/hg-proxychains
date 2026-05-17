@@ -49,8 +49,15 @@ def _resolved_local_proxy_ip() -> str:
     return PROXY_IP or _resolve_ipv4(PROXY_HOST)
 
 
-def _resolved_local_dns_ip() -> str:
-    return DNS_IP or _resolve_ipv4(DNS_HOST)
+def _resolved_local_dns_ip() -> str | None:
+    if DNS_IP:
+        return DNS_IP
+    try:
+        return _resolve_ipv4(DNS_HOST)
+    except (socket.gaierror, ValueError):
+        # In chain-only mode the smoke DNS service (funky) is absent; we
+        # only need the egressd hole, so fall through without a DNS rule.
+        return None
 
 
 def _configure_output_firewall() -> None:
@@ -70,8 +77,9 @@ def _configure_output_firewall() -> None:
         "-j",
         "ACCEPT",
     )
-    _run_iptables("-A", "OUTPUT", "-p", "udp", "-d", dns_ip, "--dport", str(DNS_PORT), "-j", "ACCEPT")
-    _run_iptables("-A", "OUTPUT", "-p", "tcp", "-d", dns_ip, "--dport", str(DNS_PORT), "-j", "ACCEPT")
+    if dns_ip is not None:
+        _run_iptables("-A", "OUTPUT", "-p", "udp", "-d", dns_ip, "--dport", str(DNS_PORT), "-j", "ACCEPT")
+        _run_iptables("-A", "OUTPUT", "-p", "tcp", "-d", dns_ip, "--dport", str(DNS_PORT), "-j", "ACCEPT")
     _run_iptables("-A", "OUTPUT", "-p", "tcp", "-d", proxy_ip, "--dport", str(PROXY_PORT), "-j", "ACCEPT")
 
     _run_ip6tables("-F", "OUTPUT")
@@ -89,7 +97,8 @@ def _configure_output_firewall() -> None:
     )
 
     with open(FIREWALL_MARKER_PATH, "w", encoding="utf-8") as handle:
-        handle.write(f"dns={dns_ip}:{DNS_PORT}\nproxy={proxy_ip}:{PROXY_PORT}\n")
+        dns_line = f"dns={dns_ip}:{DNS_PORT}\n" if dns_ip is not None else "dns=unconfigured\n"
+        handle.write(f"{dns_line}proxy={proxy_ip}:{PROXY_PORT}\n")
 
 
 def ensure_firewall() -> None:
@@ -133,10 +142,15 @@ def build_proxy_env(base_env: dict[str, str] | None = None) -> dict[str, str]:
 
 
 def _format_banner_lines() -> list[str]:
-    dns_target = DNS_IP or DNS_HOST
+    dns_ip = _resolved_local_dns_ip()
+    dns_line = (
+        f"[hg-proxychains] dns locked to {dns_ip}:{DNS_PORT}"
+        if dns_ip is not None
+        else "[hg-proxychains] dns: not configured (smoke profile not active)"
+    )
     return [
         "[hg-proxychains] client container ready",
-        f"[hg-proxychains] dns locked to {dns_target}:{DNS_PORT}",
+        dns_line,
         f"[hg-proxychains] egress locked to {PROXY_URL}",
         "[hg-proxychains] run commands with ./hg-proxychains run -- <cmd>",
         "[hg-proxychains] open a shell with ./hg-proxychains shell",
@@ -188,7 +202,11 @@ def run_smoke() -> int:
 def print_status() -> int:
     wait_for_ready(attempts=1)
     print(f"proxy={PROXY_URL}")
-    print(f"dns={DNS_IP or DNS_HOST}:{DNS_PORT}")
+    dns_ip = _resolved_local_dns_ip()
+    if dns_ip is not None:
+        print(f"dns={dns_ip}:{DNS_PORT}")
+    else:
+        print("dns=unconfigured")
     print(f"firewall_ready={os.path.exists(FIREWALL_MARKER_PATH)}")
     return 0
 

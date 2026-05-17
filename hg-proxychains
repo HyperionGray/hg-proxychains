@@ -1,28 +1,45 @@
 #!/usr/bin/env bash
+# hg-proxychains -- bring the chain up, run programs through it, tear it down.
+#
+# This is a tiny shell wrapper around `compose up`/`compose exec`. It
+# is the documented entry-point for users; the Makefile delegates here
+# too. It deliberately has no opinions beyond what compose already does
+# for you: invoke it from the repo root.
+
 set -euo pipefail
 
 COMPOSE_BIN="${COMPOSE:-podman-compose}"
 CLIENT_SERVICE="${HG_PROXYCHAINS_CLIENT_SERVICE:-client}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SMOKE_PROFILE="${HG_PROXYCHAINS_SMOKE_PROFILE:-smoke}"
 
 usage() {
   cat <<'EOF'
 usage: ./hg-proxychains <command> [args...]
 
 commands:
-  up [compose args...]       build and start the stack in the background
+  up [compose args...]       build and start the chain (proxy1, proxy2,
+                             egressd, client) in the background
   down [compose args...]     stop and remove the stack
-  logs [compose args...]     follow compose logs
+  logs [SERVICE [args...]]   follow compose logs (default: all services)
   status                     print the locked-down client routing status
+                             plus egressd /health
   shell [shell args...]      open a shell inside the locked-down client
   run -- <cmd> [args...]     run a command through the proxy chain
-  smoke                      run the repository smoke checks explicitly
+  smoke                      build/start the smoke harness and run the
+                             DoH + CONNECT-chain property test
+
+environment:
+  COMPOSE                    compose binary (default: podman-compose)
+  HG_PROXYCHAINS_CLIENT_SERVICE
+                             compose service to exec into (default: client)
 
 examples:
   ./hg-proxychains up
-  ./hg-proxychains run -- curl -fsS http://exitserver:9999/
+  ./hg-proxychains run -- curl -fsS https://example.com
   ./hg-proxychains shell
   ./hg-proxychains smoke
+  ./hg-proxychains status
 EOF
 }
 
@@ -31,7 +48,7 @@ usage_run() {
 usage: ./hg-proxychains run -- <cmd> [args...]
 
 examples:
-  ./hg-proxychains run -- curl -fsS http://exitserver:9999/
+  ./hg-proxychains run -- curl -fsS https://example.com
   ./hg-proxychains run -- env | rg '(_PROXY|_proxy)'
 EOF
 }
@@ -48,25 +65,32 @@ EOF
 
 require_compose() {
   if ! command -v "$COMPOSE_BIN" >/dev/null 2>&1; then
-    echo "missing compose binary: $COMPOSE_BIN" >&2
+    echo "missing compose binary: $COMPOSE_BIN (override with COMPOSE=...)" >&2
     exit 1
   fi
 }
 
+# Run something inside the already-running locked-down client. We add
+# `-T` for non-tty when stdin is not a terminal so this works under
+# `make run CMD=...` and CI.
 run_exec() {
   local tty_flag=()
   if [ "${1:-}" = "--no-tty" ]; then
     tty_flag=(-T)
     shift
+  elif [ ! -t 0 ] || [ ! -t 1 ]; then
+    tty_flag=(-T)
   fi
   "$COMPOSE_BIN" exec "${tty_flag[@]}" "$CLIENT_SERVICE" python3 /opt/client/runner.py "$@"
 }
 
-ensure_deps() {
-  if [ -d "$REPO_ROOT/third_party/FunkyDNS/.git" ]; then
+# Bootstrap third_party/FunkyDNS only when we actually need it, i.e. we
+# are about to run the smoke harness. Chain-only `up` does NOT need it.
+ensure_smoke_deps() {
+  if [ -d "$REPO_ROOT/third_party/FunkyDNS/.git" ] || [ -f "$REPO_ROOT/third_party/FunkyDNS/.git" ]; then
     return
   fi
-  echo "[hg-proxychains] bootstrapping third_party/FunkyDNS" >&2
+  echo "[hg-proxychains] bootstrapping third_party/FunkyDNS for smoke harness" >&2
   make -C "$REPO_ROOT" deps
 }
 
@@ -81,7 +105,6 @@ main() {
   case "$command" in
     up)
       require_compose
-      ensure_deps
       "$COMPOSE_BIN" up --build -d "$@"
       ;;
     down)
@@ -119,7 +142,13 @@ main() {
       ;;
     smoke)
       require_compose
-      run_exec --no-tty smoke "$@"
+      ensure_smoke_deps
+      # `--profile smoke` activates funky / searchdns / exitserver; the
+      # core chain comes up in the same call. Bring everything up
+      # before exec'ing into the client so the smoke test has something
+      # to talk to.
+      "$COMPOSE_BIN" --profile "$SMOKE_PROFILE" up --build -d "$@"
+      run_exec --no-tty smoke
       ;;
     help|-h|--help)
       usage
